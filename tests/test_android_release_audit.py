@@ -4,6 +4,8 @@ from pathlib import Path
 import tempfile
 import unittest
 import zipfile
+import sys
+from unittest.mock import patch
 
 spec = importlib.util.spec_from_file_location('android_release_audit', Path(__file__).resolve().parents[1] / 'tools/check_android_release.py')
 audit = importlib.util.module_from_spec(spec)
@@ -19,6 +21,23 @@ def archive(files):
 
 
 class ReleaseAuditTests(unittest.TestCase):
+    def test_public_apk_accepts_generated_tables_and_rejects_original_assets(self):
+        build_spec = importlib.util.spec_from_file_location('android_build', Path(__file__).resolve().parents[1] / 'tools/android_build.py')
+        build = importlib.util.module_from_spec(build_spec)
+        build_spec.loader.exec_module(build)
+        with tempfile.TemporaryDirectory() as folder, patch.dict(sys.modules, {'android_build': build}):
+            path = Path(folder) / 'public.apk'
+            files = {'AndroidManifest.xml': b'test', 'assets/engine-data.zip': archive({'facts.json': b'{}'})}
+            path.write_bytes(archive(files))
+            self.assertEqual(audit.inspect_payload(path, public=True)['findings'], [])
+            for name in ['worldgen/structure/minecraft/test.nbt', 'worldgen/biomes.json', 'raw.jar', 'unknown.json']:
+                files['assets/engine-data.zip'] = archive({name: b'original content'})
+                path.write_bytes(archive(files))
+                self.assertIn('original_game_resource', {f['kind'] for f in audit.inspect_payload(path, public=True)['findings']})
+            files['assets/bedrock-controls.zip'] = archive({'ui/jump.png': b'texture'})
+            path.write_bytes(archive(files))
+            with self.assertRaises(ValueError):
+                audit.inspect_payload(path, public=True)
     def inspect(self, engine=None, extra=None):
         files = {'AndroidManifest.xml': b'test manifest',
                  'assets/engine-data.zip': archive(engine or {'blocks.json': b'{}'}),

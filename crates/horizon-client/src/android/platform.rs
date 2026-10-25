@@ -12,6 +12,9 @@ use winit::platform::android::activity::input::{
 /// The originals remain outside the source tree and are supplied by this APK's
 /// private asset bundle. Install after resource updates, before building the HUD.
 pub fn install_bedrock_controls(home: &std::path::Path) -> horizon_client::Result<()> {
+    if crate::PUBLIC_BUILD {
+        return Ok(());
+    }
     use std::io::Read;
     let bytes = crate::APP.with(|slot| -> horizon_client::Result<Vec<u8>> {
         let app = slot.borrow();

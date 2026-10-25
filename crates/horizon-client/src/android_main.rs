@@ -35,6 +35,10 @@ mod backend {
 }
 
 use std::cell::RefCell;
+pub(crate) const PUBLIC_BUILD: bool = match option_env!("HORIZON_ANDROID_PUBLIC") {
+    Some(value) => value.len() == 1 && value.as_bytes()[0] == b'1',
+    None => false,
+};
 use winit::{
     event_loop::EventLoop,
     platform::android::{EventLoopBuilderExtAndroid, activity::AndroidApp},
@@ -66,9 +70,13 @@ pub(crate) fn android_arguments() -> horizon_client::Result<Vec<String>> {
         home.join(".local/horizon-client/26.3")
             .to_string_lossy()
             .into_owned(),
-        "--control-socket".into(),
-        home.join("control.json").to_string_lossy().into_owned(),
     ];
+    if !PUBLIC_BUILD {
+        args.extend([
+            "--control-socket".into(),
+            home.join("control.json").to_string_lossy().into_owned(),
+        ]);
+    }
     if let Some(session) = crate::launcher::session_argument() {
         args.extend([
             "--session-file".into(),
@@ -81,10 +89,12 @@ pub(crate) fn android_arguments() -> horizon_client::Result<Vec<String>> {
     if !config.server.is_empty() {
         args.extend(["--server".into(), config.server.clone()]);
     }
-    match std::fs::read(home.join("android-launch.json")) {
-        Ok(bytes) => args.extend(serde_json::from_slice::<Vec<String>>(&bytes)?),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-        Err(error) => return Err(error.into()),
+    if !PUBLIC_BUILD {
+        match std::fs::read(home.join("android-launch.json")) {
+            Ok(bytes) => args.extend(serde_json::from_slice::<Vec<String>>(&bytes)?),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(error.into()),
+        }
     }
     Ok(args)
 }

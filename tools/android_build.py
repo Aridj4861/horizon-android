@@ -26,7 +26,27 @@ def run(command, **kwargs):
     subprocess.run(list(map(str, command)), check=True, **kwargs)
 
 
-def engine_data():
+def generated_engine_file(name):
+    path = Path(name)
+    if len(path.parts) == 1:
+        return name in {
+            'attributes.json', 'block-behaviours.json', 'cached-collision.nbt',
+            'command-registries.json', 'commands.json', 'creative-inventory.json',
+            'damage-catalog.json', 'entity-models.json', 'entity-types.json',
+            'facts.json', 'gameplay-facts.json', 'horizon-resources.json', 'items.json',
+            'landing-definitions.json', 'mob-data.json', 'model-states.json',
+            'movement-properties.nbt', 'occlusion.nbt', 'player-float-ids.json',
+            'registries.json', 'render-definitions.json'}
+    return (name in {'biome-parameters/nether.json', 'biome-parameters/overworld.json',
+                    'worldgen/biome_parameters/nether.json', 'worldgen/biome_parameters/overworld.json'}
+            or (path.parts[:2] == ('worldgen', 'blocks') and path.name in {
+                'block-properties.nbt', 'cached-collision.nbt', 'cached-support.nbt',
+                'survival-rules.json', 'survival-extra-definitions.json', 'placement-definitions.json'}
+                and len(path.parts) == 3)
+            or name == 'worldgen/block_flags.json')
+
+
+def engine_data(public=False):
     version = json.loads((ROOT / 'research-lock.json').read_text())['minecraft']['version']
     resources = ROOT / '.local/horizon-client' / version
     if not (resources / 'horizon-resources.json').is_file():
@@ -35,8 +55,10 @@ def engine_data():
     for name in ['worldgen', 'biome-parameters']:
         files.extend(p for p in (resources / name).rglob('*') if p.is_file())
     files.sort()
+    if public:
+        files = [p for p in files if generated_engine_file(p.relative_to(resources).as_posix())]
     fingerprint = hashlib.sha256(''.join(f'{p.relative_to(resources)}:{p.stat().st_size}:{p.stat().st_mtime_ns}\n' for p in files).encode()).hexdigest()
-    output = ROOT / '.local/android/engine-data.zip'
+    output = ROOT / '.local/android' / ('engine-data-generated.zip' if public else 'engine-data.zip')
     stamp = output.with_suffix('.fingerprint')
     if not output.exists() or not stamp.exists() or stamp.read_text() != fingerprint:
         output.parent.mkdir(parents=True, exist_ok=True)
@@ -55,12 +77,17 @@ def main():
     parser.add_argument('--java-home', type=Path, default=os.environ.get('JAVA_HOME') or 'C:/Program Files/Android/Android Studio/jbr')
     parser.add_argument('--skip-rust', action='store_true')
     parser.add_argument('--release-candidate', action='store_true', help='Build a non-debuggable candidate and audit privacy; this does not authorize redistribution of bundled game resources')
+    parser.add_argument('--public', action='store_true', help='Distribution APK: generated tables only; original resources download from Mojang')
     parser.add_argument('--profile', choices=['fast', 'dev'], default='fast', help='Optimized by default; dev is for debugging only')
     parser.add_argument('--gradle', type=Path, help='Gradle 8.14 executable (otherwise discover the cached distribution)')
     parser.add_argument('--check', action='store_true', help='Only type-check the Android target')
     parser.add_argument('--clippy', action='store_true', help='Run Android Clippy with warnings denied')
     parser.add_argument('--bootstrap', type=Path, help=argparse.SUPPRESS)  # Old scripts: no longer used.
     args = parser.parse_args()
+    if args.public:
+        args.release_candidate = True
+        if args.skip_rust:
+            parser.error('--public cannot reuse a native library from a different build mode')
     if args.release_candidate and args.profile != 'fast':
         parser.error('--release-candidate requires the optimized fast profile')
     suffix = '.exe' if os.name == 'nt' else ''
@@ -77,6 +104,7 @@ def main():
     environment[f'AR_{triple}'] = str(ndk / 'bin' / ('llvm-ar' + suffix))
     environment[f'CARGO_TARGET_{triple.upper()}_LINKER'] = str(clang)
     environment['CARGO_PROFILE_DEV_DEBUG'] = '0'
+    environment['HORIZON_ANDROID_PUBLIC'] = '1' if args.public else '0'
     if args.release_candidate:
         flags = environment.get('CARGO_ENCODED_RUSTFLAGS', '').split('\x1f') if environment.get('CARGO_ENCODED_RUSTFLAGS') else environment.get('RUSTFLAGS', '').split()
         for original, replacement in [(Path.home(), '/build'), (ROOT, '/horizon')]:
@@ -103,12 +131,17 @@ def main():
     run([ndk / 'bin' / ('llvm-strip' + suffix), '--strip-debug', staging / library.name])
     assets = ROOT / '.local/android/gradle-assets'
     assets.mkdir(parents=True, exist_ok=True)
-    shutil.copyfile(engine_data(), assets / 'engine-data.zip')
+    shutil.copyfile(ROOT / 'LICENSE', assets / 'LICENSE.txt')
+    shutil.copyfile(ROOT / 'THIRD_PARTY_NOTICES.md', assets / 'THIRD_PARTY_NOTICES.md')
+    shutil.copyfile(engine_data(args.public), assets / 'engine-data.zip')
     controls = ROOT / '.local/android/bedrock-controls.zip'
-    if not controls.is_file():
+    if not args.public and not controls.is_file():
         import sys
         run([sys.executable, ROOT / 'tools/android_bedrock_controls.py'], cwd=ROOT)
-    shutil.copyfile(controls, assets / 'bedrock-controls.zip')
+    if args.public:
+        (assets / 'bedrock-controls.zip').unlink(missing_ok=True)
+    else:
+        shutil.copyfile(controls, assets / 'bedrock-controls.zip')
     key = ROOT / '.local/android/debug.keystore'
     if not key.exists():
         run([args.java_home / 'bin' / ('keytool' + suffix), '-genkeypair', '-keystore', key, '-storepass', 'android', '-keypass', 'android', '-alias', 'androiddebugkey', '-keyalg', 'RSA', '-validity', '3650', '-dname', 'CN=Horizon Android Development'])
@@ -121,14 +154,14 @@ def main():
     environment['ANDROID_HOME'] = str(args.sdk)
     variant = 'release' if args.release_candidate else 'debug'
     run([gradle, '--no-daemon', '-p', ROOT / 'packaging/android', '-Pabi=' + args.abi, 'assemble' + variant.title()], cwd=ROOT, env=environment)
-    apk = output / ('horizon-android-release.apk' if args.release_candidate else 'horizon-android.apk')
+    apk = output / ('horizon-android-public.apk' if args.public else 'horizon-android-release.apk' if args.release_candidate else 'horizon-android.apk')
     shutil.copyfile(ROOT / f'.local/android/gradle-build/outputs/apk/{variant}/HorizonAndroid-{variant}.apk', apk)
     # Invoke the signing JAR directly so Windows does not need a batch-file shell.
     signer = [args.java_home / 'bin' / ('java' + suffix), '-jar', tools / 'lib/apksigner.jar']
     run([*signer, 'verify', '--verbose', apk])
     if args.release_candidate:
         import sys
-        run([sys.executable, ROOT / 'tools/check_android_release.py', apk, '--aapt2', tools / ('aapt2' + suffix)], cwd=ROOT)
+        run([sys.executable, ROOT / 'tools/check_android_release.py', apk, '--aapt2', tools / ('aapt2' + suffix), *(['--public'] if args.public else [])], cwd=ROOT)
     print(f'APK: {apk}', flush=True)
 
 
