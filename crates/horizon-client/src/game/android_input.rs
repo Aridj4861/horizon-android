@@ -109,6 +109,10 @@ impl Game<'_> {
         Ok(false)
     }
     pub(super) fn android_show_keyboard(&mut self) {
+        // The in-world keyboard button needs a real editor to receive text.
+        if self.title.is_none() && self.screen == Screen::Playing {
+            self.open_chat("");
+        }
         let initial = if self.screen == Screen::Chat && self.title.is_none() {
             self.chat_key_code(KeyCode::End, None);
             self.ui
@@ -136,7 +140,9 @@ impl Game<'_> {
                 crate::platform::hide();
             }
         }
-        if self.screen == Screen::Playing && crate::platform::active() {
+        // Title screens also use Playing: their focused text fields must keep
+        // the IME until the user confirms or closes the editor.
+        if self.title.is_none() && self.screen == Screen::Playing && crate::platform::active() {
             crate::platform::hide();
         }
     }

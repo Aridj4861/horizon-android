@@ -125,7 +125,7 @@ impl Launcher {
             w - 320.0,
             38.0,
             color::MUTED,
-            "26.3 / Android 0.6.2",
+            "26.3 / Android 0.6.3",
         );
         let tabs = Page::ALL.len() as f32;
         let tab_width = (w - 64.0) / tabs;

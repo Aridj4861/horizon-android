@@ -287,3 +287,14 @@ are retained only while a device-code request is pending. Microsoft accepted the
 initial request; a complete licensed-account sign-in has not been tested here.
 The browser uses the documented Custom Tabs intent protocol, with an ordinary
 browser fallback. Closing the account panel no longer cancels an active request.
+
+## Android 0.6.3: system keyboard
+
+Keep the native IME open for title-menu text editors: the title also uses the
+engine's `Playing` screen tag, so the world-only dismissal must check that no
+title is open. Surface recreation no longer ends the text session. The in-world
+keyboard shortcut opens chat before displaying the IME.
+
+On the isolated API 35 AVD, the previous build closed the IME on Add Server's
+address field. The fixed build kept it open, accepted an address, reopened on
+another field and saved the address to the test profile's server list.

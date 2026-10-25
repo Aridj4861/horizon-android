@@ -10830,7 +10830,8 @@ impl Game<'_> {
 impl ApplicationHandler for Game<'_> {
     #[cfg(target_os = "android")]
     fn suspended(&mut self, _event_loop: &ActiveEventLoop) {
-        crate::platform::hide();
+        // Android may recreate the surface while the IME changes window size.
+        // Preserve the text session; Android hides its window on real backgrounding.
         self.android_release_touch_keys(true);
         self.capture(false);
         self.keys.clear();
