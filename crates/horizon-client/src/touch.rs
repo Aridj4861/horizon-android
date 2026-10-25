@@ -295,17 +295,8 @@ impl TouchControls {
         } else if let Some(point) = self.pointer() {
             let center = [point[0] * w, point[1] * h];
             let radius = self.settings.circle_size / 2.0;
-            for i in 0..64 {
-                let angles = [i as f32, (i + 1) as f32]
-                    .map(|v| v / 64.0 * std::f32::consts::TAU - std::f32::consts::FRAC_PI_2);
-                for (r, color) in [
-                    (radius + 0.7, rgba(0, 0, 0, 110)),
-                    (radius, rgba(255, 255, 255, 210)),
-                ] {
-                    let points = angles.map(|v| [center[0] + r * v.cos(), center[1] + r * v.sin()]);
-                    line(b, a, points[0], points[1], color);
-                }
-            }
+            ring(b, a, center, radius + 0.7, rgba(0, 0, 0, 110));
+            ring(b, a, center, radius, rgba(255, 255, 255, 210));
             // A complete inner circle expands towards the stationary outer rim.
             // Progress changes its radius, never its angular coverage.
             let inner = mining_radius(radius, self.break_progress);
@@ -313,21 +304,16 @@ impl TouchControls {
                 && let Some(white) = a.sprites.get("horizon/white")
             {
                 let uv = [[(white.u0 + white.u1) / 2.0, (white.v0 + white.v1) / 2.0]; 4];
-                for i in 0..64 {
-                    let points = [i, i + 1].map(|v| {
-                        let angle = v as f32 / 64.0 * std::f32::consts::TAU;
-                        [
-                            center[0] + inner * angle.cos(),
-                            center[1] + inner * angle.sin(),
-                        ]
-                    });
+                for segment in circle_points().windows(2) {
+                    let points = [segment[0], segment[1]]
+                        .map(|p| [center[0] + inner * p[0], center[1] + inner * p[1]]);
                     b.quad(
                         [center, points[0], points[1], center],
                         uv,
                         rgba(255, 255, 255, 90),
                     );
-                    line(b, a, points[0], points[1], rgba(255, 255, 255, 220));
                 }
+                ring(b, a, center, inner, rgba(255, 255, 255, 220));
             }
         }
     }
@@ -562,9 +548,9 @@ impl TouchControls {
 fn menu_frame(b: &mut HudBatch, a: &HudAtlas, [x, y, w, h]: [f32; 4], color: u32) {
     let border = (w / 18.0 * 2.0).min(h / 2.0);
     let xs = [200.0, 202.0, 216.0, 218.0];
-    let ys = [82.0, 84.0, 98.0, 100.0];
+    let ys = [82.0, 84.0, 96.0, 100.0];
     let dx = [x, x + border, x + w - border, x + w];
-    let dy = [y, y + border, y + h - border, y + h];
+    let dy = [y, y + border, y + h - border * 2.0, y + h];
     for row in 0..3 {
         for col in 0..3 {
             let source = if row == 1 && col == 1 {
@@ -637,6 +623,35 @@ fn mining_radius(radius: f32, progress: f32) -> f32 {
         (radius - 1.5).max(0.0) * progress.clamp(0.0, 1.0)
     } else {
         0.0
+    }
+}
+fn circle_points() -> &'static [[f32; 2]; 65] {
+    static POINTS: std::sync::OnceLock<[[f32; 2]; 65]> = std::sync::OnceLock::new();
+    POINTS.get_or_init(|| {
+        std::array::from_fn(|i| {
+            let angle = i as f32 / 64.0 * std::f32::consts::TAU;
+            [angle.cos(), angle.sin()]
+        })
+    })
+}
+// One non-overlapping quad per segment, rather than many blended pixel squares.
+fn ring(b: &mut HudBatch, a: &HudAtlas, center: [f32; 2], radius: f32, color: u32) {
+    let Some(white) = a.sprites.get("horizon/white") else {
+        return;
+    };
+    let uv = [[(white.u0 + white.u1) / 2.0, (white.v0 + white.v1) / 2.0]; 4];
+    for segment in circle_points().windows(2) {
+        let point = |p: [f32; 2], r: f32| [center[0] + p[0] * r, center[1] + p[1] * r];
+        b.quad(
+            [
+                point(segment[0], radius + 0.7),
+                point(segment[1], radius + 0.7),
+                point(segment[1], (radius - 0.7).max(0.0)),
+                point(segment[0], (radius - 0.7).max(0.0)),
+            ],
+            uv,
+            color,
+        );
     }
 }
 /// Glyphs such as the inventory ellipsis are deliberately wide and short.

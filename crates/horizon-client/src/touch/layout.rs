@@ -162,12 +162,12 @@ impl Default for Settings {
             Placement::new(0.81, 0.86, 0.115),
             Placement::new(0.80, 0.64, 0.16),
             Placement::new(0.92, 0.52, 0.16),
-            Placement::new(0.45, 0.055, 0.075),
+            Placement::new(0.46, 0.055, 0.075),
             Placement::new(0.50, 0.055, 0.075),
-            Placement::new(0.55, 0.055, 0.075),
+            Placement::new(0.54, 0.055, 0.075),
             Placement::new(0.73, 0.95, 0.075),
-            Placement::new(0.40, 0.055, 0.075),
-            Placement::new(0.60, 0.055, 0.075),
+            Placement::new(0.42, 0.055, 0.075),
+            Placement::new(0.58, 0.055, 0.075),
         ];
         let mut layouts = [base; 3];
         layouts[2][Control::Sneak as usize] = Placement::new(0.13, 0.76, 0.10);
@@ -197,6 +197,20 @@ impl Settings {
             .and_then(|b| serde_json::from_slice(&b).ok())
             .unwrap_or_default();
         s.sanitize();
+        // Restore the original top-row spacing without moving custom layouts.
+        for row in &mut s.layouts {
+            for (control, old, new) in [
+                (Control::Chat, 0.45, 0.46),
+                (Control::Settings, 0.55, 0.54),
+                (Control::Debug, 0.40, 0.42),
+                (Control::Perspective, 0.60, 0.58),
+            ] {
+                let p = &mut row[control as usize];
+                if p.center == [old, 0.055] && p.size == 0.075 {
+                    p.center[0] = new;
+                }
+            }
+        }
         // Move the old factory sprint position only; keep customized placements.
         for mode in [Mode::Crosshair, Mode::Tap] {
             let sprint = &mut s.layouts[mode.index()][Control::Sprint as usize];
@@ -281,8 +295,8 @@ mod tests {
         for row in settings.layouts {
             assert_eq!(row[6].center, [0.25, 0.2]);
             assert_eq!(row[6].opacity, 0.35);
-            assert_eq!(row[Control::Debug as usize].center, [0.4, 0.055]);
-            assert_eq!(row[Control::Perspective as usize].center, [0.6, 0.055]);
+            assert_eq!(row[Control::Debug as usize].center, [0.42, 0.055]);
+            assert_eq!(row[Control::Perspective as usize].center, [0.58, 0.055]);
         }
         let roundtrip: Settings =
             serde_json::from_slice(&serde_json::to_vec(&settings).unwrap()).unwrap();

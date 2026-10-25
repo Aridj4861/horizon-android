@@ -26,6 +26,7 @@ pub enum Opt {
     DiscreteScroll,
     Volume(usize),
     GuiScale,
+    DebugGuiScale,
     ViewBobbing,
     Gamma,
     MaxFps,
@@ -225,6 +226,7 @@ impl Opt {
             Opt::DiscreteScroll => "options.discrete_mouse_scroll",
             Opt::Volume(_) => "soundCategory.master",
             Opt::GuiScale => "options.guiScale",
+            Opt::DebugGuiScale => "F3 text scale",
             Opt::ViewBobbing => "options.viewBobbing",
             Opt::Gamma => "options.gamma",
             Opt::MaxFps => "options.framerateLimit",
@@ -314,6 +316,7 @@ impl Opt {
             | Opt::GlintStrength
             | Opt::PanoramaSpeed => Kind::Slider(s.file.double(self.file_key().unwrap()) as f32),
             Opt::TouchCircleSize => unit(s.touch.circle_size, 16.0, 64.0),
+            Opt::DebugGuiScale => unit(s.file.int("debugGuiScale").max(0) as f32, 0.0, 6.0),
             Opt::TouchSensitivity => unit(s.touch.sensitivity, 0.1, 3.0),
             Opt::Fov => unit(s.fov, 30.0, 110.0),
             Opt::RenderDistance => unit(s.render_distance as f32, 2.0, 64.0),
@@ -391,6 +394,10 @@ impl Opt {
                     .to_owned(),
             ),
             Opt::TouchCircleSize => Some(format!("{} px", s.touch.circle_size.round())),
+            Opt::DebugGuiScale => Some(match s.file.int("debugGuiScale") {
+                n if n <= 0 => "Auto".into(),
+                n => format!("{n}x"),
+            }),
             Opt::TouchSensitivity => Some(format!("{:.0}%", s.touch.sensitivity * 100.0)),
             Opt::TouchAnalog => Some(if s.touch.analog_movement { "ON" } else { "OFF" }.into()),
             Opt::TouchInteract => Some(
@@ -683,6 +690,10 @@ impl Opt {
         let step = |lo: f32, hi: f32| (lo + v * (hi - lo)).round();
         match self {
             Opt::TouchCircleSize => s.touch.circle_size = step(16.0, 64.0),
+            Opt::DebugGuiScale => s.file.set(
+                "debugGuiScale",
+                crate::options_file::V::Int(step(0.0, 6.0) as i32),
+            ),
             Opt::TouchSensitivity => s.touch.sensitivity = 0.1 + v * 2.9,
             Opt::FovEffects | Opt::DarknessPulsing => s.file.set(
                 self.file_key().unwrap(),
@@ -1548,6 +1559,7 @@ impl OptionsUi {
                 rows.extend(pairs(&[
                     Opt::TouchSensitivity,
                     Opt::TouchCircleSize,
+                    Opt::DebugGuiScale,
                     Opt::TouchAnalog,
                     Opt::TouchSprintButton,
                     Opt::TouchInteract,
@@ -4265,6 +4277,8 @@ mod tests {
         assert!(!settings.touch.visible(crate::touch::Control::Sprint));
         Opt::TouchCircleSize.set_slider(&mut settings, 0.75);
         assert_eq!(settings.touch.circle_size, 52.0);
+        Opt::DebugGuiScale.set_slider(&mut settings, 0.5);
+        assert_eq!(settings.file.int("debugGuiScale"), 3);
         Opt::TouchSensitivity.set_slider(&mut settings, 0.0);
         assert!((settings.touch.sensitivity - 0.1).abs() < 0.0001);
         let mut ui = OptionsUi::default();
