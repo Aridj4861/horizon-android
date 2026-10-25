@@ -134,6 +134,8 @@ pub struct Settings {
     pub circle_size: f32,
     pub analog_movement: bool,
     pub sprint_button: bool,
+    pub horizontal_margin: f32,
+    pub vertical_margin: f32,
     #[serde(deserialize_with = "deserialize_layouts")]
     pub layouts: [[Placement; 12]; 3],
 }
@@ -183,6 +185,8 @@ impl Default for Settings {
             circle_size: 32.0,
             analog_movement: false,
             sprint_button: true,
+            horizontal_margin: 0.0,
+            vertical_margin: 0.0,
             layouts,
         }
     }
@@ -221,6 +225,13 @@ impl Settings {
         s
     }
     pub fn sanitize(&mut self) {
+        for value in [&mut self.horizontal_margin, &mut self.vertical_margin] {
+            *value = if value.is_finite() {
+                value.clamp(0.0, 0.12)
+            } else {
+                0.0
+            };
+        }
         if !self.sensitivity.is_finite() {
             self.sensitivity = 1.0;
         }

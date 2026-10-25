@@ -27,7 +27,7 @@ impl Game<'_> {
         }
         let size = self.window.as_ref().unwrap().inner_size();
         let b = HudBatch::new([size.width, size.height]);
-        let p = [t.location.x as f32 / b.scale, t.location.y as f32 / b.scale];
+        let p = b.pointer([t.location.x as f32, t.location.y as f32]);
         if let Some(action) = self.pad.touch_ui.action(b.width, p, self.pad_in_menu()) {
             if t.phase == TouchPhase::Started {
                 self.pad.touch.clear();
@@ -177,7 +177,7 @@ impl Game<'_> {
     pub(super) fn android_menu_touch(&mut self, t: &Touch, events: &ActiveEventLoop, id: WindowId) {
         let size = self.window.as_ref().unwrap().inner_size();
         let b = HudBatch::new([size.width, size.height]);
-        let p = [t.location.x as f32 / b.scale, t.location.y as f32 / b.scale];
+        let p = b.pointer([t.location.x as f32, t.location.y as f32]);
         let direct = self.pad.touch_ui.direct_pointer(t.id, p, t.phase);
         self.window_event(
             events,

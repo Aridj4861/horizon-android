@@ -91,6 +91,8 @@ pub enum Opt {
     TouchMode,
     TouchAnalog,
     TouchCircleSize,
+    TouchHorizontalMargin,
+    TouchVerticalMargin,
     TouchSensitivity,
     TouchInteract,
     TouchLeftHand,
@@ -211,6 +213,8 @@ impl Opt {
             Opt::TouchMode => "Control scheme",
             Opt::TouchAnalog => "360-degree movement",
             Opt::TouchCircleSize => "Touch circle size",
+            Opt::TouchHorizontalMargin => "Screen margins: left / right",
+            Opt::TouchVerticalMargin => "Screen margins: top / bottom",
             Opt::TouchSensitivity => "Touch sensitivity",
             Opt::TouchInteract => "Interact button",
             Opt::TouchLeftHand => "Left handed",
@@ -316,6 +320,8 @@ impl Opt {
             | Opt::GlintStrength
             | Opt::PanoramaSpeed => Kind::Slider(s.file.double(self.file_key().unwrap()) as f32),
             Opt::TouchCircleSize => unit(s.touch.circle_size, 16.0, 64.0),
+            Opt::TouchHorizontalMargin => unit(s.touch.horizontal_margin, 0.0, 0.12),
+            Opt::TouchVerticalMargin => unit(s.touch.vertical_margin, 0.0, 0.12),
             Opt::DebugGuiScale => unit(s.file.int("debugGuiScale").max(0) as f32, 0.0, 6.0),
             Opt::TouchSensitivity => unit(s.touch.sensitivity, 0.1, 3.0),
             Opt::Fov => unit(s.fov, 30.0, 110.0),
@@ -394,6 +400,10 @@ impl Opt {
                     .to_owned(),
             ),
             Opt::TouchCircleSize => Some(format!("{} px", s.touch.circle_size.round())),
+            Opt::TouchHorizontalMargin => {
+                Some(format!("{:.1}%", s.touch.horizontal_margin * 100.0))
+            }
+            Opt::TouchVerticalMargin => Some(format!("{:.1}%", s.touch.vertical_margin * 100.0)),
             Opt::DebugGuiScale => Some(match s.file.int("debugGuiScale") {
                 n if n <= 0 => "Auto".into(),
                 n => format!("{n}x"),
@@ -690,6 +700,8 @@ impl Opt {
         let step = |lo: f32, hi: f32| (lo + v * (hi - lo)).round();
         match self {
             Opt::TouchCircleSize => s.touch.circle_size = step(16.0, 64.0),
+            Opt::TouchHorizontalMargin => s.touch.horizontal_margin = (v * 120.0).round() / 1000.0,
+            Opt::TouchVerticalMargin => s.touch.vertical_margin = (v * 120.0).round() / 1000.0,
             Opt::DebugGuiScale => s.file.set(
                 "debugGuiScale",
                 crate::options_file::V::Int(step(0.0, 6.0) as i32),
@@ -1559,6 +1571,8 @@ impl OptionsUi {
                 rows.extend(pairs(&[
                     Opt::TouchSensitivity,
                     Opt::TouchCircleSize,
+                    Opt::TouchHorizontalMargin,
+                    Opt::TouchVerticalMargin,
                     Opt::DebugGuiScale,
                     Opt::TouchAnalog,
                     Opt::TouchSprintButton,
@@ -4277,6 +4291,10 @@ mod tests {
         assert!(!settings.touch.visible(crate::touch::Control::Sprint));
         Opt::TouchCircleSize.set_slider(&mut settings, 0.75);
         assert_eq!(settings.touch.circle_size, 52.0);
+        Opt::TouchHorizontalMargin.set_slider(&mut settings, 0.5);
+        Opt::TouchVerticalMargin.set_slider(&mut settings, 1.0);
+        assert_eq!(settings.touch.horizontal_margin, 0.06);
+        assert_eq!(settings.touch.vertical_margin, 0.12);
         Opt::DebugGuiScale.set_slider(&mut settings, 0.5);
         assert_eq!(settings.file.int("debugGuiScale"), 3);
         Opt::TouchSensitivity.set_slider(&mut settings, 0.0);

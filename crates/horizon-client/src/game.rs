@@ -1763,6 +1763,9 @@ impl Game<'_> {
             let fov = self.locator_camera.map_or(70.0, |c| c.3);
             let size = self.window.as_ref().map(|w| w.inner_size());
             let aspect = size.map_or(16.0 / 9.0, |s| s.width as f64 / s.height.max(1) as f64);
+            let point = size.map_or(point, |s| {
+                HudBatch::new([s.width, s.height]).screen_point(point, [s.width, s.height])
+            });
             return horizon_client::touch::screen_direction(
                 forward,
                 view_vector(self.yaw, self.pitch - 90.0),
@@ -4954,6 +4957,9 @@ impl Game<'_> {
             // Hud.extractCrosshair / extractItemHotbar / extractPlayerHealth /
             // extractVehicleHealth and the experience bar, laid out by hud_layout.
             let indicator = self.settings.attack_indicator;
+            #[cfg(target_os = "android")]
+            let indicator =
+                horizon_client::touch::attack_indicator(indicator, self.settings.touch.crosshair());
             let delay = horizon_client::attack_strength::delay(self.main_hand_attack_speed());
             let strength = self.hand_strength.scale(0.0, self.main_hand_attack_speed());
             // The 3D crosshair (F3) takes the 2D one's place.
@@ -9274,6 +9280,10 @@ impl Game<'_> {
         #[cfg(target_os = "android")]
         {
             self.pad.touch.settings = self.settings.touch.clone();
+            horizon_client::hud::set_gui_margins([
+                self.settings.touch.horizontal_margin,
+                self.settings.touch.vertical_margin,
+            ]);
         }
         if let Some(r) = &self.renderer {
             self.settings
@@ -11071,17 +11081,20 @@ impl ApplicationHandler for Game<'_> {
             use winit::event::TouchPhase;
             self.last_input = Instant::now();
             let size = self.window.as_ref().unwrap().inner_size();
-            self.pad.touch.viewport(size.width, size.height);
+            let touch_batch = HudBatch::new([size.width, size.height]);
+            let touch_point =
+                touch_batch.normalized_pointer([touch.location.x as f32, touch.location.y as f32]);
+            self.pad.touch.viewport(
+                (touch_batch.width * touch_batch.scale) as u32,
+                (touch_batch.height * touch_batch.scale) as u32,
+            );
             if self.pad.touch.editor.is_some() {
                 if touch.phase == TouchPhase::Cancelled {
                     self.pad.touch.cancel_editor();
                     self.pause = false;
                 } else if self.pad.touch.edit_touch(
                     touch.id,
-                    [
-                        touch.location.x as f32 / size.width.max(1) as f32,
-                        touch.location.y as f32 / size.height.max(1) as f32,
-                    ],
+                    touch_point,
                     touch.phase == TouchPhase::Started,
                     touch.phase == TouchPhase::Ended,
                 ) {
@@ -11112,10 +11125,7 @@ impl ApplicationHandler for Game<'_> {
                 let size = self.window.as_ref().unwrap().inner_size();
                 if touch.phase == TouchPhase::Started {
                     let batch = HudBatch::new([size.width, size.height]);
-                    let point = [
-                        touch.location.x as f32 / batch.scale,
-                        touch.location.y as f32 / batch.scale,
-                    ];
+                    let point = batch.pointer([touch.location.x as f32, touch.location.y as f32]);
                     if let Some(slot) =
                         horizon_client::touch::hotbar_slot(batch.width, batch.height, point)
                     {
@@ -11127,16 +11137,21 @@ impl ApplicationHandler for Game<'_> {
                 self.pad.touch.hold_uses_item = self.touch_item_held_use();
                 let delta = self.pad.touch.update(
                     touch.id,
-                    [
-                        touch.location.x as f32 / size.width.max(1) as f32,
-                        touch.location.y as f32 / size.height.max(1) as f32,
-                    ],
+                    touch_point,
                     touch.phase == TouchPhase::Started,
                     matches!(touch.phase, TouchPhase::Ended | TouchPhase::Cancelled),
                 );
                 let sensitivity = self.pad.touch.settings.sensitivity;
-                self.yaw += delta[0] * 180.0 * sensitivity;
-                self.pitch = (self.pitch + delta[1] * 180.0 * sensitivity).clamp(-90.0, 90.0);
+                self.yaw += delta[0] * touch_batch.width * touch_batch.scale
+                    / size.width.max(1) as f32
+                    * 180.0
+                    * sensitivity;
+                self.pitch = (self.pitch
+                    + delta[1] * touch_batch.height * touch_batch.scale
+                        / size.height.max(1) as f32
+                        * 180.0
+                        * sensitivity)
+                    .clamp(-90.0, 90.0);
                 if self.pad.touch.chat_requested {
                     self.audio.play_button_click();
                     self.pad.touch.clear();
@@ -11334,7 +11349,8 @@ impl ApplicationHandler for Game<'_> {
                 WindowEvent::CursorMoved { position, .. } => {
                     if let Some(r) = &self.renderer {
                         let b = HudBatch::new([r.config.width, r.config.height]);
-                        self.cursor = (position.x as f32 / b.scale, position.y as f32 / b.scale);
+                        let [x, y] = b.pointer([position.x as f32, position.y as f32]);
+                        self.cursor = (x, y);
                         if self.screen == Screen::Advancements {
                             self.advancements_drag();
                         }

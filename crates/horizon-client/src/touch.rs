@@ -9,6 +9,14 @@ const HOLD_DELAY: Duration = Duration::from_millis(350);
 mod editor;
 pub mod layout;
 pub use layout::{Control, Mode, Settings};
+/// In tap modes the crosshair is absent, so use Java's native hotbar gauge.
+pub fn attack_indicator(setting: u8, crosshair: bool) -> u8 {
+    if setting == 1 && !crosshair {
+        2
+    } else {
+        setting
+    }
+}
 
 /// A finger ray through the perspective projection, without rotating the view.
 pub fn screen_direction(
@@ -738,6 +746,13 @@ fn line(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn attack_gauge_survives_tap_modes_and_respects_off() {
+        assert_eq!(attack_indicator(0, false), 0);
+        assert_eq!(attack_indicator(1, false), 2);
+        assert_eq!(attack_indicator(1, true), 1);
+        assert_eq!(attack_indicator(2, false), 2);
+    }
     #[test]
     fn shortcuts_consume_their_finger_and_preserve_movement() {
         let mut touch = TouchControls::default();
