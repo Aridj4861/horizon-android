@@ -104,6 +104,38 @@ fn now() -> u64 {
         .map_or(0, |d| d.as_secs())
 }
 
+/// Older public Live registrations use a different Microsoft token endpoint.
+pub fn legacy_client(client_id: &str) -> bool {
+    client_id.len() == 16 && client_id.bytes().all(|c| c.is_ascii_hexdigit())
+}
+fn microsoft_endpoint(ep: &Endpoints, client_id: &str, token: bool) -> String {
+    if legacy_client(client_id)
+        && ep.microsoft == "https://login.microsoftonline.com/consumers/oauth2/v2.0"
+    {
+        format!(
+            "https://login.live.com/{}",
+            if token {
+                "oauth20_token.srf"
+            } else {
+                "oauth20_connect.srf"
+            }
+        )
+    } else {
+        format!(
+            "{}/{}",
+            ep.microsoft,
+            if token { "token" } else { "devicecode" }
+        )
+    }
+}
+fn microsoft_scope(client_id: &str) -> &'static str {
+    if legacy_client(client_id) {
+        "service::user.auth.xboxlive.com::MBI_SSL"
+    } else {
+        SCOPE
+    }
+}
+
 // ----- The device-code flow ----------------------------------------------------------------------
 
 /// What the player types at the verification page.
@@ -114,6 +146,7 @@ pub struct DeviceCode {
     pub interval: u64,
     pub expires_at: u64,
     device_code: String,
+    cookies: String,
 }
 
 impl std::fmt::Debug for DeviceCode {
@@ -128,6 +161,7 @@ impl std::fmt::Debug for DeviceCode {
 
 /// The Microsoft tokens; the access token only lasts for the Xbox step.
 pub struct MsTokens {
+    legacy: bool,
     access: String,
     refresh: String,
 }
@@ -146,11 +180,29 @@ pub enum Poll {
 }
 
 pub fn device_code(ep: &Endpoints, client_id: &str) -> Result<DeviceCode, String> {
-    let (status, v) = send(
-        agent().post(&format!("{}/devicecode", ep.microsoft)),
-        Some(Body::Form(vec![("client_id", client_id), ("scope", SCOPE)])),
-        "Microsoft",
-    )?;
+    let mut fields = vec![
+        ("client_id", client_id),
+        ("scope", microsoft_scope(client_id)),
+    ];
+    if legacy_client(client_id) {
+        fields.push(("response_type", "device_code"));
+    }
+    let response = match agent()
+        .post(&microsoft_endpoint(ep, client_id, false))
+        .send_form(&fields)
+    {
+        Ok(r) => r,
+        Err(ureq::Error::Status(_, r)) => r,
+        Err(_) => return Err("Could not reach Microsoft. Check your internet connection.".into()),
+    };
+    let status = response.status();
+    let cookies = response
+        .all("set-cookie")
+        .iter()
+        .filter_map(|c| c.split(';').next())
+        .collect::<Vec<_>>()
+        .join("; ");
+    let v: Value = response.into_json().unwrap_or(Value::Null);
     match (
         status,
         str_field(&v, "user_code"),
@@ -167,6 +219,7 @@ pub fn device_code(ep: &Endpoints, client_id: &str) -> Result<DeviceCode, String
                 .max(1),
             expires_at: now() + v.get("expires_in").and_then(Value::as_u64).unwrap_or(900),
             device_code,
+            cookies,
         }),
         _ => Err(oauth_error(&v)),
     }
@@ -190,7 +243,9 @@ fn oauth_error(v: &Value) -> String {
 /// One poll of the token endpoint while the player signs in.
 pub fn poll(ep: &Endpoints, client_id: &str, code: &DeviceCode) -> Result<Poll, String> {
     let (status, v) = send(
-        agent().post(&format!("{}/token", ep.microsoft)),
+        agent()
+            .post(&microsoft_endpoint(ep, client_id, true))
+            .set("Cookie", &code.cookies),
         Some(Body::Form(vec![
             ("grant_type", "urn:ietf:params:oauth:grant-type:device_code"),
             ("client_id", client_id),
@@ -203,7 +258,10 @@ pub fn poll(ep: &Endpoints, client_id: &str, code: &DeviceCode) -> Result<Poll, 
         Some("slow_down") => return Ok(Poll::SlowDown),
         _ => {}
     }
-    ms_tokens(status, &v).map(Poll::Done)
+    ms_tokens(status, &v).map(|mut tokens| {
+        tokens.legacy = legacy_client(client_id);
+        Poll::Done(tokens)
+    })
 }
 
 fn ms_tokens(status: u16, v: &Value) -> Result<MsTokens, String> {
@@ -212,7 +270,11 @@ fn ms_tokens(status: u16, v: &Value) -> Result<MsTokens, String> {
         str_field(v, "access_token"),
         str_field(v, "refresh_token"),
     ) {
-        (200, Some(access), Some(refresh)) => Ok(MsTokens { access, refresh }),
+        (200, Some(access), Some(refresh)) => Ok(MsTokens {
+            legacy: false,
+            access,
+            refresh,
+        }),
         _ => Err(oauth_error(v)),
     }
 }
@@ -247,16 +309,19 @@ pub fn wait_for_sign_in(
 
 fn refresh_ms(ep: &Endpoints, client_id: &str, refresh: &str) -> Result<MsTokens, String> {
     let (status, v) = send(
-        agent().post(&format!("{}/token", ep.microsoft)),
+        agent().post(&microsoft_endpoint(ep, client_id, true)),
         Some(Body::Form(vec![
             ("grant_type", "refresh_token"),
             ("client_id", client_id),
+            ("scope", microsoft_scope(client_id)),
             ("refresh_token", refresh),
-            ("scope", SCOPE),
         ])),
         "Microsoft",
     )?;
-    ms_tokens(status, &v)
+    ms_tokens(status, &v).map(|mut tokens| {
+        tokens.legacy = legacy_client(client_id);
+        tokens
+    })
 }
 
 // ----- Xbox Live, XSTS, Minecraft ----------------------------------------------------------------
@@ -279,14 +344,14 @@ struct Minecraft {
     xuid: Option<String>,
 }
 
-fn minecraft_login(ep: &Endpoints, ms_access: &str) -> Result<Minecraft, String> {
+fn minecraft_login(ep: &Endpoints, ms_access: &str, legacy: bool) -> Result<Minecraft, String> {
     let (status, xbl) = send(
         agent().post(&ep.xbox_user),
         Some(Body::Json(json!({
             "Properties": {
                 "AuthMethod": "RPS",
                 "SiteName": "user.auth.xboxlive.com",
-                "RpsTicket": format!("d={ms_access}"),
+                "RpsTicket": format!("{}={ms_access}", if legacy {"t"} else {"d"}),
             },
             "RelyingParty": "http://auth.xboxlive.com",
             "TokenType": "JWT",
@@ -446,7 +511,7 @@ impl std::fmt::Debug for Secrets {
 
 /// From Microsoft tokens to a ready account: Xbox, XSTS, Minecraft, ownership, profile.
 pub fn finish_sign_in(ep: &Endpoints, ms: MsTokens) -> Result<(Account, Secrets), String> {
-    let mc = minecraft_login(ep, &ms.access)?;
+    let mc = minecraft_login(ep, &ms.access, ms.legacy)?;
     if !owns_game(ep, &mc.token)? {
         return Err("This account doesn't own Minecraft: Java Edition.".into());
     }

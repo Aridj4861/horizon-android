@@ -10,6 +10,7 @@ const UUID: &str = "069a79f444e94726a5befca90e38aaf5";
 /// What the mock answers and what it was asked.
 #[derive(Default)]
 struct Mock {
+    legacy: bool,
     /// Polls left before the token endpoint stops saying authorization_pending.
     pending: usize,
     xerr: Option<u64>,
@@ -32,8 +33,17 @@ fn route(mock: &mut Mock, method: &str, path: &str, auth: &str, body: &str) -> (
     };
     match (method, path) {
         ("POST", "/ms/devicecode") => {
-            assert_eq!(form("client_id").as_deref(), Some("test-client"));
-            assert_eq!(form("scope").as_deref(), Some(SCOPE));
+            let legacy = form("client_id").as_deref() == Some("00000000441cc96b");
+            if legacy {
+                assert_eq!(
+                    form("scope").as_deref(),
+                    Some("service::user.auth.xboxlive.com::MBI_SSL")
+                );
+                assert_eq!(form("response_type").as_deref(), Some("device_code"));
+            } else {
+                assert_eq!(form("client_id").as_deref(), Some("test-client"));
+                assert_eq!(form("scope").as_deref(), Some(SCOPE));
+            }
             reply(
                 200,
                 json!({"user_code": "ABCD-EFGH", "device_code": "dev-1", "verification_uri": "https://www.microsoft.com/link", "expires_in": 900, "interval": 1}),
@@ -64,7 +74,11 @@ fn route(mock: &mut Mock, method: &str, path: &str, auth: &str, body: &str) -> (
             assert!(v["Properties"]["RpsTicket"]
                 .as_str()
                 .unwrap()
-                .starts_with("d=ms-access-"));
+                .starts_with(if mock.legacy {
+                    "t=ms-access-"
+                } else {
+                    "d=ms-access-"
+                }));
             assert_eq!(v["RelyingParty"], "http://auth.xboxlive.com");
             reply(
                 200,
@@ -234,6 +248,37 @@ fn the_whole_chain() {
 }
 
 #[test]
+fn legacy_device_flow_uses_live_scope_and_ticket_prefix() {
+    let (_, ep) = mock(|m| m.legacy = true);
+    let id = "00000000441cc96b";
+    let code = device_code(&ep, id).unwrap();
+    let tokens = match poll(&ep, id, &code).unwrap() {
+        Poll::Done(t) => t,
+        _ => panic!("Expected mock token"),
+    };
+    assert!(tokens.legacy);
+    let (profile, secrets) = finish_sign_in(&ep, tokens).unwrap();
+    assert_eq!(profile.uuid, UUID);
+    assert_eq!(secrets.minecraft_token, "mc-token");
+    let refreshed = refresh_ms(&ep, id, "ms-refresh-1").unwrap();
+    assert!(refreshed.legacy);
+}
+#[test]
+fn legacy_endpoints_are_distinct_from_entra() {
+    let ep = Endpoints::live();
+    assert_eq!(
+        microsoft_endpoint(&ep, "00000000441cc96b", false),
+        "https://login.live.com/oauth20_connect.srf"
+    );
+    assert_eq!(
+        microsoft_endpoint(&ep, "00000000441cc96b", true),
+        "https://login.live.com/oauth20_token.srf"
+    );
+    assert!(!legacy_client("not-a-client"));
+    assert!(!legacy_client("00000000-1111-2222-3333-444444444444"));
+}
+
+#[test]
 fn refresh_only_when_the_token_runs_out() {
     let (m, ep) = mock(|_| {});
     let account = Account {
@@ -293,6 +338,7 @@ fn ownership_is_asked_again_with_the_saved_token() {
 #[test]
 fn refusals_have_messages() {
     let tokens = || MsTokens {
+        legacy: false,
         access: "ms-access-1".into(),
         refresh: "r".into(),
     };

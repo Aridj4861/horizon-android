@@ -6,8 +6,9 @@ use std::{
     sync::mpsc,
 };
 
-/// Our public application identifier. Account tokens and client secrets are never bundled.
-pub const MICROSOFT_CLIENT_ID: &str = "f3f35a87-587b-4797-9d68-89c0783e6fd2";
+/// Temporary dev registration published as Minecraft Nintendo Switch by PrismarineJS.
+/// Account tokens and client secrets are never bundled.
+pub const MICROSOFT_CLIENT_ID: &str = "00000000441cc96b";
 
 /// Real Vulkan rendering paths; these do not select a different driver or API.
 #[derive(Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -32,6 +33,7 @@ pub struct Config {
     pub profile: u32,
     pub name: String,
     pub server: String,
+    #[serde(skip)]
     pub microsoft_client_id: String,
     pub renderer: RendererMode,
 }
@@ -42,10 +44,8 @@ impl Config {
             .and_then(|b| serde_json::from_slice(&b).ok())
             .unwrap_or_default();
         let mut config: Self = serde_json::from_value(value.clone()).unwrap_or_default();
-        // Existing installations saved an empty ID before our app was registered.
-        if config.microsoft_client_id.trim().is_empty() {
-            config.microsoft_client_id = MICROSOFT_CLIENT_ID.into();
-        }
+        // Ignore saved app registrations while this dev build uses the fixed ID.
+        config.microsoft_client_id = MICROSOFT_CLIENT_ID.into();
         if value.get("renderer").is_none() && value["gpu_batching"].as_bool() == Some(true) {
             config.renderer = RendererMode::Vulkan;
         }
