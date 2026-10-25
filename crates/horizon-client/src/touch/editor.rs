@@ -1,7 +1,9 @@
 use super::*;
 
 pub struct Editor {
-    pub selected: Control,
+    pub selected: Option<Control>,
+    option: Option<usize>,
+    apply_all: bool,
     original: Settings,
     drag: Option<(u64, Drag)>,
     error: Option<String>,
@@ -11,13 +13,14 @@ enum Drag {
     Slider(usize),
 }
 const OPTIONS: [&str; 4] = ["Split", "Left hand", "Auto sprint", "Swap jump/sneak"];
-const SLIDERS: [&str; 3] = ["Size", "Opacity", "Sensitivity"];
 
 impl TouchControls {
     pub fn open_editor(&mut self) {
         self.clear();
         self.editor = Some(Editor {
-            selected: Control::Move,
+            selected: None,
+            option: None,
+            apply_all: false,
             original: self.settings.clone(),
             drag: None,
             error: None,
@@ -70,23 +73,39 @@ impl TouchControls {
                     }
                     _ => {}
                 }
-            } else if (0.32..0.68).contains(&p[0]) && (0.68..0.89).contains(&p[1]) {
-                let index = ((p[1] - 0.68) / 0.07).floor() as usize;
-                e.drag = Some((id, Drag::Slider(index.min(2))));
+            } else if layout::contains([0.32, 0.61, 0.36, 0.06], p)
+                && e.selected.is_some()
+                && e.option.is_some()
+            {
+                e.apply_all = !e.apply_all;
+            } else if layout::contains([0.32, 0.68, 0.36, 0.07], p)
+                && e.selected.is_some()
+                && e.option.is_some()
+            {
+                e.drag = Some((id, Drag::Slider(e.option.unwrap())));
+            } else if layout::contains([0.32, 0.79, 0.17, 0.07], p) && e.selected.is_some() {
+                e.option = Some(1);
+            } else if layout::contains([0.51, 0.79, 0.17, 0.07], p) && e.selected.is_some() {
+                e.option = Some(0);
             } else if let Some(c) = Control::ALL.into_iter().rev().find(|c| {
                 self.visible(*c)
                     && layout::contains(self.settings.placement(*c).rect(self.aspect()), p)
             }) {
-                e.selected = c;
+                e.selected = Some(c);
+                e.option = None;
                 let center = self.settings.placement(c).center;
                 e.drag = Some((id, Drag::Control([p[0] - center[0], p[1] - center[1]])));
+            } else {
+                e.selected = None;
+                e.option = None;
             }
         }
         if let Some((owner, drag)) = &e.drag
             && *owner == id
+            && let Some(selected) = e.selected
         {
             let aspect = self.aspect();
-            let slot = self.settings.slot(e.selected);
+            let slot = self.settings.slot(selected);
             let place = &mut self.settings.layouts[self.settings.mode.index()][slot];
             match drag {
                 Drag::Control(offset) => {
@@ -101,10 +120,17 @@ impl TouchControls {
                 }
                 Drag::Slider(index) => {
                     let value = ((p[0] - 0.335) / 0.33).clamp(0.0, 1.0);
-                    match index {
-                        0 => place.size = 0.045 + value * 0.405,
-                        1 => place.opacity = value,
-                        _ => self.settings.sensitivity = 0.1 + value * 2.9,
+                    for (i, place) in self.settings.layouts[self.settings.mode.index()]
+                        .iter_mut()
+                        .enumerate()
+                    {
+                        if i == slot || e.apply_all {
+                            if *index == 0 {
+                                place.size = 0.045 + value * 0.405;
+                            } else {
+                                place.opacity = value;
+                            }
+                        }
                     }
                 }
             }
@@ -112,6 +138,7 @@ impl TouchControls {
                 e.drag = None;
             }
         }
+
         self.editor = Some(e);
         false
     }
@@ -155,57 +182,71 @@ impl TouchControls {
             text,
             true,
         );
-        b.fill(
-            a,
-            w * 0.31,
-            h * 0.61,
-            w * 0.38,
-            h * 0.39,
-            rgba(15, 15, 15, 235),
-        );
-        let p = self.settings.placement(e.selected);
-        b.text(a, e.selected.name(), w * 0.33, h * 0.63, text, true);
-        let values = [
-            (p.size - 0.045) / 0.405,
-            p.opacity,
-            (self.settings.sensitivity - 0.1) / 2.9,
-        ];
-        for (i, name) in SLIDERS.into_iter().enumerate() {
-            let y = 0.68 + i as f32 * 0.07;
-            let percent = match i {
-                0 => p.size * 100.0,
-                1 => p.opacity * 100.0,
-                _ => self.settings.sensitivity * 100.0,
-            };
-            b.text(
-                a,
-                &format!("{name} {:.0}%", percent),
-                w * 0.325,
-                h * (y + 0.004),
-                text,
-                true,
-            );
-            nine(
+        if let Some(selected) = e.selected {
+            let p = self.settings.placement(selected);
+            plate(
                 b,
                 a,
-                "ui/slider_background",
-                1.0,
-                [w * 0.335, h * (y + 0.045), w * 0.33, h * 0.025],
-                rgba(255, 255, 255, 255),
+                [0.32, 0.79, 0.17, 0.07],
+                "Opacity",
+                e.option == Some(1),
             );
-            nine(
-                b,
-                a,
-                "ui/slider_button_default",
-                2.0,
-                [
-                    w * (0.335 + values[i] * 0.33) - 3.0,
-                    h * (y + 0.032),
-                    6.0,
-                    h * 0.05,
-                ],
-                rgba(255, 255, 255, 255),
-            );
+            plate(b, a, [0.51, 0.79, 0.17, 0.07], "Size", e.option == Some(0));
+            if let Some(option) = e.option {
+                b.fill(
+                    a,
+                    w * 0.31,
+                    h * 0.59,
+                    w * 0.38,
+                    h * 0.18,
+                    rgba(15, 15, 15, 235),
+                );
+                plate(
+                    b,
+                    a,
+                    [0.32, 0.61, 0.36, 0.06],
+                    if e.apply_all {
+                        "Apply to all: On"
+                    } else {
+                        "Apply to all: Off"
+                    },
+                    e.apply_all,
+                );
+                let value = if option == 0 {
+                    (p.size - 0.045) / 0.405
+                } else {
+                    p.opacity
+                };
+                let percent = if option == 0 {
+                    p.size * 100.0
+                } else {
+                    p.opacity * 100.0
+                };
+                b.text(
+                    a,
+                    &format!("{} {:.0}%", selected.name(), percent),
+                    w * 0.325,
+                    h * 0.68,
+                    text,
+                    true,
+                );
+                nine(
+                    b,
+                    a,
+                    "ui/slider_background",
+                    1.0,
+                    [w * 0.335, h * 0.72, w * 0.33, h * 0.025],
+                    rgba(255, 255, 255, 255),
+                );
+                nine(
+                    b,
+                    a,
+                    "ui/slider_button_default",
+                    2.0,
+                    [w * (0.335 + value * 0.33) - 3.0, h * 0.707, 6.0, h * 0.05],
+                    rgba(255, 255, 255, 255),
+                );
+            }
         }
         for (rect, label) in [
             ([0.32, 0.91, 0.11, 0.075], "Done"),

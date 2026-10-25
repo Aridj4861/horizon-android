@@ -251,6 +251,18 @@ impl Game<'_> {
         Ok(())
     }
 
+    /// Touch fly/swim down is held even when ground sneaking is toggled.
+    fn android_touch_descending(&self) -> bool {
+        #[cfg(target_os = "android")]
+        {
+            self.pad.touch.vertical_movement || self.pad.touch.swimming
+        }
+        #[cfg(not(target_os = "android"))]
+        {
+            false
+        }
+    }
+
     /// A bound action: a vanilla mapping acts as its default key or mouse
     /// button, like a rebound keyboard key.
     fn pad_action(&mut self, action: &str, down: bool) -> Result<()> {
@@ -263,7 +275,9 @@ impl Game<'_> {
                 Ok(())
             }
             "key.sneak"
-                if self.settings.controller.toggle_sneak && !self.settings.toggle_crouch =>
+                if self.settings.controller.toggle_sneak
+                    && !self.settings.toggle_crouch
+                    && !self.android_touch_descending() =>
             {
                 // A stick click flips sneaking instead of holding it.
                 if down {

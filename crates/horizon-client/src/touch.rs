@@ -62,6 +62,8 @@ pub struct TouchControls {
     pub vertical_movement: bool,
     pub swimming: bool,
     pub mounted: bool,
+    pub sneaking: bool,
+    last_sneak_tap: Option<Instant>,
 }
 impl TouchControls {
     pub fn viewport(&mut self, width: u32, height: u32) {
@@ -115,11 +117,12 @@ impl TouchControls {
                 p.opacity
             };
             let color = rgba(255, 255, 255, (opacity * 255.0).round() as u8);
-            let held = Self::button(control).is_some_and(|bt| {
-                state.held(bt)
-                    || (bt == Button::LeftTrigger && state.triggers[0] > 0.0)
-                    || (bt == Button::RightTrigger && state.triggers[1] > 0.0)
-            });
+            let held = (control == Control::Sneak && self.sneaking)
+                || Self::button(control).is_some_and(|bt| {
+                    state.held(bt)
+                        || (bt == Button::LeftTrigger && state.triggers[0] > 0.0)
+                        || (bt == Button::RightTrigger && state.triggers[1] > 0.0)
+                });
             if control == Control::Move {
                 if self.settings.mode == Mode::Dpad {
                     let cell = size / 3.0;
@@ -241,7 +244,7 @@ impl TouchControls {
                 }
             }
             if let Some(e) = &self.editor
-                && e.selected == control
+                && e.selected == Some(control)
             {
                 let green = rgba(255, 255, 255, 255);
                 for (p, q) in [
@@ -300,6 +303,25 @@ impl TouchControls {
                     self.settings_requested = true;
                     Role::Ignore
                 }
+                Some(Control::Sneak)
+                    if self.settings.mode == Mode::Dpad
+                        && !self.vertical_movement
+                        && !self.swimming
+                        && !self.mounted =>
+                {
+                    // The classic D-pad toggles crouching on a double tap.
+                    let now = Instant::now();
+                    if self
+                        .last_sneak_tap
+                        .take()
+                        .is_some_and(|t| now.duration_since(t) < Duration::from_millis(300))
+                    {
+                        Role::Button(Button::RightStick)
+                    } else {
+                        self.last_sneak_tap = Some(now);
+                        Role::Ignore
+                    }
+                }
                 Some(c) => Self::button(c).map_or(Role::Ignore, Role::Button),
                 None => Role::Look {
                     start: point,
@@ -336,6 +358,7 @@ impl TouchControls {
     }
     pub fn clear(&mut self) {
         self.fingers.clear();
+        self.last_sneak_tap = None;
         self.pending = PadState::default();
         self.aim = None;
         self.tap_aim = None;
@@ -375,13 +398,16 @@ impl TouchControls {
                     if self.settings.mode == Mode::Dpad {
                         state.left = state
                             .left
-                            .map(|v| if v.abs() < 0.22 { 0.0 } else { v.signum() });
+                            .map(|v| if v.abs() < 1.0 / 3.0 { 0.0 } else { v.signum() });
                     }
+                    // Bedrock starts auto sprint beyond the joystick background,
+                    // and stops it as soon as the finger returns inside it.
+                    let sprint = state.left[1] > 1.0;
                     let length = state.left[0].hypot(state.left[1]).max(1.0);
                     state.left = state.left.map(|v| v / length);
                     if self.settings.mode != Mode::Dpad
                         && self.settings.sprint_with_joystick
-                        && state.left[1] > 0.85
+                        && sprint
                     {
                         state.set(Button::LeftStick, true);
                     }
@@ -523,6 +549,18 @@ mod tests {
         assert_eq!(t.poll_state(), PadState::default());
     }
     #[test]
+    fn auto_sprint_starts_outside_and_stops_inside_the_joystick() {
+        let mut t = TouchControls::default();
+        t.settings.sprint_with_joystick = true;
+        t.update(1, [0.13, 0.76], true, false);
+        t.update(1, [0.13, 0.62], false, false);
+        assert!(!t.state().held(Button::LeftStick));
+        t.update(1, [0.13, 0.58], false, false);
+        assert!(t.state().held(Button::LeftStick));
+        t.update(1, [0.13, 0.62], false, false);
+        assert!(!t.state().held(Button::LeftStick));
+    }
+    #[test]
     fn tap_aim_and_camera_drag_are_distinct() {
         let mut t = TouchControls::default();
         t.settings.mode = Mode::Tap;
@@ -561,7 +599,10 @@ mod tests {
         assert_eq!(t.state().left, [1.0, 0.0]);
         t.clear();
         t.update(10, [0.13, 0.76], true, false);
-        assert!(t.state().held(Button::RightStick));
+        assert!(!t.poll_state().held(Button::RightStick));
+        t.update(10, [0.13, 0.76], false, true);
+        t.update(12, [0.13, 0.76], true, false);
+        assert!(t.poll_state().held(Button::RightStick));
         t.clear();
         t.settings.swap_jump_sneak = true;
         t.update(11, [0.13, 0.76], true, false);
@@ -584,10 +625,29 @@ mod tests {
         t.open_editor();
         t.edit_touch(2, [0.5, 0.16], true, true);
         assert_eq!(t.settings.mode, Mode::Tap);
-        t.edit_touch(3, [0.65, 0.70], true, true);
+        t.edit_touch(3, [0.13, 0.76], true, true);
+        t.edit_touch(4, [0.6, 0.82], true, true);
+        t.edit_touch(5, [0.65, 0.73], true, true);
         assert!(t.settings.placement(Control::Move).size > 0.4);
         t.cancel_editor();
         assert_eq!(t.settings.mode, Mode::Crosshair);
+    }
+    #[test]
+    fn editor_deselects_and_can_apply_opacity_to_the_current_mode() {
+        let mut t = TouchControls::default();
+        t.open_editor();
+        t.edit_touch(1, [0.13, 0.76], true, true);
+        t.edit_touch(2, [0.4, 0.82], true, true); // Opacity
+        t.edit_touch(3, [0.5, 0.64], true, true); // Apply to all
+        t.edit_touch(4, [0.5, 0.73], true, true);
+        for p in t.settings.layouts[0] {
+            assert!((p.opacity - 0.5).abs() < 0.001);
+        }
+        assert_eq!(t.settings.layouts[1][0].opacity, 0.65);
+        t.edit_touch(5, [0.7, 0.4], true, true);
+        assert!(t.editor.as_ref().unwrap().selected.is_none());
+        t.cancel_editor();
+        assert_eq!(t.settings.layouts[0][0].opacity, 0.65);
     }
     #[test]
     fn layouts_roundtrip_and_reject_invalid_sizes() {
