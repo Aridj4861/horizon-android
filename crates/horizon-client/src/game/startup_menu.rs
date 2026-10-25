@@ -297,6 +297,10 @@ impl Loading {
         self.restart_menu_resources()
     }
     pub(super) fn apply_menu_settings(&mut self) {
+        #[cfg(target_os = "android")]
+        {
+            self.menu.controls.settings = self.settings.touch.clone();
+        }
         if let Some(renderer) = &mut self.renderer {
             self.settings
                 .clamp_gui_scale([renderer.config.width as i32, renderer.config.height as i32]);
@@ -367,7 +371,7 @@ impl Loading {
                 Event::TouchControls => {
                     let size = self.menu_size();
                     self.menu.controls.viewport(size[0], size[1]);
-                    self.menu.controls.open_settings();
+                    self.menu.controls.open_editor();
                 }
                 Event::Changed => {
                     self.save_menu_settings();
@@ -506,6 +510,7 @@ impl Loading {
             if matches!(&event, WindowEvent::KeyboardInput { event, .. } if event.state == ElementState::Pressed && (event.logical_key == winit::keyboard::Key::Named(winit::keyboard::NamedKey::BrowserBack) || event.physical_key == PhysicalKey::Code(KeyCode::Escape)))
             {
                 self.menu.controls.cancel_editor();
+                self.settings.touch = self.menu.controls.settings.clone();
                 return Ok(());
             }
             if let WindowEvent::Touch(t) = &event {
@@ -524,6 +529,9 @@ impl Loading {
                         t.phase == TouchPhase::Started,
                         t.phase == TouchPhase::Ended,
                     );
+                }
+                if self.menu.controls.editor.is_none() {
+                    self.settings.touch = self.menu.controls.settings.clone();
                 }
                 if std::mem::take(&mut self.menu.controls.clicked) {
                     self.menu.click_sound(self.settings.volumes);

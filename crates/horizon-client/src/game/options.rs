@@ -63,6 +63,7 @@ impl Game<'_> {
                 // Horizon's own files are not in options.txt.
                 std::mem::swap(&mut settings.horizon, &mut self.settings.horizon);
                 std::mem::swap(&mut settings.controller, &mut self.settings.controller);
+                std::mem::swap(&mut settings.touch, &mut self.settings.touch);
                 std::mem::swap(&mut settings.extras, &mut self.settings.extras);
                 self.settings = settings;
                 // As the options screen applies a change.
@@ -198,7 +199,7 @@ impl Game<'_> {
                 #[cfg(target_os = "android")]
                 Event::TouchControls => {
                     self.android_release_touch_keys(true);
-                    self.pad.touch.open_settings();
+                    self.pad.touch.open_editor();
                     self.dragging = false;
                 }
                 Event::ButtonClick => self.audio.play_button_click(),

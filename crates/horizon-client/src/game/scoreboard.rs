@@ -441,8 +441,10 @@ impl Game<'_> {
 
     /// `Entity.getTeam` of a mob (a mob joins a team by its UUID).
     pub(super) fn mob_team(&self, id: u32) -> Option<&sb::Team> {
-        let uuid = self.persist.uuids.get(&id)?;
-        self.score.board.players_team(&uuid_text(*uuid))
+        self.score.board.entity_team(
+            self.remote_player_name(id),
+            self.persist.uuids.get(&id).copied(),
+        )
     }
     pub(super) fn player_team(&self) -> Option<&sb::Team> {
         self.score.board.players_team(self.acting_player_name())
@@ -456,10 +458,9 @@ impl Game<'_> {
         horizon_client::mobs::Teams {
             player: self.player_team(),
             mobs: self
-                .persist
-                .uuids
+                .mobs
                 .iter()
-                .filter_map(|(id, uuid)| Some((*id, board.players_team(&uuid_text(*uuid))?)))
+                .filter_map(|mob| Some((mob.id, self.mob_team(mob.id)?)))
                 .collect(),
         }
     }
@@ -468,11 +469,13 @@ impl Game<'_> {
         let Some(team) = self.player_team() else {
             return HashSet::new();
         };
-        self.persist
-            .uuids
+        self.mobs
             .iter()
-            .filter(|(_, uuid)| team.players.contains(&uuid_text(**uuid)))
-            .map(|(id, _)| *id)
+            .filter(|mob| {
+                self.mob_team(mob.id)
+                    .is_some_and(|other| other.name == team.name)
+            })
+            .map(|mob| mob.id)
             .collect()
     }
     /// `Player.getDisplayName`: the name with the team's prefix, suffix and colour.

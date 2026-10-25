@@ -166,6 +166,8 @@ pub(super) struct Remote {
     online_mode: bool,
     /// Player entities in the level: entity id to profile UUID.
     level_players: HashMap<i32, u128>,
+    // Profiles outlive tab-list removal (servers may hide their NPC players).
+    player_names: HashMap<u128, String>,
     /// The local player's profile UUID (always in the level).
     profile: u128,
     /// The local player's profile name: its score holder and team member.
@@ -258,6 +260,16 @@ fn number_format(f: &play::NumberFormat) -> horizon_client::scoreboard::NumberFo
 }
 
 impl Game<'_> {
+    /// Player.getScoreboardName is the profile name, including hidden NPCs;
+    /// Entity.getScoreboardName is the UUID for non-player entities.
+    pub(super) fn remote_player_name(&self, id: u32) -> Option<&str> {
+        let remote = self.remote.as_ref()?;
+        remote
+            .player_names
+            .get(remote.level_players.get(&(id as i32))?)
+            .map(String::as_str)
+    }
+
     /// Leave the title for a server (ConnectScreen): an empty world fed by the connection.
     pub(super) fn connect_server(&mut self, address: &str, name: &str) -> Result<()> {
         self.connect_server_with_cookies(address, name, None)
@@ -364,6 +376,7 @@ impl Game<'_> {
         self.save = Arc::new(SaveDir::new(
             std::env::temp_dir().join("horizon-remote-unused"),
         ));
+        self.potions = Default::default();
         self.inventory = vec![None; 36];
         self.armor = [None, None, None, None];
         self.craft_grid = vec![None; 9];
@@ -453,6 +466,7 @@ impl Game<'_> {
             listed: Default::default(),
             online_mode: false,
             level_players: HashMap::new(),
+            player_names: HashMap::new(),
             profile: 0,
             profile_name: String::new(),
             destroying: None,
@@ -516,6 +530,7 @@ impl Game<'_> {
         self.streaming.paused = true;
         self.world = World::new(self.res.facts().air, 0);
         self.player = None;
+        self.potions = Default::default();
         self.mobs.clear();
         self.clear_remote_objects();
         self.clear_remote_projectiles();
@@ -2601,6 +2616,7 @@ impl Game<'_> {
                     if p.actions & 1 != 0 {
                         for e in &p.entries {
                             if let Some(name) = &e.name {
+                                r.player_names.insert(e.uuid, name.clone());
                                 r.tab_players.entry(e.uuid).or_insert_with(|| {
                                     horizon_client::tab_list::TabPlayer::new(e.uuid, name.clone())
                                 });

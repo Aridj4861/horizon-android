@@ -56,6 +56,7 @@ pub fn known_index() -> Option<Arc<Index>> {
 
 /// The index: the one fetched in the last ten minutes, else fetched again (and kept in the game
 /// folder), else the copy kept last time.
+#[allow(clippy::collapsible_if)] // Shared with the edition-2021 desktop launcher.
 pub fn index() -> Result<Arc<Index>, String> {
     if let Some((at, index)) = LOADED.lock().unwrap().as_ref() {
         if at.elapsed() < FRESH {
@@ -557,6 +558,8 @@ pub fn before_play(home: &Path) {
     });
 }
 
+#[path = "horizon/pack.rs"]
 pub mod pack;
 #[cfg(test)]
+#[path = "horizon/tests.rs"]
 mod tests;

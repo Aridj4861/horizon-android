@@ -125,6 +125,9 @@ pub struct Settings {
     pub sprint_with_joystick: bool,
     pub swap_jump_sneak: bool,
     pub sensitivity: f32,
+    pub circle_size: f32,
+    pub analog_movement: bool,
+    pub sprint_button: bool,
     pub layouts: [[Placement; 10]; 3],
 }
 impl Default for Settings {
@@ -152,13 +155,19 @@ impl Default for Settings {
             sprint_with_joystick: false,
             swap_jump_sneak: false,
             sensitivity: 1.0,
+            circle_size: 32.0,
+            analog_movement: false,
+            sprint_button: true,
             layouts,
         }
     }
 }
 impl Settings {
     pub fn load() -> Self {
-        let mut s: Self = std::fs::read("horizon-touch.json")
+        Self::load_from(std::path::Path::new("horizon-touch.json"))
+    }
+    pub fn load_from(path: &std::path::Path) -> Self {
+        let mut s: Self = std::fs::read(path)
             .ok()
             .and_then(|b| serde_json::from_slice(&b).ok())
             .unwrap_or_default();
@@ -177,13 +186,22 @@ impl Settings {
             self.sensitivity = 1.0;
         }
         self.sensitivity = self.sensitivity.clamp(0.1, 3.0);
+        self.circle_size = if self.circle_size.is_finite() {
+            self.circle_size.clamp(16.0, 64.0)
+        } else {
+            32.0
+        };
         for p in self.layouts.iter_mut().flatten() {
             p.sanitize();
         }
     }
     pub fn save(&self) -> std::io::Result<()> {
-        std::fs::write("horizon-touch.json.tmp", serde_json::to_vec_pretty(self)?)?;
-        std::fs::rename("horizon-touch.json.tmp", "horizon-touch.json")
+        self.save_to(std::path::Path::new("horizon-touch.json"))
+    }
+    pub fn save_to(&self, path: &std::path::Path) -> std::io::Result<()> {
+        let temp = path.with_extension("json.tmp");
+        std::fs::write(&temp, serde_json::to_vec_pretty(self)?)?;
+        std::fs::rename(temp, path)
     }
     pub fn crosshair(&self) -> bool {
         self.mode == Mode::Crosshair || (self.mode == Mode::Dpad && self.split_controls)
@@ -191,7 +209,9 @@ impl Settings {
     pub fn visible(&self, c: Control) -> bool {
         match c {
             Control::Attack | Control::Use => self.crosshair(),
-            Control::Sprint => self.mode != Mode::Dpad && !self.sprint_with_joystick,
+            Control::Sprint => {
+                self.sprint_button && self.mode != Mode::Dpad && !self.sprint_with_joystick
+            }
             _ => true,
         }
     }

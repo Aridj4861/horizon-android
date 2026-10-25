@@ -249,7 +249,15 @@ impl Game<'_> {
                 return Ok(());
             }
         } else if button == Button::Start {
+            #[cfg(target_os = "android")]
+            if down {
+                self.audio.play_button_click();
+            }
             return if down { self.pad_back() } else { Ok(()) };
+        }
+        #[cfg(target_os = "android")]
+        if down && playing && button == Button::North {
+            self.audio.play_button_click();
         }
         // Releases always reach the mappings, so nothing stays held when a
         // screen opened in between.
@@ -366,6 +374,15 @@ impl Game<'_> {
                 }
                 Ok(())
             }
+            #[cfg(target_os = "android")]
+            "key.sprint" => {
+                if down {
+                    self.keys.insert(KeyCode::ControlLeft);
+                } else {
+                    self.keys.remove(&KeyCode::ControlLeft);
+                }
+                Ok(())
+            }
             "key.sneak"
                 if self.settings.controller.toggle_sneak
                     && !self.settings.toggle_crouch
@@ -381,7 +398,9 @@ impl Game<'_> {
             _ => {
                 let default = KeyBinds::default_of(action);
                 if let Some(button) = mouse_button(default) {
-                    if self.title.is_none() && self.screen == Screen::Playing {
+                    // A menu may open between press and release. Always deliver
+                    // the release so mining/use cannot remain held behind Options.
+                    if !down || (self.title.is_none() && self.screen == Screen::Playing) {
                         self.play_mouse(button, down)?;
                     }
                     Ok(())
@@ -428,7 +447,13 @@ impl Game<'_> {
         }
         #[cfg(target_os = "android")]
         {
-            gamepad::java_move_vector(self.pad.state.left, settings.move_deadzone)
+            if self.pad.touch.settings.analog_movement
+                && self.pad.touch.settings.mode != horizon_client::touch::Mode::Dpad
+            {
+                gamepad::move_vector(self.pad.state.left, settings.move_deadzone)
+            } else {
+                gamepad::java_move_vector(self.pad.state.left, settings.move_deadzone)
+            }
         }
         #[cfg(not(target_os = "android"))]
         {

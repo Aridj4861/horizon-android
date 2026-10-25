@@ -7,8 +7,8 @@ android {
         applicationId 'dev.horizon.android'
         minSdk 28
         targetSdk 35
-        versionCode 13
-        versionName '0.6.5'
+        versionCode 14
+        versionName '0.6.6'
         ndk { abiFilters providers.gradleProperty('abi').get() }
     }
     signingConfigs {
@@ -19,7 +19,17 @@ android {
             keyPassword 'android'
         }
     }
-    buildTypes { debug { signingConfig signingConfigs.development } }
+    buildTypes {
+        debug { signingConfig signingConfigs.development }
+        release {
+            debuggable false
+            jniDebuggable false
+            minifyEnabled false
+            // Retain the existing installation's signing identity for upgrades.
+            // Only the public certificate enters the APK; the key stays in .local/.
+            signingConfig signingConfigs.development
+        }
+    }
     sourceSets.main {
         manifest.srcFile 'AndroidManifest.xml'
         jniLibs.srcDirs = ['../../.local/android/gradle-jni']

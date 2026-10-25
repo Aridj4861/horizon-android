@@ -87,6 +87,15 @@ pub enum Opt {
     ForceUnicode,
     JapaneseGlyphs,
     /// Horizon's controller settings (`horizon-controller.txt`).
+    TouchMode,
+    TouchAnalog,
+    TouchCircleSize,
+    TouchSensitivity,
+    TouchInteract,
+    TouchLeftHand,
+    TouchSprintButton,
+    TouchSwapJumpSneak,
+    TouchAutoSprint,
     PadEnabled,
     PadVibration,
     PadAdaptiveTriggers,
@@ -198,6 +207,15 @@ impl Opt {
 
     pub(crate) fn caption(self) -> &'static str {
         match self {
+            Opt::TouchMode => "Control scheme",
+            Opt::TouchAnalog => "360-degree movement",
+            Opt::TouchCircleSize => "Touch circle size",
+            Opt::TouchSensitivity => "Touch sensitivity",
+            Opt::TouchInteract => "Interact button",
+            Opt::TouchLeftHand => "Left handed",
+            Opt::TouchSprintButton => "Sprint button",
+            Opt::TouchSwapJumpSneak => "Swap jump / sneak",
+            Opt::TouchAutoSprint => "Auto Sprint",
             Opt::Fov => "options.fov",
             Opt::RenderDistance => "options.renderDistance",
             Opt::SimulationDistance => "options.simulationDistance",
@@ -295,6 +313,8 @@ impl Opt {
             | Opt::GlintSpeed
             | Opt::GlintStrength
             | Opt::PanoramaSpeed => Kind::Slider(s.file.double(self.file_key().unwrap()) as f32),
+            Opt::TouchCircleSize => unit(s.touch.circle_size, 16.0, 64.0),
+            Opt::TouchSensitivity => unit(s.touch.sensitivity, 0.1, 3.0),
             Opt::Fov => unit(s.fov, 30.0, 110.0),
             Opt::RenderDistance => unit(s.render_distance as f32, 2.0, 64.0),
             Opt::SimulationDistance => unit(s.simulation_distance as f32, 5.0, 32.0),
@@ -358,6 +378,47 @@ impl Opt {
     /// The widget message (OptionInstance.toString / CycleButton full name).
     pub fn label(self, s: &Settings) -> Text {
         let c = self.caption();
+        let touch_value = match self {
+            Opt::TouchMode => Some(
+                crate::touch::Mode::SCHEMES
+                    .iter()
+                    .find(|(mode, split, _)| {
+                        *mode == s.touch.mode
+                            && (*mode != crate::touch::Mode::Dpad
+                                || *split == s.touch.split_controls)
+                    })
+                    .map_or("Joystick & aim crosshair", |(_, _, label)| *label)
+                    .to_owned(),
+            ),
+            Opt::TouchCircleSize => Some(format!("{} px", s.touch.circle_size.round())),
+            Opt::TouchSensitivity => Some(format!("{:.0}%", s.touch.sensitivity * 100.0)),
+            Opt::TouchAnalog => Some(if s.touch.analog_movement { "ON" } else { "OFF" }.into()),
+            Opt::TouchInteract => Some(
+                if s.touch.contextual_interact {
+                    "ON"
+                } else {
+                    "OFF"
+                }
+                .into(),
+            ),
+            Opt::TouchLeftHand => Some(if s.touch.left_handed { "ON" } else { "OFF" }.into()),
+            Opt::TouchSprintButton => Some(if s.touch.sprint_button { "ON" } else { "OFF" }.into()),
+            Opt::TouchSwapJumpSneak => {
+                Some(if s.touch.swap_jump_sneak { "ON" } else { "OFF" }.into())
+            }
+            Opt::TouchAutoSprint => Some(
+                if s.touch.sprint_with_joystick {
+                    "ON"
+                } else {
+                    "OFF"
+                }
+                .into(),
+            ),
+            _ => None,
+        };
+        if let Some(value) = touch_value {
+            return Text::literal(format!("{c}: {value}"));
+        }
         match self {
             Opt::ChatDelay => tr("options.chat.delay_none"),
             Opt::FovEffects
@@ -621,6 +682,8 @@ impl Opt {
         let v = v.clamp(0.0, 1.0);
         let step = |lo: f32, hi: f32| (lo + v * (hi - lo)).round();
         match self {
+            Opt::TouchCircleSize => s.touch.circle_size = step(16.0, 64.0),
+            Opt::TouchSensitivity => s.touch.sensitivity = 0.1 + v * 2.9,
             Opt::FovEffects | Opt::DarknessPulsing => s.file.set(
                 self.file_key().unwrap(),
                 crate::options_file::V::Double(f64::from(v).powi(2)),
@@ -695,6 +758,25 @@ impl Opt {
             }
         };
         match self {
+            Opt::TouchMode => {
+                let i = crate::touch::Mode::SCHEMES
+                    .iter()
+                    .position(|(mode, split, _)| {
+                        *mode == s.touch.mode
+                            && (*mode != crate::touch::Mode::Dpad
+                                || *split == s.touch.split_controls)
+                    })
+                    .unwrap_or(0);
+                let (mode, split, _) = crate::touch::Mode::SCHEMES[usize::from(next(i as u8, 4))];
+                s.touch.mode = mode;
+                s.touch.split_controls = split;
+            }
+            Opt::TouchAnalog => s.touch.analog_movement ^= true,
+            Opt::TouchInteract => s.touch.contextual_interact ^= true,
+            Opt::TouchLeftHand => s.touch.left_handed ^= true,
+            Opt::TouchSprintButton => s.touch.sprint_button ^= true,
+            Opt::TouchSwapJumpSneak => s.touch.swap_jump_sneak ^= true,
+            Opt::TouchAutoSprint => s.touch.sprint_with_joystick ^= true,
             Opt::GuiScale => {
                 let max = crate::window::calculate_scale(framebuffer, 0, s.force_unicode) as u32;
                 let value = s.gui_scale.min(max);
@@ -868,6 +950,7 @@ pub enum Page {
     GraphicsAdvanced,
     /// Horizon's controller settings and button binds.
     Controller,
+    Touch,
     PadBinds,
     Extras,
     /// CreditsAndAttributionScreen.
@@ -1058,7 +1141,16 @@ fn inactive(mut w: Widget) -> Widget {
     w
 }
 fn option_widget(s: &Settings, opt: Opt, x: f32, y: f32, w: f32) -> Widget {
-    if !opt.available() {
+    let touch_available = match opt {
+        Opt::TouchAnalog | Opt::TouchAutoSprint => s.touch.mode != crate::touch::Mode::Dpad,
+        Opt::TouchSprintButton => {
+            s.touch.mode != crate::touch::Mode::Dpad && !s.touch.sprint_with_joystick
+        }
+        Opt::TouchInteract => !s.touch.crosshair(),
+        Opt::TouchSwapJumpSneak => s.touch.mode == crate::touch::Mode::Dpad,
+        _ => true,
+    };
+    if !opt.available() || !touch_available {
         return inactive(button(x, y, w, opt.label(s), Act::Cycle(opt)));
     }
     match opt.kind(s) {
@@ -1183,6 +1275,7 @@ impl OptionsUi {
             Page::Mods => "Mods",
             Page::Graphics | Page::GraphicsAdvanced => "options.videoTitle",
             Page::Controller => "Controller Settings",
+            Page::Touch => "Touch Controls",
             Page::PadBinds => "Controller Binds",
             Page::Extras => "Horizon Extras",
             Page::Credits => "credits_and_attribution.screen.title",
@@ -1408,11 +1501,11 @@ impl OptionsUi {
                         Act::Push(Page::KeyBinds),
                     )),
                 )];
-                rows.extend(pairs(&[
-                    Opt::ToggleCrouch,
-                    Opt::ToggleSprint,
-                    Opt::AutoJump,
-                ]));
+                rows.extend(pairs(&[Opt::ToggleCrouch, Opt::ToggleSprint]));
+                #[cfg(target_os = "android")]
+                rows.extend(pairs(&[Opt::AutoJump, Opt::TouchAutoSprint]));
+                #[cfg(not(target_os = "android"))]
+                rows.extend(pairs(&[Opt::AutoJump]));
                 rows.push(Row::Buttons(
                     button(
                         0.0,
@@ -1433,7 +1526,7 @@ impl OptionsUi {
                                 0.0,
                                 150.0,
                                 Text::literal("Touch Controls..."),
-                                Act::TouchControls,
+                                Act::Push(Page::Touch),
                             ))
                         }
                         #[cfg(not(target_os = "android"))]
@@ -1441,6 +1534,30 @@ impl OptionsUi {
                             None
                         }
                     },
+                ));
+                self.filter_option_rows(rows)
+            }
+            Page::Touch => {
+                let mut rows = vec![Row::Big(Opt::TouchMode)];
+                rows.extend(pairs(&[
+                    Opt::TouchSensitivity,
+                    Opt::TouchCircleSize,
+                    Opt::TouchAnalog,
+                    Opt::TouchSprintButton,
+                    Opt::TouchInteract,
+                    Opt::TouchLeftHand,
+                    Opt::TouchSwapJumpSneak,
+                ]));
+                #[cfg(target_os = "android")]
+                rows.push(Row::Buttons(
+                    button(
+                        0.0,
+                        0.0,
+                        310.0,
+                        Text::literal("Customize layout..."),
+                        Act::TouchControls,
+                    ),
+                    None,
                 ));
                 self.filter_option_rows(rows)
             }
@@ -4107,5 +4224,36 @@ mod tests {
         }
         ui.stack = vec![Page::Main, Page::Controls];
         assert!(pushes(&mut ui).contains(&Page::Controller));
+    }
+    #[test]
+    fn touch_options_cycle_four_schemes_and_adjust_circle_and_sensitivity() {
+        let mut settings = Settings::default();
+        for i in 0..4 {
+            let (mode, split, _) = crate::touch::Mode::SCHEMES[i];
+            assert_eq!(settings.touch.mode, mode);
+            assert_eq!(settings.touch.crosshair(), i == 0 || i == 3);
+            if mode == crate::touch::Mode::Dpad {
+                assert_eq!(settings.touch.split_controls, split);
+            }
+            Opt::TouchMode.cycle(&mut settings, false, [1280, 720]);
+        }
+        Opt::TouchAnalog.cycle(&mut settings, false, [1280, 720]);
+        Opt::TouchSprintButton.cycle(&mut settings, false, [1280, 720]);
+        assert!(settings.touch.analog_movement);
+        assert!(!settings.touch.visible(crate::touch::Control::Sprint));
+        Opt::TouchCircleSize.set_slider(&mut settings, 0.75);
+        assert_eq!(settings.touch.circle_size, 52.0);
+        Opt::TouchSensitivity.set_slider(&mut settings, 0.0);
+        assert!((settings.touch.sensitivity - 0.1).abs() < 0.0001);
+        let mut ui = OptionsUi::default();
+        ui.push(Page::Touch);
+        let (widgets, _, _, _) = ui.layout(&settings, 427.0, 240.0);
+        assert!(widgets.iter().any(|w| matches!(
+            w.kind,
+            WKind::Slider {
+                opt: Opt::TouchCircleSize,
+                ..
+            }
+        )));
     }
 }

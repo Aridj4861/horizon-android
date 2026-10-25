@@ -128,10 +128,6 @@ impl TouchControls {
         })
     }
     pub fn draw(&self, b: &mut HudBatch, a: &HudAtlas) {
-        if self.editor.as_ref().is_some_and(|e| e.settings_page()) {
-            self.draw_editor(b, a);
-            return;
-        }
         let (w, h) = (b.width, b.height);
         let state = self.state();
         for control in Control::ALL {
@@ -244,7 +240,7 @@ impl TouchControls {
                 let bounds = [x, y, size, size];
                 match control {
                     Control::Chat => region(b, a, "gui", [200.0, 82.0, 18.0, 17.0], bounds, color),
-                    Control::Inventory | Control::Settings => {
+                    Control::Inventory => {
                         sprite(b, a, "ui/joystick_knob", bounds, color);
                         fitted_sprite(
                             b,
@@ -254,13 +250,14 @@ impl TouchControls {
                             color,
                         );
                     }
-                    Control::Pause => {
-                        sprite(b, a, "ui/joystick_knob", bounds, color);
+                    Control::Pause | Control::Settings => {
+                        // The same square frame as Chat, sampled without its speech glyph.
+                        menu_frame(b, a, bounds, color);
                         fitted_sprite(
                             b,
                             a,
                             name,
-                            [x + size * 0.22, y + size * 0.22, size * 0.56, size * 0.56],
+                            [x + size * 0.23, y + size * 0.23, size * 0.54, size * 0.54],
                             color,
                         );
                     }
@@ -291,7 +288,7 @@ impl TouchControls {
             self.draw_editor(b, a);
         } else if let Some(point) = self.pointer() {
             let center = [point[0] * w, point[1] * h];
-            let radius = 8.0;
+            let radius = self.settings.circle_size / 2.0;
             for i in 0..64 {
                 let angles = [i as f32, (i + 1) as f32]
                     .map(|v| v / 64.0 * std::f32::consts::TAU - std::f32::consts::FRAC_PI_2);
@@ -531,6 +528,42 @@ impl TouchControls {
     }
 }
 
+/// Reuse Chat's original Bedrock border; all three top buttons share its frame.
+fn menu_frame(b: &mut HudBatch, a: &HudAtlas, [x, y, w, h]: [f32; 4], color: u32) {
+    let border = (w / 18.0 * 2.0).min(h / 2.0);
+    let xs = [200.0, 202.0, 216.0, 218.0];
+    let ys = [82.0, 84.0, 97.0, 99.0];
+    let dx = [x, x + border, x + w - border, x + w];
+    let dy = [y, y + border, y + h - border, y + h];
+    for row in 0..3 {
+        for col in 0..3 {
+            let source = if row == 1 && col == 1 {
+                [202.0, 84.0, 1.0, 1.0]
+            } else {
+                [
+                    xs[col],
+                    ys[row],
+                    xs[col + 1] - xs[col],
+                    ys[row + 1] - ys[row],
+                ]
+            };
+            region(
+                b,
+                a,
+                "gui",
+                source,
+                [
+                    dx[col],
+                    dy[row],
+                    dx[col + 1] - dx[col],
+                    dy[row + 1] - dy[row],
+                ],
+                color,
+            );
+        }
+    }
+}
+
 fn nine(
     b: &mut HudBatch,
     a: &HudAtlas,
@@ -661,9 +694,9 @@ mod tests {
     #[test]
     fn all_four_schemes_are_selectable_and_large_icons_remain_inside_the_surface() {
         let mut t = TouchControls::default();
-        t.open_settings();
         for (i, (mode, split, _)) in Mode::SCHEMES.into_iter().enumerate() {
-            t.edit_touch(i as u64, [0.2, 0.20 + i as f32 * 0.14], true, true);
+            t.settings.mode = mode;
+            t.settings.split_controls = split;
             assert_eq!(t.settings.mode, mode);
             assert_eq!(t.settings.split_controls, split);
             assert_eq!(t.settings.crosshair(), i == 0 || i == 3);
@@ -812,18 +845,19 @@ mod tests {
         assert_eq!(t.pointer(), None);
     }
     #[test]
-    fn settings_and_layout_are_separate_and_cancel_restores_both() {
+    fn cancel_layout_preserves_already_applied_touch_options() {
         let mut t = TouchControls::default();
-        t.open_settings();
-        t.edit_touch(1, [0.2, 0.4], true, true);
-        assert_eq!(t.settings.mode, Mode::Tap);
-        t.edit_touch(2, [0.9, 0.35], true, true);
-        assert!(t.settings.left_handed);
-        t.edit_touch(3, [0.2, 0.88], true, true);
-        assert!(!t.editor.as_ref().unwrap().settings_page());
+        t.settings.mode = Mode::Tap;
+        t.settings.left_handed = true;
+        let original = t.settings.placement(Control::Move).center;
+        t.open_editor();
+        t.edit_touch(1, original, true, false);
+        t.edit_touch(1, [0.7, 0.7], false, true);
+        assert_ne!(t.settings.placement(Control::Move).center, original);
         t.cancel_editor();
-        assert_eq!(t.settings.mode, Mode::Crosshair);
-        assert!(!t.settings.left_handed);
+        assert_eq!(t.settings.placement(Control::Move).center, original);
+        assert_eq!(t.settings.mode, Mode::Tap);
+        assert!(t.settings.left_handed);
     }
     #[test]
     fn dpad_can_slide_between_directions_and_mirror() {
@@ -858,16 +892,15 @@ mod tests {
         assert_eq!(t.poll_state(), PadState::default());
         t.cancel_editor();
         assert_eq!(t.settings.placement(Control::Move).center, [0.13, 0.76]);
-        t.open_settings();
-        t.edit_touch(2, [0.2, 0.40], true, true);
-        t.edit_touch(20, [0.2, 0.88], true, true);
+        t.settings.mode = Mode::Tap;
+        t.open_editor();
         assert_eq!(t.settings.mode, Mode::Tap);
         t.edit_touch(3, [0.13, 0.76], true, true);
         t.edit_touch(4, [0.6, 0.82], true, true);
         t.edit_touch(5, [0.65, 0.73], true, true);
         assert!(t.settings.placement(Control::Move).size > 0.4);
         t.cancel_editor();
-        assert_eq!(t.settings.mode, Mode::Crosshair);
+        assert_eq!(t.settings.mode, Mode::Tap);
     }
     #[test]
     fn editor_deselects_and_can_apply_opacity_to_the_current_mode() {
@@ -924,5 +957,34 @@ mod tests {
             );
         }
         assert_eq!(hotbar_slot(427.0, 240.0, [320.0, 230.0]), None);
+    }
+    #[test]
+    fn old_profiles_keep_custom_layouts_and_new_preferences_have_safe_defaults() {
+        let mut settings: Settings =
+            serde_json::from_str(r#"{"mode":"tap","sensitivity":1.5}"#).unwrap();
+        settings.sanitize();
+        assert_eq!(settings.mode, Mode::Tap);
+        assert_eq!(settings.sensitivity, 1.5);
+        assert_eq!(settings.circle_size, 32.0);
+        assert!(!settings.analog_movement);
+        assert!(settings.sprint_button);
+        settings.circle_size = f32::NAN;
+        settings.sanitize();
+        assert_eq!(settings.circle_size, 32.0);
+        settings.sprint_button = false;
+        let center = settings.placement(Control::Sprint).center;
+        let mut touch = TouchControls {
+            settings,
+            ..Default::default()
+        };
+        touch.update(1, center, true, false);
+        assert!(!touch.poll_state().held(Button::LeftStick));
+        touch.update(1, center, false, true);
+        touch.settings.sprint_button = true;
+        touch.update(2, center, true, false);
+        assert!(touch.poll_state().held(Button::LeftStick));
+        touch.update(2, center, false, true);
+        touch.poll_state(); // consume the queued tap
+        assert!(!touch.poll_state().held(Button::LeftStick));
     }
 }

@@ -6214,6 +6214,10 @@ impl Game<'_> {
             return;
         }
         let (slot, outside) = self.inventory_target();
+        #[cfg(target_os = "android")]
+        if slot.is_some() {
+            self.audio.play_button_click();
+        }
         let shift = self.has_shift_down();
         let target = Target::of(slot, outside);
         let input = self.inv_clicks.press(
@@ -8082,6 +8086,7 @@ impl Game<'_> {
         if self.remote.is_some() {
             return self.leave_server(None);
         }
+        self.potions = Default::default();
         // The save screen has finished every write before releasing storage.
         self.session_lock = None;
         horizon_client::crash::clear_detail("World");
@@ -9208,6 +9213,10 @@ impl Game<'_> {
         )
     }
     fn apply_settings(&mut self) {
+        #[cfg(target_os = "android")]
+        {
+            self.pad.touch.settings = self.settings.touch.clone();
+        }
         if let Some(r) = &self.renderer {
             self.settings
                 .clamp_gui_scale([r.config.width as i32, r.config.height as i32]);
@@ -9736,6 +9745,8 @@ impl Game<'_> {
         for (i, t) in tabs.iter().enumerate() {
             let (tx, ty) = Creative::tab_position(t);
             if cx >= ox + tx && cx < ox + tx + 26.0 && cy >= oy + ty && cy < oy + ty + 32.0 {
+                #[cfg(target_os = "android")]
+                self.audio.play_button_click();
                 select_creative_tab(&mut self.creative_screen, &mut self.inv_clicks, i);
                 self.inv_drag = None;
                 self.last_inv_click = None;
@@ -10960,6 +10971,7 @@ impl ApplicationHandler for Game<'_> {
         {
             if self.pad.touch.editor.is_some() {
                 self.pad.touch.cancel_editor();
+                self.settings.touch = self.pad.touch.settings.clone();
                 self.pause = false;
                 return;
             }
@@ -10980,6 +10992,7 @@ impl ApplicationHandler for Game<'_> {
             if event.state==ElementState::Pressed && event.physical_key==PhysicalKey::Code(KeyCode::Escape))
         {
             self.pad.touch.cancel_editor();
+            self.settings.touch = self.pad.touch.settings.clone();
             self.pause = false;
             return;
         }
@@ -11003,6 +11016,9 @@ impl ApplicationHandler for Game<'_> {
                     touch.phase == TouchPhase::Ended,
                 ) {
                     self.pause = false;
+                }
+                if self.pad.touch.editor.is_none() {
+                    self.settings.touch = self.pad.touch.settings.clone();
                 }
                 if std::mem::take(&mut self.pad.touch.clicked) {
                     self.audio.play_button_click();
@@ -11052,6 +11068,7 @@ impl ApplicationHandler for Game<'_> {
                 self.yaw += delta[0] * 180.0 * sensitivity;
                 self.pitch = (self.pitch + delta[1] * 180.0 * sensitivity).clamp(-90.0, 90.0);
                 if self.pad.touch.chat_requested {
+                    self.audio.play_button_click();
                     self.pad.touch.clear();
                     if let Err(error) = self.key_pressed(KeyCode::KeyT) {
                         log::warn!("Touch chat: {error}");
@@ -11059,10 +11076,8 @@ impl ApplicationHandler for Game<'_> {
                     self.android_show_keyboard();
                 } else if self.pad.touch.settings_requested {
                     self.android_release_touch_keys(true);
-                    self.pad.touch.open_settings();
-                    let _ = self.play_mouse(MouseButton::Left, false);
-                    let _ = self.play_mouse(MouseButton::Right, false);
-                    self.pause = self.pauses_game();
+                    self.audio.play_button_click();
+                    self.open_options(false);
                 }
             } else {
                 self.pad.touch.clear();
