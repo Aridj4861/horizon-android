@@ -1,13 +1,13 @@
-# Android feature audit (0.6.7)
+# Android feature audit (0.6.8)
 
 This is an implementation audit, not a claim that every Horizon menu has been
-tested on every phone. Physical-device performance has not been independently measured for 0.6.7.
+tested on every phone. Physical-device performance has not been independently measured for 0.6.8.
 Emulator frame counters must not be advertised as phone performance.
 
 | Horizon feature | Android integration / remaining work |
 |---|---|
 | Controller action mapping | Touch uses the same actions, default Java eight-direction or optional analog movement, and toggle sneak. Hardware controller enumeration/stick input still needs a native Android backend; do not infer it from desktop gilrs support |
-| Touch layouts | Four explicit schemes, normal Options > Controls settings, 16–64 px circle, optional 360-degree movement, sprint visibility, editable layouts, scale/opacity sliders, handedness and direct F3/F5 buttons |
+| Touch layouts | Four explicit schemes, normal Options > Controls settings, 16–64 px circle, optional 360-degree movement, sprint visibility, editable layouts, scale/opacity sliders, handedness and direct F3/F5 buttons; passive HUD safe-area margins are in Accessibility |
 | Contextual touch | Use action for held items/entities; movement actions serve flight/swimming. Not all Bedrock contextual icons/gestures are implemented |
 | Controller vibration settings | Phone `Vibrator` now wired to existing game events and the existing vibration switch; no adaptive triggers or external-pad vibration backend |
 | Unicode keyboard | GameActivity IME and composition; system keyboard remains responsible for its own clipboard suggestions |

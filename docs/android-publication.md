@@ -66,8 +66,8 @@ The Android distribution now has a dedicated build mode:
 python tools/android_build.py --abi arm64-v8a --public
 ```
 
-VersionName stays **0.6.7**; Android versionCode is 16 so it upgrades earlier
-0.6.7 installations. The APK contains the Rust engine, licensed application
+The current update is **0.6.8**, Android versionCode 17. It upgrades the
+published 0.6.7 (versionCode 16) in place. The APK contains the Rust engine, licensed application
 fonts/frameworks and generated Horizon tables. The distribution table allowlist
 excludes original structure templates, copied worldgen JSON bundles and raw
 block/damage tag resources. Original JARs, class files, PNGs, sounds, accounts,

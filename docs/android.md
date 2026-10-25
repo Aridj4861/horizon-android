@@ -529,3 +529,45 @@ all 60 pinned control/license files downloaded and passed their hashes. Seven
 APK-audit tests and three source-export tests passed. No emulator or phone game
 session was run for this update; gameplay and physical-device FPS need owner
 confirmation.
+
+
+## Android 0.6.8 (versionCode 17)
+
+In tap modes, the native Java attack-recovery gauge moves to the hotbar when
+the crosshair is absent. It uses the current weapon's actual attack strength;
+the normal Attack Indicator Off setting remains respected.
+
+Options > Accessibility has independent horizontal and vertical HUD margins,
+0-12 percent. Zero preserves the existing layout. Only passive information is
+laid out inside these bounds: F3, the performance display, scoreboard, boss bars,
+effect icons, subtitles, titles and notifications. The full-screen world, hotbar,
+inventory, menus, touch controls and all input coordinates remain unchanged.
+The original HUD shader and touch-input adapter are unchanged. The layout helper
+restores the full HUD dimensions before controls or interactive screens draw.
+
+The Play page now distinguishes version checks, verified resource/sound download,
+unpacking, world data preparation, touch-control downloads and finalization.
+A progress bar, MiB/file counters and retry state replace the single ambiguous
+download counter. Smaller launcher surfaces show a compact current-stage view.
+
+Editable local copies of the original control PNGs are prepared at
+`.local/android/editable-controls`, including `EDITING.txt`. Chat/F3/F5 are regions
+of `gui.png`; the standalone UI/state icons are in `ui/` and `controls/`.
+These copies do not automatically override pinned public downloads. Texture
+changes can be supplied by a resource pack under
+`assets/minecraft/textures/gui/bedrock/<relative path>`.
+
+Upstream was reviewed again through `6df37324`, including the main-branch ambient
+mob/block effects fix. A promotional outline and copy are in android-launch.md.
+The already published 0.6.7 release artifacts remain untouched; 0.6.8 is prepared
+separately for owner testing and manual publication.
+
+
+Validation: Android Clippy, optimized ARM64 compilation/signing and the public
+APK audit passed. Sixteen HUD tests (including shader validation and restoration
+of the main viewport around passive overlays), 23 touch tests, the touch-options
+test and ten Python source/audit tests passed. Source comparison confirms the
+window/touch handler, controller input adapter and full-screen HUD shader are
+unchanged from the published baseline. The APK is 0.6.8, versionCode 17. This
+update was not launched in an emulator or on the physical phone; no new FPS
+or full-gameplay result is claimed.
