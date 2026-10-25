@@ -11148,6 +11148,18 @@ impl ApplicationHandler for Game<'_> {
                     self.android_release_touch_keys(true);
                     self.audio.play_button_click();
                     self.open_options(false);
+                } else if std::mem::take(&mut self.pad.touch.debug_requested) {
+                    self.audio.play_button_click();
+                    if !self.pad.touch_ui.key_held(KeyCode::F3) {
+                        use horizon_client::debug_keys::KeyAction;
+                        self.debug_key(KeyCode::F3, KeyAction::Press);
+                        self.debug_key(KeyCode::F3, KeyAction::Release);
+                    }
+                } else if std::mem::take(&mut self.pad.touch.perspective_requested) {
+                    self.audio.play_button_click();
+                    if let Err(error) = self.key_pressed(KeyCode::F5) {
+                        log::warn!("Touch perspective: {error}");
+                    }
                 }
             } else {
                 self.pad.touch.clear();

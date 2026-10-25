@@ -45,9 +45,11 @@ pub enum Control {
     Pause,
     Settings,
     Inventory,
+    Debug,
+    Perspective,
 }
 impl Control {
-    pub const ALL: [Self; 10] = [
+    pub const ALL: [Self; 12] = [
         Self::Move,
         Self::Sprint,
         Self::Jump,
@@ -58,6 +60,8 @@ impl Control {
         Self::Pause,
         Self::Settings,
         Self::Inventory,
+        Self::Debug,
+        Self::Perspective,
     ];
     pub fn name(self) -> &'static str {
         match self {
@@ -71,6 +75,8 @@ impl Control {
             Self::Pause => "Pause",
             Self::Settings => "Touch settings",
             Self::Inventory => "Inventory",
+            Self::Debug => "Debug overlay (F3)",
+            Self::Perspective => "Camera perspective (F5)",
         }
     }
 }
@@ -128,7 +134,24 @@ pub struct Settings {
     pub circle_size: f32,
     pub analog_movement: bool,
     pub sprint_button: bool,
-    pub layouts: [[Placement; 10]; 3],
+    #[serde(deserialize_with = "deserialize_layouts")]
+    pub layouts: [[Placement; 12]; 3],
+}
+// Append new buttons without resetting a player's existing ten-button layout.
+fn deserialize_layouts<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<[[Placement; 12]; 3], D::Error> {
+    let rows = Vec::<Vec<Placement>>::deserialize(deserializer)?;
+    if rows.len() != 3 || rows.iter().any(|r| !matches!(r.len(), 10 | 12)) {
+        return Err(serde::de::Error::custom(
+            "expected three touch layouts of 10 or 12 controls",
+        ));
+    }
+    let mut layouts = Settings::default().layouts;
+    for (output, input) in layouts.iter_mut().zip(rows) {
+        output[..input.len()].copy_from_slice(&input);
+    }
+    Ok(layouts)
 }
 impl Default for Settings {
     fn default() -> Self {
@@ -139,10 +162,12 @@ impl Default for Settings {
             Placement::new(0.81, 0.86, 0.115),
             Placement::new(0.80, 0.64, 0.16),
             Placement::new(0.92, 0.52, 0.16),
-            Placement::new(0.46, 0.055, 0.075),
+            Placement::new(0.45, 0.055, 0.075),
             Placement::new(0.50, 0.055, 0.075),
-            Placement::new(0.54, 0.055, 0.075),
+            Placement::new(0.55, 0.055, 0.075),
             Placement::new(0.73, 0.95, 0.075),
+            Placement::new(0.40, 0.055, 0.075),
+            Placement::new(0.60, 0.055, 0.075),
         ];
         let mut layouts = [base; 3];
         layouts[2][Control::Sneak as usize] = Placement::new(0.13, 0.76, 0.10);
@@ -236,4 +261,31 @@ impl Settings {
 }
 pub fn contains([x, y, w, h]: [f32; 4], p: [f32; 2]) -> bool {
     (x..=x + w).contains(&p[0]) && (y..=y + h).contains(&p[1])
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn old_layout_preserves_custom_buttons_when_shortcuts_are_added() {
+        let mut json = serde_json::to_value(Settings::default()).unwrap();
+        json["circle_size"] = 48.into();
+        for row in json["layouts"].as_array_mut().unwrap() {
+            row.as_array_mut().unwrap().truncate(10);
+            row[6]["center"] = serde_json::json!([0.25, 0.2]);
+            row[6]["opacity"] = serde_json::json!(0.35);
+        }
+        let settings: Settings = serde_json::from_value(json).unwrap();
+        assert_eq!(settings.circle_size, 48.0);
+        for row in settings.layouts {
+            assert_eq!(row[6].center, [0.25, 0.2]);
+            assert_eq!(row[6].opacity, 0.35);
+            assert_eq!(row[Control::Debug as usize].center, [0.4, 0.055]);
+            assert_eq!(row[Control::Perspective as usize].center, [0.6, 0.055]);
+        }
+        let roundtrip: Settings =
+            serde_json::from_slice(&serde_json::to_vec(&settings).unwrap()).unwrap();
+        assert_eq!(roundtrip.layouts[0][6].center, [0.25, 0.2]);
+    }
 }

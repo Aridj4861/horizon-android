@@ -61,6 +61,8 @@ pub struct TouchControls {
     loaded: bool,
     pub chat_requested: bool,
     pub settings_requested: bool,
+    pub debug_requested: bool,
+    pub perspective_requested: bool,
     pub clicked: bool,
     pub context_use: bool,
     pub vertical_movement: bool,
@@ -232,14 +234,18 @@ impl TouchControls {
                     Control::Jump => "ui/jump",
                     Control::Sneak => "ui/sneak",
                     Control::Pause => "ui/pause_icon",
-                    Control::Chat => "gui",
+                    Control::Chat | Control::Debug | Control::Perspective => "gui",
                     Control::Inventory => "ui/more-dots",
                     Control::Settings => "ui/gear",
                     _ => continue,
                 };
                 let bounds = [x, y, size, size];
                 match control {
-                    Control::Chat => region(b, a, "gui", [200.0, 82.0, 18.0, 17.0], bounds, color),
+                    Control::Chat => region(b, a, "gui", [200.0, 82.0, 18.0, 18.0], bounds, color),
+                    Control::Debug => region(b, a, "gui", [236.0, 82.0, 18.0, 18.0], bounds, color),
+                    Control::Perspective => {
+                        region(b, a, "gui", [236.0, 46.0, 18.0, 18.0], bounds, color)
+                    }
                     Control::Inventory => {
                         sprite(b, a, "ui/joystick_knob", bounds, color);
                         fitted_sprite(
@@ -299,14 +305,28 @@ impl TouchControls {
                     let points = angles.map(|v| [center[0] + r * v.cos(), center[1] + r * v.sin()]);
                     line(b, a, points[0], points[1], color);
                 }
-                if i as f32 / 64.0 < self.break_progress.clamp(0.0, 1.0) {
-                    let points = angles.map(|v| {
+            }
+            // A complete inner circle expands towards the stationary outer rim.
+            // Progress changes its radius, never its angular coverage.
+            let inner = mining_radius(radius, self.break_progress);
+            if inner > 0.0
+                && let Some(white) = a.sprites.get("horizon/white")
+            {
+                let uv = [[(white.u0 + white.u1) / 2.0, (white.v0 + white.v1) / 2.0]; 4];
+                for i in 0..64 {
+                    let points = [i, i + 1].map(|v| {
+                        let angle = v as f32 / 64.0 * std::f32::consts::TAU;
                         [
-                            center[0] + (radius - 1.5) * v.cos(),
-                            center[1] + (radius - 1.5) * v.sin(),
+                            center[0] + inner * angle.cos(),
+                            center[1] + inner * angle.sin(),
                         ]
                     });
-                    line(b, a, points[0], points[1], rgba(255, 255, 255, 255));
+                    b.quad(
+                        [center, points[0], points[1], center],
+                        uv,
+                        rgba(255, 255, 255, 90),
+                    );
+                    line(b, a, points[0], points[1], rgba(255, 255, 255, 220));
                 }
             }
         }
@@ -365,6 +385,14 @@ impl TouchControls {
                 }
                 Some(Control::Settings) => {
                     self.settings_requested = true;
+                    Role::Ignore
+                }
+                Some(Control::Debug) => {
+                    self.debug_requested = true;
+                    Role::Ignore
+                }
+                Some(Control::Perspective) => {
+                    self.perspective_requested = true;
                     Role::Ignore
                 }
                 Some(Control::Sneak)
@@ -443,6 +471,8 @@ impl TouchControls {
         self.holding = false;
         self.chat_requested = false;
         self.settings_requested = false;
+        self.debug_requested = false;
+        self.perspective_requested = false;
     }
     pub fn poll_state(&mut self) -> PadState {
         let mut state = self.state().merge(&std::mem::take(&mut self.pending));
@@ -528,11 +558,11 @@ impl TouchControls {
     }
 }
 
-/// Reuse Chat's original Bedrock border; all three top buttons share its frame.
+/// Reuse Chat's complete 18x18 border, including its bottommost pixel row.
 fn menu_frame(b: &mut HudBatch, a: &HudAtlas, [x, y, w, h]: [f32; 4], color: u32) {
     let border = (w / 18.0 * 2.0).min(h / 2.0);
     let xs = [200.0, 202.0, 216.0, 218.0];
-    let ys = [82.0, 84.0, 97.0, 99.0];
+    let ys = [82.0, 84.0, 98.0, 100.0];
     let dx = [x, x + border, x + w - border, x + w];
     let dy = [y, y + border, y + h - border, y + h];
     for row in 0..3 {
@@ -584,7 +614,9 @@ fn nine(
                 cell.u1 = r.u0 + (r.u1 - r.u0) * xs[col + 1] / r.w as f32;
                 cell.v0 = r.v0 + (r.v1 - r.v0) * ys[row] / r.h as f32;
                 cell.v1 = r.v0 + (r.v1 - r.v0) * ys[row + 1] / r.h as f32;
-                b.rect_uv(
+                control_quad(
+                    b,
+                    a,
                     dx[col],
                     dy[row],
                     dx[col + 1] - dx[col],
@@ -600,6 +632,13 @@ fn nine(
 fn sprite(b: &mut HudBatch, a: &HudAtlas, name: &str, [x, y, w, h]: [f32; 4], color: u32) {
     fitted_sprite(b, a, name, [x, y, w, h], color);
 }
+fn mining_radius(radius: f32, progress: f32) -> f32 {
+    if progress.is_finite() {
+        (radius - 1.5).max(0.0) * progress.clamp(0.0, 1.0)
+    } else {
+        0.0
+    }
+}
 /// Glyphs such as the inventory ellipsis are deliberately wide and short.
 /// Fit their original pixels inside the hit target without stretching them.
 fn fitted_sprite(b: &mut HudBatch, a: &HudAtlas, name: &str, [x, y, w, h]: [f32; 4], color: u32) {
@@ -607,7 +646,9 @@ fn fitted_sprite(b: &mut HudBatch, a: &HudAtlas, name: &str, [x, y, w, h]: [f32;
     if let Some(rect) = a.sprites.get(&key).copied() {
         let scale = (w / rect.w as f32).min(h / rect.h as f32);
         let (width, height) = (rect.w as f32 * scale, rect.h as f32 * scale);
-        b.rect_uv(
+        control_quad(
+            b,
+            a,
             x + (w - width) / 2.0,
             y + (h - height) / 2.0,
             width,
@@ -632,8 +673,31 @@ fn region(
         r.u1 = u + (sx + sw) * du;
         r.v0 = v + sy * dv;
         r.v1 = v + (sy + sh) * dv;
-        b.rect_uv(x, y, w, h, r, color);
+        control_quad(b, a, x, y, w, h, r, color);
     }
+}
+
+/// Atlas-wide clamp cannot protect an individual button from adjacent texels.
+/// Keep UVs at texel centres and snap both screen edges to physical pixels.
+#[allow(clippy::too_many_arguments)]
+fn control_quad(
+    b: &mut HudBatch,
+    a: &HudAtlas,
+    x: f32,
+    y: f32,
+    w: f32,
+    h: f32,
+    mut r: crate::hud::Rect,
+    color: u32,
+) {
+    let half = [0.5 / a.width.max(1) as f32, 0.5 / a.height.max(1) as f32];
+    r.u0 += half[0];
+    r.u1 -= half[0];
+    r.v0 += half[1];
+    r.v1 -= half[1];
+    let snap = |v: f32| (v * b.scale).round() / b.scale;
+    let (left, top, right, bottom) = (snap(x), snap(y), snap(x + w), snap(y + h));
+    b.rect_uv(left, top, right - left, bottom - top, r, color);
 }
 
 fn line(
@@ -659,6 +723,34 @@ fn line(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn shortcuts_consume_their_finger_and_preserve_movement() {
+        let mut touch = TouchControls::default();
+        touch.update(1, [0.13, 0.76], true, false);
+        touch.update(1, [0.13, 0.68], false, false);
+        let moving = touch.poll_state().left;
+        assert_ne!(moving, [0.0; 2]);
+        for (id, control) in [(2, Control::Debug), (3, Control::Perspective)] {
+            let point = touch.settings.placement(control).center;
+            touch.update(id, point, true, false);
+            assert!(matches!(touch.fingers[&id].0, Role::Ignore));
+            assert_eq!(touch.poll_state().left, moving);
+            assert_eq!(touch.poll_state().triggers, [0.0; 2]);
+            touch.update(id, point, false, true);
+        }
+        assert!(touch.debug_requested && touch.perspective_requested);
+        touch.clear();
+        assert!(!touch.debug_requested && !touch.perspective_requested);
+    }
+    #[test]
+    fn mining_indicator_grows_outwards_with_bounded_radius() {
+        assert_eq!(mining_radius(16.0, 0.0), 0.0);
+        assert_eq!(mining_radius(16.0, 0.5), 7.25);
+        assert_eq!(mining_radius(16.0, 1.0), 14.5);
+        assert_eq!(mining_radius(16.0, 2.0), 14.5);
+        assert_eq!(mining_radius(16.0, -1.0), 0.0);
+        assert_eq!(mining_radius(16.0, f32::NAN), 0.0);
+    }
     #[test]
     fn contextual_button_is_opt_in_targeted_and_owned_until_release() {
         let mut t = TouchControls::default();
