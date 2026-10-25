@@ -398,7 +398,7 @@ Visual reference: stable Bedrock 26.52 as of 2026-10-25
 ([official releases](https://feedback.minecraft.net/hc/en-us/sections/360001186971-Release-Changelogs)).
 The latest official sample asset set is still 1.26.50.4 at the pinned revision.
 Its HUD uses a built-in 16x16 `cursor_renderer`, without a standalone circle PNG.
-The cursor here is a native ring with a dark surround and an inner mining arc;
+The cursor here is a native ring with a dark surround and an expanding inner mining circle;
 bit-for-bit visual equivalence with Bedrock's closed renderer is not established.
 
 
@@ -470,3 +470,28 @@ no flagged private files/credential patterns/personal Windows paths, and verifie
 format, and it does not authorize distributing the bundled Mojang resources.
 Screenshots and emulator FPS claims are intentionally excluded from the public
 showcase pending the owner's verification.
+
+
+## Android 0.6.7
+
+Two editable top-row shortcuts open F3 diagnostics (the robot button) and cycle
+F5 camera perspective (the people button). Both use the original regions of the
+same Bedrock GUI sheet as Chat. They consume only their own touch and leave a
+held movement finger active. Existing ten-control saved layouts keep their
+custom positions, sizes and opacity when the two buttons are added.
+
+The mining indicator now grows a complete inner circle towards the fixed outer
+rim, rather than drawing an angular progress arc. Button UVs stay within their
+own source texels and screen edges snap to physical pixels to avoid atlas-edge
+sampling and fractional-pixel seams. Physical-device confirmation is still
+needed for the previously reported cut edges.
+
+Reviewed and merged 59 upstream commits through `74768d2e`, preserving the
+Android workspace member and adding upstream's experimental mod UI guest. The
+new OpenGL support does not replace either Android Vulkan selection.
+
+Validation: Android x86_64 Clippy passed, all 22 touch tests passed, the upstream
+item-component wire roundtrip test passed, and all nine Android source-export
+and APK-audit tests passed. The optimized ARM64 0.6.7 APK compiled, signed and
+passed its privacy/manifest audit. This change was not launched in the emulator;
+phone visuals and gameplay remain for the owner to verify.

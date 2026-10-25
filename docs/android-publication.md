@@ -49,7 +49,16 @@ Bedrock textures are supplied through `tools/android_bedrock_controls.py` to
 private `.local/android/bedrock-controls.zip`, with pinned Git blob checks and
 the original Mojang LICENSE.md. The PNGs and generated ZIP never enter Git.
 
-## Binary releases need a separate resource pipeline
+## Publishing the Android application
+
+The Android application can have public APK releases, just as upstream publishes
+its desktop application. Upstream's `xtask/src/main.rs` explicitly excludes
+Minecraft files from its packages and ships `horizon-prepare`; the launcher then
+prepares the user's resources separately. See the
+[upstream packager](https://github.com/ludovic111/horizon/blob/74768d2eeb2218c81f42680f51ac3a8ec92f9c57/xtask/src/main.rs)
+and [resource preparation](https://github.com/ludovic111/horizon/blob/74768d2eeb2218c81f42680f51ac3a8ec92f9c57/launcher/src/backend.rs).
+Publishing this fork does not require permission from upstream under its MIT
+license; retain its copyright and license notices.
 
 Developer APKs contain generated `engine-data.zip` and the original Bedrock
 sample control textures. They remain private local build products. A public
@@ -70,8 +79,9 @@ Before a public playable APK, separate user-owned resource preparation/import
 from the application, remove automatic development control, establish the
 publisher's production account configuration and review platform/service URLs.
 Only then attach a signed APK, its SHA-256 and an audit summary to a prerelease.
-Screenshots and performance claims are deferred until the owner has verified
-representative captures. Emulator frame counters are not phone benchmarks.
+The owner supplied four original Android screenshots on 26 October 2026, now
+shown in the README. Their instantaneous counters are not benchmark results.
+Emulator frame counters are not phone benchmarks.
 
 The Android fork still shares upstream service URLs in parts of the desktop
 code. They are not replaced with invented fork services. Public branding,
@@ -91,3 +101,8 @@ Merge `dc6d3126` integrates 138 more commits through `7fd1f311`, including sprin
 state, transfers/cookies, remote potion contents and container fixes. Android
 0.6.6 also fixes player-profile team resolution and session effects, and provides
 standard touch settings with circle size and optional analog movement.
+
+Merge `4a2840e1` integrates 59 more commits through `74768d2e` on 26 October,
+including wire item components, localized UI, furnace XP fixes and the desktop
+OpenGL fallback. Android continues selecting its existing Vulkan modes. The
+upstream mod UI remains experimental and requires a mod to opt in explicitly.

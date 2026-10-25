@@ -24,6 +24,20 @@ The engine targets Minecraft Java **26.3**. Mods use Horizon's native `.hmod`
 format; Fabric/Forge Java code does not run in this client. Server and anticheat
 compatibility requires testing on the actual server.
 
+## On Android
+
+Original screenshots supplied by the repository owner on 26 October 2026.
+The counters show the captured moments; these images are not a benchmark or
+an FPS guarantee. Device settings and render distance were not recorded.
+
+| Joystick and crosshair | D-pad and touch aiming |
+| --- | --- |
+| ![Fox in a forest with joystick controls](docs/media/android/joystick-fox.png) | ![River and forest with D-pad controls](docs/media/android/dpad-river.png) |
+| ![Snowy landscape on Android](docs/media/android/snow-landscape.png) | ![Hypixel Arcade lobby on Android](docs/media/android/hypixel-arcade.png) |
+
+The owner also supplied the Hypixel capture above as an example of Java
+multiplayer. Other servers and anticheat configurations still need testing.
+
 ## Help build it
 
 Try a developer build, send a reproducible bug report, or contribute a focused
@@ -43,10 +57,10 @@ data and original sample textures. Those resources must be separated from the
 application before public APK distribution. [Publication notes](docs/android-publication.md).
 
 This branch preserves upstream authorship and history, merged through
-[`7fd1f311`](https://github.com/ludovic111/horizon/commit/7fd1f3118f69e803b9d4e4c60e8ed4ef948146d1).
+[`74768d2e`](https://github.com/ludovic111/horizon/commit/74768d2eeb2218c81f42680f51ac3a8ec92f9c57).
 [Provenance](docs/android-upstream.json) records the base and merges. Android
-0.6.6 adds the standard touch settings and session/collision fixes on top of 138
-additional upstream commits. Upstream deployment workflows stay inactive here.
+0.6.7 adds direct F3/F5 touch buttons and an expanding mining indicator on top
+of 59 additional upstream commits. Upstream deployment workflows stay inactive here.
 
 Original copyright and third-party notices are retained in [LICENSE](LICENSE)
 and [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). Mojang textures are not
