@@ -5,6 +5,7 @@ use std::{
     collections::BTreeMap,
     time::{Duration, Instant},
 };
+const HOLD_DELAY: Duration = Duration::from_millis(350);
 mod editor;
 pub mod layout;
 pub use layout::{Control, Mode, Settings};
@@ -43,6 +44,7 @@ enum Role {
         since: Instant,
         dragged: bool,
         held_use: bool,
+        committed: bool,
     },
     Ignore,
     Button(Button),
@@ -59,6 +61,7 @@ pub struct TouchControls {
     loaded: bool,
     pub chat_requested: bool,
     pub settings_requested: bool,
+    pub clicked: bool,
     pub context_use: bool,
     pub vertical_movement: bool,
     pub swimming: bool,
@@ -94,7 +97,23 @@ impl TouchControls {
         self.pending.set(button, true);
     }
     fn visible(&self, c: Control) -> bool {
-        self.settings.visible(c) || (c == Control::Use && self.context_use)
+        self.settings.visible(c)
+            || (c == Control::Use
+                && self.settings.contextual_interact
+                && (self.context_use
+                    || self
+                        .fingers
+                        .values()
+                        .any(|(r, _)| matches!(r, Role::Button(Button::LeftTrigger)))))
+    }
+    fn placement(&self, c: Control) -> layout::Placement {
+        let mut p = self.settings.placement(c);
+        p.size = p.size.min(self.aspect()).min(1.0);
+        let half = [p.size / self.aspect() / 2.0, p.size / 2.0];
+        for (i, half) in half.into_iter().enumerate() {
+            p.center[i] = p.center[i].clamp(half, 1.0 - half);
+        }
+        p
     }
     fn button(c: Control) -> Option<Button> {
         Some(match c {
@@ -119,7 +138,7 @@ impl TouchControls {
             if !self.visible(control) {
                 continue;
             }
-            let p = self.settings.placement(control);
+            let p = self.placement(control);
             let size = p.size * h;
             let (x, y) = (p.center[0] * w - size / 2.0, p.center[1] * h - size / 2.0);
             let opacity = if self.editor.is_some() {
@@ -272,33 +291,27 @@ impl TouchControls {
             self.draw_editor(b, a);
         } else if let Some(point) = self.pointer() {
             let center = [point[0] * w, point[1] * h];
-            let radius = 9.0;
-            for i in 0..48 {
+            let radius = 8.0;
+            for i in 0..64 {
                 let angles = [i as f32, (i + 1) as f32]
-                    .map(|v| v / 48.0 * std::f32::consts::TAU - std::f32::consts::FRAC_PI_2);
-                let points =
-                    angles.map(|v| [center[0] + radius * v.cos(), center[1] + radius * v.sin()]);
-                let active = i as f32 / 48.0 < self.break_progress.clamp(0.0, 1.0);
-                line(
-                    b,
-                    a,
-                    points[0],
-                    points[1],
-                    if active {
-                        rgba(255, 255, 255, 255)
-                    } else {
-                        rgba(255, 255, 255, 125)
-                    },
-                );
+                    .map(|v| v / 64.0 * std::f32::consts::TAU - std::f32::consts::FRAC_PI_2);
+                for (r, color) in [
+                    (radius + 0.7, rgba(0, 0, 0, 110)),
+                    (radius, rgba(255, 255, 255, 210)),
+                ] {
+                    let points = angles.map(|v| [center[0] + r * v.cos(), center[1] + r * v.sin()]);
+                    line(b, a, points[0], points[1], color);
+                }
+                if i as f32 / 64.0 < self.break_progress.clamp(0.0, 1.0) {
+                    let points = angles.map(|v| {
+                        [
+                            center[0] + (radius - 1.5) * v.cos(),
+                            center[1] + (radius - 1.5) * v.sin(),
+                        ]
+                    });
+                    line(b, a, points[0], points[1], rgba(255, 255, 255, 255));
+                }
             }
-            b.fill(
-                a,
-                center[0] - 0.7,
-                center[1] - 0.7,
-                1.4,
-                1.4,
-                rgba(255, 255, 255, 220),
-            );
         }
     }
     pub fn pointer(&self) -> Option<[f32; 2]> {
@@ -307,14 +320,7 @@ impl TouchControls {
         }
         self.fingers
             .values()
-            .find_map(|(r, _)| match r {
-                Role::Look {
-                    start,
-                    dragged: false,
-                    ..
-                } => Some(*start),
-                _ => None,
-            })
+            .find_map(|(r, point)| matches!(r, Role::Look { .. }).then_some(*point))
             .or_else(|| {
                 self.last_marker
                     .filter(|(_, t)| t.elapsed() < Duration::from_millis(180))
@@ -335,7 +341,7 @@ impl TouchControls {
             )) = self.fingers.remove(&id)
                 && !self.settings.crosshair()
                 && !dragged
-                && since.elapsed() < Duration::from_millis(350)
+                && since.elapsed() < HOLD_DELAY
             {
                 self.tap_aim = Some(start);
                 self.last_marker = Some((start, Instant::now()));
@@ -345,8 +351,7 @@ impl TouchControls {
         }
         if started {
             let control = Control::ALL.into_iter().rev().find(|c| {
-                self.visible(*c)
-                    && layout::contains(self.settings.placement(*c).rect(self.aspect()), point)
+                self.visible(*c) && layout::contains(self.placement(*c).rect(self.aspect()), point)
             });
             let role = match control {
                 Some(Control::Move)
@@ -355,7 +360,7 @@ impl TouchControls {
                         .values()
                         .any(|(r, _)| matches!(r, Role::Move(_))) =>
                 {
-                    Role::Move(self.settings.placement(Control::Move).center)
+                    Role::Move(self.placement(Control::Move).center)
                 }
                 Some(Control::Chat) => {
                     self.chat_requested = true;
@@ -390,6 +395,7 @@ impl TouchControls {
                     since: Instant::now(),
                     dragged: false,
                     held_use: self.hold_uses_item,
+                    committed: false,
                 },
             };
             self.fingers.insert(id, (role, point));
@@ -408,14 +414,14 @@ impl TouchControls {
                 start,
                 dragged,
                 since,
-                held_use,
+                committed,
+                ..
             } = role
             {
-                let committed_use =
-                    *held_use && !*dragged && since.elapsed() >= Duration::from_millis(350);
-                if !committed_use {
-                    *dragged |= ((point[0] - start[0]) * aspect).hypot(point[1] - start[1]) > 0.018;
+                if !*dragged && since.elapsed() >= HOLD_DELAY {
+                    *committed = true;
                 }
+                *dragged |= ((point[0] - start[0]) * aspect).hypot(point[1] - start[1]) > 0.018;
                 if *dragged {
                     [point[0] - previous[0], point[1] - previous[1]]
                 } else {
@@ -447,23 +453,26 @@ impl TouchControls {
         self.holding_use = false;
         self.holding = false;
         if !self.settings.crosshair() {
-            for (role, _) in self.fingers.values() {
+            for (role, point) in self.fingers.values_mut() {
                 if let Role::Look {
-                    start,
+                    start: _,
                     since,
-                    dragged: false,
+                    dragged,
                     held_use,
+                    committed,
                 } = role
                 {
-                    if self.aim.is_none() {
-                        self.aim = Some(*start);
+                    if !*dragged && since.elapsed() >= HOLD_DELAY {
+                        *committed = true;
                     }
-                    if since.elapsed() >= Duration::from_millis(350) {
-                        self.holding = true;
-                        self.holding_use = *held_use;
-                        state.triggers[if *held_use { 0 } else { 1 }] = 1.0;
-                        self.aim = Some(*start);
-                        break;
+                    if !*dragged || *committed {
+                        self.aim = Some(*point);
+                        if *committed {
+                            self.holding = true;
+                            self.holding_use = *held_use;
+                            state.triggers[if *held_use { 0 } else { 1 }] = 1.0;
+                            break;
+                        }
                     }
                 }
             }
@@ -475,11 +484,9 @@ impl TouchControls {
         for (role, _) in self.fingers.values_mut() {
             if let Role::Look {
                 held_use,
-                since,
-                dragged: false,
+                committed: true,
                 ..
             } = role
-                && since.elapsed() >= Duration::from_millis(350)
             {
                 *held_use = true;
                 break;
@@ -492,7 +499,7 @@ impl TouchControls {
         for (role, point) in self.fingers.values() {
             match role {
                 Role::Move(anchor) => {
-                    let radius = self.settings.placement(Control::Move).size / 2.0;
+                    let radius = self.placement(Control::Move).size / 2.0;
                     state.left = [
                         (point[0] - anchor[0]) * self.aspect() / radius,
                         (anchor[1] - point[1]) / radius,
@@ -558,7 +565,7 @@ fn nine(
 }
 
 fn sprite(b: &mut HudBatch, a: &HudAtlas, name: &str, [x, y, w, h]: [f32; 4], color: u32) {
-    b.sprite_scaled(a, &format!("gui/bedrock/{name}"), x, y, w, h, color);
+    fitted_sprite(b, a, name, [x, y, w, h], color);
 }
 /// Glyphs such as the inventory ellipsis are deliberately wide and short.
 /// Fit their original pixels inside the hit target without stretching them.
@@ -620,6 +627,54 @@ fn line(
 mod tests {
     use super::*;
     #[test]
+    fn contextual_button_is_opt_in_targeted_and_owned_until_release() {
+        let mut t = TouchControls::default();
+        t.settings.mode = Mode::Tap;
+        t.context_use = true;
+        assert!(!t.visible(Control::Use));
+        t.settings.contextual_interact = true;
+        assert!(t.visible(Control::Use));
+        t.update(1, [0.92, 0.52], true, false);
+        t.context_use = false;
+        assert!(t.visible(Control::Use));
+        assert_eq!(t.poll_state().triggers[0], 1.0);
+        t.update(1, [0.92, 0.52], false, true);
+        assert!(!t.visible(Control::Use));
+        t.settings.mode = Mode::Crosshair;
+        assert!(t.visible(Control::Use));
+    }
+    #[test]
+    fn looking_with_food_does_not_start_eating_and_use_button_never_disappears() {
+        let mut t = TouchControls::default();
+        t.settings.mode = Mode::Tap;
+        t.hold_uses_item = true;
+        t.update(1, [0.6, 0.4], true, false);
+        assert_eq!(t.poll_state().triggers, [0.0; 2]);
+        t.update(1, [0.7, 0.4], false, false);
+        if let Some((Role::Look { since, .. }, _)) = t.fingers.get_mut(&1) {
+            *since = Instant::now() - Duration::from_secs(1);
+        }
+        assert_eq!(t.poll_state().triggers, [0.0; 2]);
+        assert!(!t.visible(Control::Use));
+        assert_eq!(t.pointer(), Some([0.7, 0.4]));
+    }
+    #[test]
+    fn all_four_schemes_are_selectable_and_large_icons_remain_inside_the_surface() {
+        let mut t = TouchControls::default();
+        t.open_settings();
+        for (i, (mode, split, _)) in Mode::SCHEMES.into_iter().enumerate() {
+            t.edit_touch(i as u64, [0.2, 0.20 + i as f32 * 0.14], true, true);
+            assert_eq!(t.settings.mode, mode);
+            assert_eq!(t.settings.split_controls, split);
+            assert_eq!(t.settings.crosshair(), i == 0 || i == 3);
+        }
+        t.cancel_editor();
+        t.settings.layouts[0][Control::Jump as usize].center = [0.99, 0.99];
+        t.settings.layouts[0][Control::Jump as usize].size = 0.4;
+        let r = t.placement(Control::Jump).rect(t.aspect());
+        assert!(r[0] >= 0.0 && r[1] >= 0.0 && r[0] + r[2] <= 1.00001 && r[1] + r[3] <= 1.00001);
+    }
+    #[test]
     fn quick_tap_survives_one_poll_and_shared_buttons_release_independently() {
         let mut t = TouchControls::default();
         t.update(1, [0.92, 0.78], true, false);
@@ -678,7 +733,7 @@ mod tests {
         assert_eq!(t.poll_state().triggers, [0.0; 2]);
     }
     #[test]
-    fn long_hold_mines_but_drag_cancels_it() {
+    fn long_hold_keeps_mining_while_the_camera_turns() {
         let mut t = TouchControls::default();
         t.settings.mode = Mode::Tap;
         t.update(1, [0.6, 0.4], true, false);
@@ -687,9 +742,11 @@ mod tests {
         }
         assert_eq!(t.poll_state().triggers[1], 1.0);
         assert_eq!(t.aim, Some([0.6, 0.4]));
-        t.update(1, [0.7, 0.4], false, false);
+        assert_ne!(t.update(1, [0.7, 0.4], false, false), [0.0; 2]);
+        assert_eq!(t.poll_state().triggers[1], 1.0);
+        assert_eq!(t.aim, Some([0.7, 0.4]));
+        t.update(1, [0.7, 0.4], false, true);
         assert_eq!(t.poll_state().triggers[1], 0.0);
-        assert_eq!(t.aim, None);
     }
     #[test]
     fn held_food_survives_drift_and_releases_with_its_owner() {
@@ -702,10 +759,10 @@ mod tests {
         }
         assert_eq!(t.poll_state().triggers, [1.0, 0.0]);
         assert!(t.holding_use);
-        assert_eq!(t.update(1, [0.66, 0.46], false, false), [0.0; 2]);
+        assert_ne!(t.update(1, [0.66, 0.46], false, false), [0.0; 2]);
         t.hold_uses_item = false; // consuming the last item cannot become mining
         assert_eq!(t.poll_state().triggers, [1.0, 0.0]);
-        assert_eq!(t.aim, Some([0.6, 0.4]));
+        assert_eq!(t.aim, Some([0.66, 0.46]));
         t.update(2, [0.4, 0.3], true, false);
         assert_ne!(t.update(2, [0.45, 0.3], false, false), [0.0; 2]);
         assert_eq!(t.poll_state().triggers, [1.0, 0.0]);
@@ -727,7 +784,7 @@ mod tests {
         assert!(t.holding);
         t.latch_use();
         assert_eq!(t.poll_state().triggers, [1.0, 0.0]);
-        assert_eq!(t.update(1, [0.66, 0.4], false, false), [0.0; 2]);
+        assert_ne!(t.update(1, [0.66, 0.4], false, false), [0.0; 2]);
         t.update(1, [0.66, 0.4], false, true);
         assert_eq!(t.poll_state().triggers, [0.0; 2]);
         assert!(!t.holding);
@@ -737,7 +794,7 @@ mod tests {
         assert!(!t.holding);
     }
     #[test]
-    fn touch_marker_and_aim_follow_taps_but_disappear_on_camera_drag() {
+    fn touch_marker_follows_camera_drag_without_starting_an_action() {
         let mut t = TouchControls::default();
         t.settings.mode = Mode::Tap;
         assert_eq!(t.pointer(), None);
@@ -747,7 +804,7 @@ mod tests {
         assert_eq!(t.aim, Some([0.6, 0.4]));
         t.update(1, [0.7, 0.4], false, false);
         t.poll_state();
-        assert_eq!(t.pointer(), None);
+        assert_eq!(t.pointer(), Some([0.7, 0.4]));
         assert_eq!(t.aim, None);
         t.clear();
         t.settings.mode = Mode::Crosshair;

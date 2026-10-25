@@ -260,13 +260,87 @@ impl Game<'_> {
     }
 
     #[cfg(target_os = "android")]
-    fn touch_entity_accepts_use(&self) -> bool {
+    pub(super) fn touch_entity_accepts_use(&self) -> bool {
         self.mob_hit()
             .filter(|(_, distance)| self.before_block(*distance))
             .is_some_and(|(i, _)| {
                 self.remote_mob_takes(i, horizon_client::first_person::Hand::Main)
                     || self.remote_mob_takes(i, horizon_client::first_person::Hand::Off)
             })
+    }
+
+    #[cfg(target_os = "android")]
+    pub(super) fn touch_context_use(&self) -> bool {
+        if self.touch_entity_accepts_use()
+            || [
+                self.boat_hit().map(|h| h.1),
+                self.cart_hit().map(|h| h.1),
+                self.armor_stand_hit().map(|h| h.1),
+                self.frame_hit().map(|h| h.1),
+            ]
+            .into_iter()
+            .flatten()
+            .any(|d| self.before_block(d))
+        {
+            return true;
+        }
+        let Some(hit) = self.pick() else {
+            return false;
+        };
+        let state = self.world.block(hit.pos[0], hit.pos[1], hit.pos[2]);
+        let b = self.res.behaviours();
+        let data = b.data(state);
+        let p = b.props;
+        let table = &b.table;
+        use horizon_world::level::classes::Class;
+        data.chain.iter().any(|c| match c {
+            Class::Door | Class::TrapDoor => {
+                data.set_type.as_ref().is_some_and(|s| s.can_open_by_hand)
+            }
+            Class::Cake | Class::CandleCake => {
+                self.creative
+                    || self
+                        .player
+                        .as_ref()
+                        .is_some_and(|p| p.health.food.food < 20)
+            }
+            Class::Composter => table.int(state, p.level) == 8,
+            Class::CaveVines | Class::CaveVinesPlant => table.bool(state, p.berries),
+            Class::SweetBerryBush => table.int(state, p.age) > 1,
+            Class::Repeater | Class::Comparator | Class::DaylightDetector | Class::RedstoneWire => {
+                self.mode != horizon_client::command::args::GameMode::Adventure
+            }
+            Class::FenceGate
+            | Class::Button
+            | Class::Lever
+            | Class::Note
+            | Class::Bell
+            | Class::FlowerPot
+            | Class::DragonEgg
+            | Class::AbstractBed
+            | Class::RespawnAnchor
+            | Class::AbstractFurnace
+            | Class::Anvil
+            | Class::Barrel
+            | Class::Beacon
+            | Class::BrewingStand
+            | Class::CartographyTable
+            | Class::Chest
+            | Class::Crafter
+            | Class::CraftingTable
+            | Class::Dispenser
+            | Class::EnchantingTable
+            | Class::EnderChest
+            | Class::Grindstone
+            | Class::Hopper
+            | Class::Loom
+            | Class::ShulkerBox
+            | Class::Sign
+            | Class::SmithingTable
+            | Class::Stonecutter
+            | Class::Lectern => true,
+            _ => false,
+        })
     }
 
     /// Touch fly/swim down is held even when ground sneaking is toggled.
@@ -352,7 +426,14 @@ impl Game<'_> {
         {
             return None;
         }
-        gamepad::move_vector(self.pad.state.left, settings.move_deadzone)
+        #[cfg(target_os = "android")]
+        {
+            gamepad::java_move_vector(self.pad.state.left, settings.move_deadzone)
+        }
+        #[cfg(not(target_os = "android"))]
+        {
+            gamepad::move_vector(self.pad.state.left, settings.move_deadzone)
+        }
     }
 
     /// The right stick turns the view, once per frame (`Entity.turn`).

@@ -20,7 +20,12 @@ enum Drag {
     Slider(usize),
     Sensitivity,
 }
-const OPTIONS: [&str; 4] = ["Split", "Left hand", "Auto sprint", "Swap jump/sneak"];
+const OPTIONS: [&str; 4] = [
+    "Interact button",
+    "Left hand",
+    "Auto sprint",
+    "Swap jump/sneak",
+];
 
 impl TouchControls {
     pub fn open_editor(&mut self) {
@@ -51,6 +56,7 @@ impl TouchControls {
         let Some(mut e) = self.editor.take() else {
             return false;
         };
+        self.clicked |= started;
         if e.settings_page {
             if started {
                 if layout::contains([0.05, 0.84, 0.28, 0.10], p) {
@@ -70,16 +76,17 @@ impl TouchControls {
                 } else if layout::contains([0.52, 0.70, 0.43, 0.08], p) {
                     e.drag = Some((id, Drag::Sensitivity));
                 } else {
-                    for (i, mode) in Mode::ALL.into_iter().enumerate() {
-                        if layout::contains([0.05, 0.19 + i as f32 * 0.16, 0.43, 0.13], p) {
+                    for (i, (mode, split, _)) in Mode::SCHEMES.into_iter().enumerate() {
+                        if layout::contains([0.05, 0.16 + i as f32 * 0.14, 0.43, 0.12], p) {
                             self.settings.mode = mode;
+                            self.settings.split_controls = split;
                         }
                     }
                     for i in 0..4 {
                         if layout::contains([0.52, 0.19 + i as f32 * 0.12, 0.43, 0.09], p) {
                             match i {
-                                0 if self.settings.mode == Mode::Dpad => {
-                                    self.settings.split_controls ^= true
+                                0 if !self.settings.crosshair() => {
+                                    self.settings.contextual_interact ^= true
                                 }
                                 1 => self.settings.left_handed ^= true,
                                 2 if self.settings.mode != Mode::Dpad => {
@@ -140,12 +147,11 @@ impl TouchControls {
             } else if layout::contains([0.51, 0.79, 0.17, 0.07], p) && e.selected.is_some() {
                 e.option = Some(0);
             } else if let Some(c) = Control::ALL.into_iter().rev().find(|c| {
-                self.visible(*c)
-                    && layout::contains(self.settings.placement(*c).rect(self.aspect()), p)
+                self.visible(*c) && layout::contains(self.placement(*c).rect(self.aspect()), p)
             }) {
                 e.selected = Some(c);
                 e.option = None;
-                let center = self.settings.placement(c).center;
+                let center = self.placement(c).center;
                 e.drag = Some((id, Drag::Control([p[0] - center[0], p[1] - center[1]])));
             } else {
                 e.selected = None;
@@ -210,26 +216,28 @@ impl TouchControls {
                 text,
                 true,
             );
-            for (i, mode) in Mode::ALL.into_iter().enumerate() {
+            for (i, (mode, split, label)) in Mode::SCHEMES.into_iter().enumerate() {
                 plate(
                     b,
                     a,
-                    [0.05, 0.19 + i as f32 * 0.16, 0.43, 0.13],
-                    mode.label(),
-                    self.settings.mode == mode,
+                    [0.05, 0.16 + i as f32 * 0.14, 0.43, 0.12],
+                    label,
+                    self.settings.mode == mode
+                        && (mode != Mode::Dpad || self.settings.split_controls == split),
                 );
             }
             for (i, (name, on)) in OPTIONS
                 .into_iter()
                 .zip([
-                    self.settings.split_controls,
+                    self.settings.contextual_interact,
                     self.settings.left_handed,
                     self.settings.sprint_with_joystick,
                     self.settings.swap_jump_sneak,
                 ])
                 .enumerate()
             {
-                if (i == 0 || i == 3) && self.settings.mode != Mode::Dpad
+                if (i == 0 && self.settings.crosshair())
+                    || (i == 3) && self.settings.mode != Mode::Dpad
                     || i == 2 && self.settings.mode == Mode::Dpad
                 {
                     continue;
@@ -304,7 +312,7 @@ impl TouchControls {
         }
         plate(b, a, [0.02, 0.14, 0.335, 0.075], "Touch settings...", false);
         if let Some(selected) = e.selected {
-            let p = self.settings.placement(selected);
+            let p = self.placement(selected);
             plate(
                 b,
                 a,

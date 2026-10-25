@@ -19,6 +19,12 @@ impl Mode {
             Self::Dpad => "D-Pad & tap to interact",
         }
     }
+    pub const SCHEMES: [(Self, bool, &str); 4] = [
+        (Self::Crosshair, false, "Joystick & aim crosshair"),
+        (Self::Tap, false, "Joystick & tap to interact"),
+        (Self::Dpad, false, "D-Pad & tap to interact"),
+        (Self::Dpad, true, "D-Pad & aim crosshair"),
+    ];
     pub fn index(self) -> usize {
         match self {
             Self::Crosshair => 0,
@@ -114,6 +120,7 @@ impl Placement {
 pub struct Settings {
     pub mode: Mode,
     pub split_controls: bool,
+    pub contextual_interact: bool,
     pub left_handed: bool,
     pub sprint_with_joystick: bool,
     pub swap_jump_sneak: bool,
@@ -140,6 +147,7 @@ impl Default for Settings {
         Self {
             mode: Mode::Crosshair,
             split_controls: false,
+            contextual_interact: false,
             left_handed: false,
             sprint_with_joystick: false,
             swap_jump_sneak: false,

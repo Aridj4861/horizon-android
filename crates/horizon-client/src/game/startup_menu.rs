@@ -13,6 +13,8 @@ pub(super) struct StartupMenu {
     touch: horizon_client::touch_ui::TouchUi,
     #[cfg(target_os = "android")]
     controls: horizon_client::touch::TouchControls,
+    #[cfg(target_os = "android")]
+    audio: Option<horizon_client::audio::Audio>,
     title: Option<Title>,
     options: OptionsUi,
     options_open: bool,
@@ -88,6 +90,10 @@ impl StartupMenu {
         {
             game.pad.touch = std::mem::take(&mut self.controls);
         }
+        #[cfg(target_os = "android")]
+        {
+            self.audio = None;
+        }
         game.title = self.title.take();
         game.pending_entry = self.pending.take();
         game.cursor = self.cursor;
@@ -108,6 +114,18 @@ impl StartupMenu {
         }
     }
 
+    #[cfg(target_os = "android")]
+    fn click_sound(&mut self, volumes: [f32; 11]) {
+        let audio = self
+            .audio
+            .get_or_insert_with(|| horizon_client::audio::Audio::new(&self.root));
+        audio.master = volumes[0];
+        let mut volumes = volumes;
+        volumes[0] = 1.0;
+        horizon_client::settings::set_source_volumes(volumes);
+        audio.tick(false, &Default::default());
+        audio.play_button_click();
+    }
     fn queue_entry(&mut self, action: Action, player_name: String) {
         let entry = match action {
             Action::Play { folder } => PendingWorldEntry::Local {
@@ -396,7 +414,11 @@ impl Loading {
                     }
                 }
                 // The startup menu runs before the game opens a control socket.
-                Event::ButtonClick | Event::CopyAgentDetails => {}
+                Event::ButtonClick => {
+                    #[cfg(target_os = "android")]
+                    self.menu.click_sound(self.settings.volumes);
+                }
+                Event::CopyAgentDetails => {}
             }
         }
     }
@@ -500,6 +522,9 @@ impl Loading {
                         t.phase == TouchPhase::Started,
                         t.phase == TouchPhase::Ended,
                     );
+                }
+                if std::mem::take(&mut self.menu.controls.clicked) {
+                    self.menu.click_sound(self.settings.volumes);
                 }
                 return Ok(());
             }

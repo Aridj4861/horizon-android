@@ -10080,7 +10080,7 @@ impl Game<'_> {
             || (self.title.is_none() && self.screen == Screen::Playing)
         {
             self.pad.touch.context_use =
-                self.entity_targeted() || self.touch_item_held_use() || self.riding.is_some();
+                self.pad.touch.settings.contextual_interact && self.touch_context_use();
             self.pad.touch.vertical_movement = self.player.as_ref().is_some_and(|p| p.flying);
             self.pad.touch.swimming = self.player.as_ref().is_some_and(|p| p.swimming);
             self.pad.touch.mounted = self.riding.is_some();
@@ -10973,6 +10973,9 @@ impl ApplicationHandler for Game<'_> {
                     touch.phase == TouchPhase::Ended,
                 ) {
                     self.pause = false;
+                }
+                if std::mem::take(&mut self.pad.touch.clicked) {
+                    self.audio.play_button_click();
                 }
                 return;
             }
