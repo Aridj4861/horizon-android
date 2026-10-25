@@ -13,6 +13,7 @@ horizon-client = { path = "../horizon-client", default-features = false }
 android_logger = "0.15"
 jni = "0.21"
 getrandom = "0.3"
+url = "2"
 horizon-assets = { path = "../horizon-assets" }
 horizon-port-pack = { path = "../horizon-port-pack" }
 sha1 = "0.10"

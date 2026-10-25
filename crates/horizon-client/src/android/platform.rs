@@ -210,6 +210,12 @@ pub fn clipboard_get() -> Option<String> {
     })
 }
 pub fn clipboard_set(text: &str) {
+    let _ = clipboard_write(text, false);
+}
+pub fn copy_login_code(text: &str) -> bool {
+    clipboard_write(text, true)
+}
+fn clipboard_write(text: &str, sensitive: bool) -> bool {
     with_context(|env, activity| {
         let name = JObject::from(env.new_string("clipboard")?);
         let service = env
@@ -230,6 +236,30 @@ pub fn clipboard_set(text: &str) {
                 &[JValue::Object(&label), JValue::Object(&value)],
             )?
             .l()?;
+        if sensitive {
+            let extras = env.new_object("android/os/PersistableBundle", "()V", &[])?;
+            let key = JObject::from(env.new_string("android.content.extra.IS_SENSITIVE")?);
+            env.call_method(
+                &extras,
+                "putBoolean",
+                "(Ljava/lang/String;Z)V",
+                &[JValue::Object(&key), JValue::Bool(1)],
+            )?;
+            let description = env
+                .call_method(
+                    &clip,
+                    "getDescription",
+                    "()Landroid/content/ClipDescription;",
+                    &[],
+                )?
+                .l()?;
+            env.call_method(
+                &description,
+                "setExtras",
+                "(Landroid/os/PersistableBundle;)V",
+                &[JValue::Object(&extras)],
+            )?;
+        }
         env.call_method(
             service,
             "setPrimaryClip",
@@ -237,7 +267,8 @@ pub fn clipboard_set(text: &str) {
             &[JValue::Object(&clip)],
         )?;
         Ok(())
-    });
+    })
+    .is_some()
 }
 
 pub fn active() -> bool {
@@ -312,15 +343,42 @@ pub fn field_at(p: [f32; 2]) -> bool {
 
 /// Only Microsoft's device-code verification pages can be opened by the login panel.
 pub fn open_login_url(url: &str) -> Result<(), String> {
-    if ![
+    let fixed = [
         "https://www.microsoft.com/link",
         "https://microsoft.com/link",
         "https://microsoft.com/devicelogin",
         "https://www.microsoft.com/devicelogin",
+        "https://aka.ms/mce-reviewappid",
     ]
-    .contains(&url)
-    {
-        return Err("Unexpected Microsoft verification URL.".into());
+    .contains(&url);
+    let verification = url::Url::parse(url).is_ok_and(|u| {
+        let pairs = u.query_pairs().collect::<Vec<_>>();
+        u.scheme() == "https"
+            && matches!(u.host_str(), Some("microsoft.com" | "www.microsoft.com"))
+            && matches!(u.path(), "/link" | "/devicelogin")
+            && u.username().is_empty()
+            && u.password().is_none()
+            && u.port_or_known_default() == Some(443)
+            && u.fragment().is_none()
+            && pairs.len() == 1
+            && pairs[0].0 == "otc"
+            && pairs[0].1.len() <= 32
+            && pairs[0]
+                .1
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '-')
+    });
+    let authorize = url::Url::parse(url).is_ok_and(|u| {
+        u.scheme() == "https"
+            && u.host_str() == Some("login.microsoftonline.com")
+            && u.port_or_known_default() == Some(443)
+            && u.username().is_empty()
+            && u.password().is_none()
+            && u.path() == "/consumers/oauth2/v2.0/authorize"
+            && u.fragment().is_none()
+    });
+    if !fixed && !authorize && !verification {
+        return Err("Unexpected Microsoft sign-in URL.".into());
     }
     crate::APP.with(|slot| {
         let app = slot.borrow();
@@ -342,6 +400,32 @@ pub fn open_login_url(url: &str) -> Result<(), String> {
                 "android/content/Intent",
                 "(Ljava/lang/String;Landroid/net/Uri;)V",
                 &[JValue::Object(&action), JValue::Object(&uri)],
+            )?;
+            // The documented Custom Tabs intent protocol uses a nullable session
+            // binder. Unsupported browsers fall back to ordinary ACTION_VIEW.
+            let extras = env.new_object("android/os/Bundle", "()V", &[])?;
+            let session =
+                JObject::from(env.new_string("android.support.customtabs.extra.SESSION")?);
+            let null = JObject::null();
+            env.call_method(
+                &extras,
+                "putBinder",
+                "(Ljava/lang/String;Landroid/os/IBinder;)V",
+                &[JValue::Object(&session), JValue::Object(&null)],
+            )?;
+            env.call_method(
+                &intent,
+                "putExtras",
+                "(Landroid/os/Bundle;)Landroid/content/Intent;",
+                &[JValue::Object(&extras)],
+            )?;
+            let title =
+                JObject::from(env.new_string("android.support.customtabs.extra.TITLE_VISIBILITY")?);
+            env.call_method(
+                &intent,
+                "putExtra",
+                "(Ljava/lang/String;I)Landroid/content/Intent;",
+                &[JValue::Object(&title), JValue::Int(1)],
             )?;
             let activity = unsafe { JObject::from_raw(app.activity_as_ptr().cast()) };
             env.call_method(

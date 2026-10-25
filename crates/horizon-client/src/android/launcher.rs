@@ -221,6 +221,7 @@ impl ApplicationHandler for Launcher {
         if let Some(game) = &mut self.game {
             return game.suspended(events);
         }
+        self.drag = None;
         if let Some(renderer) = &mut self.renderer {
             renderer.release_surface();
             renderer.suspended = true;
@@ -234,6 +235,10 @@ impl ApplicationHandler for Launcher {
         }
         let result = match event {
             WindowEvent::CloseRequested => {
+                if self.login.visible || self.login.pending() {
+                    self.login.hide();
+                    return;
+                }
                 events.exit();
                 Ok(())
             }

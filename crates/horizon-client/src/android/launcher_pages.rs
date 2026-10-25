@@ -21,6 +21,10 @@ pub(super) enum Action {
     Logs,
     Account,
     SignIn,
+    DeviceSignIn,
+    CopyLoginCode,
+    CancelLogin,
+    ReviewApp,
     SignOut,
     LoginLink,
     CloseLogin,
@@ -121,7 +125,7 @@ impl Launcher {
             w - 320.0,
             38.0,
             color::MUTED,
-            "26.3 / Android 0.6.1",
+            "26.3 / Android 0.6.2",
         );
         let tabs = Page::ALL.len() as f32;
         let tab_width = (w - 64.0) / tabs;
@@ -510,11 +514,7 @@ impl Launcher {
             );
         }
         if self.login.visible {
-            self.login.draw(
-                &mut ui,
-                &mut self.targets,
-                &self.catalog.config.microsoft_client_id,
-            );
+            self.login.draw(&mut ui, &mut self.targets);
         }
         if let Some(chooser) = &mut self.chooser {
             chooser.draw(&mut ui, &mut self.targets);
@@ -552,10 +552,19 @@ impl Launcher {
                 self.login.visible = true;
             }
             Some(Action::CloseLogin) => {
-                self.login.close();
+                self.login.hide();
                 crate::platform::hide();
                 self.catalog.editing = None;
             }
+            Some(Action::DeviceSignIn) => self
+                .login
+                .start_device(&self.catalog.config.microsoft_client_id),
+            Some(Action::CopyLoginCode) => self.login.copy_code(),
+            Some(Action::CancelLogin) => {
+                self.login.close();
+                self.login.visible = true;
+            }
+            Some(Action::ReviewApp) => self.login.review_app(),
             Some(Action::SignIn) => self.login.start(&self.catalog.config.microsoft_client_id),
             Some(Action::SignOut) => self.login.sign_out(),
             Some(Action::LoginLink) => self.login.open_link(),
@@ -671,7 +680,7 @@ impl Launcher {
                 == winit::keyboard::Key::Named(winit::keyboard::NamedKey::BrowserBack)
         {
             if self.login.visible {
-                self.login.close();
+                self.login.hide();
                 crate::platform::hide();
                 self.catalog.editing = None;
                 return;

@@ -236,26 +236,31 @@ The `.hmod` page imports native packages from a direct HTTPS URL and no longer
 searches Java mods. Fabric/Forge/JAR code does not execute in this Rust engine.
 Resource packs remain supported. Android 0.6.1 removes the modpack UI and launch pipeline.
 
-### Microsoft / Xbox account on Android
+### Microsoft / Xbox account on Android (dev build)
 
-Settings → Microsoft / Xbox account uses our **registered public client ID**
-`f3f35a87-587b-4797-9d68-89c0783e6fd2` by default. A developer override remains
-available in the panel. Registration belongs to the repository owner: follow
-[Microsoft's device-code documentation](https://learn.microsoft.com/entra/identity-platform/v2-oauth2-device-code)
-and the upstream [Minecraft registration notes](microsoft-account.md), substituting
-`Vasysik/horizon-android` and our application's name for the upstream project.
-Microsoft accepted a device-code request for this ID and the requested Xbox scopes.
-That establishes the initial OAuth step, not Minecraft Services approval or game ownership.
-Do not use another launcher's ID or put a client secret in the APK.
+Android 0.6.2 temporarily uses the public Minecraft Nintendo Switch application
+identifier `00000000441cc96b`, as requested by the fork owner for development.
+The identifier is listed in [PrismarineJS's public title constants](https://github.com/PrismarineJS/prismarine-auth/blob/master/src/common/Titles.js).
+It is not Horizon's own application registration and this does not mean Mojang
+has approved this fork. The previous owner's client ID is no longer bundled or
+read from saved launcher configuration. Existing account tokens are not bundled.
 
-The panel shares the desktop launcher's device-code → Xbox Live → XSTS →
-Minecraft entitlement/profile checks, opens the verification page in Android's
-browser, and passes the game a private one-use session file. Session renewal runs
-in a worker so the launcher remains responsive. Tokens are currently memory-only
-on Android: closing the process requires signing in again. Account names/UUIDs
-persist without tokens. Use Sign out to return to an offline profile. Production
-online-mode login remains unverified until the owner completes sign-in and
-Minecraft Services accepts the app.
+This registration requires Microsoft Live's `oauth20_connect.srf` and
+`oauth20_token.srf`, with the Xbox Live service scope, rather than Entra's device
+endpoint. Login uses the existing Xbox/XSTS, Java entitlement and profile checks;
+there is no license or server authentication bypass. The initial Live device-code
+request was accepted; a complete sign-in needs account testing.
+
+Sign in opens a browser Custom Tab automatically. The code is copied to Android's
+clipboard and passed to Microsoft's `link?otc=...` page. If the browser does not
+prefill it, paste the copied code. The code is also a tappable Copy button in the
+account panel. Back hides the panel and keeps the request pending; Cancel sign-in
+explicitly cancels it. Browser suspension does not cancel the worker. Tokens remain
+in memory for this app process and are passed to the game in a private one-use file.
+
+For a future production build, use the project's own approved registration.
+The [Minecraft App ID review form](https://aka.ms/mce-reviewappid) is the approval
+entry point; the development identifier does not grant approval to our app.
 
 The comparison port `CornyBirdy/horizon4android` was reviewed as a separate WIP:
 its documentation marks physical-device runtime/input checks as outstanding.
@@ -263,9 +268,8 @@ Its Java activity implementation was not imported into this native Rust launcher
 
 ## Android 0.6.1
 
-The owner's public Microsoft client ID is configured automatically for fresh
-installations and installations with an empty saved ID. Explicit developer
-overrides remain unchanged. No client secret or account token is bundled.
+Version 0.6.1 configured the owner's public registration. Version 0.6.2 replaces
+that configuration with the fixed temporary dev identifier described above.
 
 Removed the Modpacks tab, modpack picker on Play, importing/conversion actions
 and automatic `--dev-mod` launch arguments. Old `pack` selections in
@@ -274,3 +278,12 @@ Old imported directories, worlds and their manifest records are not deleted.
 They remain in `profiles/profile-N/ported-packs/` (or `ported-packs/` for the
 default profile) for manual recovery. Installed shows native `.hmod` packages
 and resource packs. The desktop launcher's modpack support remains upstream's.
+
+## Android 0.6.2
+
+The temporary dev registration uses Microsoft Live device-code authentication,
+with its distinct endpoint, scope and Xbox ticket prefix. Live session cookies
+are retained only while a device-code request is pending. Microsoft accepted the
+initial request; a complete licensed-account sign-in has not been tested here.
+The browser uses the documented Custom Tabs intent protocol, with an ordinary
+browser fallback. Closing the account panel no longer cancels an active request.

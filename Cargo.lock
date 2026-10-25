@@ -1310,6 +1310,7 @@ dependencies = [
  "sha2",
  "symphonia",
  "ureq",
+ "url",
  "wgpu",
  "winit",
  "zip",

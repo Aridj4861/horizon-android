@@ -6,6 +6,7 @@ use horizon_client::ui_theme::{Face, Ui, color};
 pub(super) struct Login {
     pub visible: bool,
     task: Option<SignIn>,
+    auto_open_device: bool,
     state: Option<SignInState>,
     message: String,
 }
@@ -14,11 +15,19 @@ impl Login {
         Self {
             visible: false,
             task: None,
+            auto_open_device: false,
             state: None,
             message: String::new(),
         }
     }
+    pub fn pending(&self) -> bool {
+        self.task.is_some()
+    }
+    pub fn hide(&mut self) {
+        self.visible = false;
+    }
     pub fn close(&mut self) {
+        self.auto_open_device = false;
         if let Some(task) = self.task.take() {
             task.cancel();
         }
@@ -26,17 +35,22 @@ impl Login {
         self.visible = false;
     }
     pub fn start(&mut self, id: &str) {
+        self.start_device(id);
+        self.auto_open_device = true;
+    }
+    pub fn start_device(&mut self, id: &str) {
         self.close();
         self.visible = true;
         let id = id.trim();
-        if id.len() != 36
-            || !id.chars().enumerate().all(|(i, c)| {
-                if [8, 13, 18, 23].contains(&i) {
-                    c == '-'
-                } else {
-                    c.is_ascii_hexdigit()
-                }
-            })
+        if !account::legacy_client(id)
+            && (id.len() != 36
+                || !id.chars().enumerate().all(|(i, c)| {
+                    if [8, 13, 18, 23].contains(&i) {
+                        c == '-'
+                    } else {
+                        c.is_ascii_hexdigit()
+                    }
+                }))
         {
             self.message =
                 "Register our Microsoft public client application first, then enter its client ID."
@@ -58,6 +72,10 @@ impl Login {
                 self.task = None;
             }
         }
+        if self.auto_open_device && matches!(self.state, Some(SignInState::Code(_))) {
+            self.auto_open_device = false;
+            self.open_link();
+        }
     }
     pub fn sign_out(&mut self) {
         self.close();
@@ -73,10 +91,32 @@ impl Login {
             };
         }
     }
+    pub fn copy_code(&mut self) {
+        if let Some(SignInState::Code(code)) = &self.state {
+            self.message = if crate::platform::copy_login_code(&code.user_code) {
+                "Code copied. Paste it on the Microsoft page.".into()
+            } else {
+                "Could not copy the code. Try again.".into()
+            };
+        }
+    }
     pub fn open_link(&mut self) {
-        if let Some(SignInState::Code(code)) = &self.state
-            && let Err(e) = crate::platform::open_login_url(&code.verification_uri)
-        {
+        if let Some(SignInState::Code(code)) = &self.state {
+            let mut url = url::Url::parse(&code.verification_uri).ok();
+            if let Some(uri) = &mut url {
+                uri.query_pairs_mut().append_pair("otc", &code.user_code);
+            }
+            let url = url
+                .map(String::from)
+                .unwrap_or_else(|| code.verification_uri.clone());
+            self.copy_code();
+            if let Err(e) = crate::platform::open_login_url(&url) {
+                self.message = e;
+            }
+        }
+    }
+    pub fn review_app(&mut self) {
+        if let Err(e) = crate::platform::open_login_url("https://aka.ms/mce-reviewappid") {
             self.message = e;
         }
     }
@@ -94,8 +134,8 @@ impl Login {
         accounts.save()?;
         Ok(Some((a, secrets)))
     }
-    pub fn draw(&self, ui: &mut Ui, targets: &mut Vec<([f32; 4], Action)>, id: &str) {
-        targets.clear(); // Modal input must never reach the page beneath it.
+    pub fn draw(&self, ui: &mut Ui, targets: &mut Vec<([f32; 4], Action)>) {
+        targets.clear();
         let w = (ui.w - 32.0).min(720.0);
         let h = (ui.h - 24.0).min(490.0);
         let x = (ui.w - w) / 2.0;
@@ -113,7 +153,7 @@ impl Login {
             .selected()
             .map(|a| format!("Minecraft profile: {}", a.name))
             .unwrap_or_else(|| {
-                "Offline profile. A Minecraft: Java Edition license is required.".into()
+                "Sign in with the Microsoft account that owns Minecraft: Java Edition.".into()
             });
         ui.text(
             Face::Regular,
@@ -123,34 +163,29 @@ impl Login {
             color::MUTED,
             &account,
         );
-        ui.text(
-            Face::Regular,
-            14.0,
-            x + 20.0,
-            y + 86.0,
-            color::MUTED,
-            "Public client ID of our own approved application:",
-        );
-        button(
-            ui,
-            targets,
-            [x + 20.0, y + 110.0, w - 40.0, 42.0],
-            if id.is_empty() {
-                "Not configured - enter client ID"
-            } else {
-                id
-            },
-            Action::Field("client_id"),
-            false,
-        );
+        if let Some(SignInState::Code(code)) = &self.state {
+            button(
+                ui,
+                targets,
+                [x + 20.0, y + 96.0, w - 40.0, 48.0],
+                &format!("{}    /    Copy code", code.user_code),
+                Action::CopyLoginCode,
+                false,
+            );
+        } else {
+            ui.text(
+                Face::Regular,
+                16.0,
+                x + 20.0,
+                y + 104.0,
+                color::TEXT,
+                "Your password is entered in Microsoft's browser.",
+            );
+        }
         let text = match &self.state {
-            Some(SignInState::Starting) => "Requesting a sign-in code...".into(),
-            Some(SignInState::Code(code)) => {
-                format!("Open Microsoft sign-in and enter: {}", code.user_code)
-            }
-            _ => self.message.clone(),
+            Some(SignInState::Starting) => "Requesting a sign-in code...",
+            _ => &self.message,
         };
-        // Wrap status and errors instead of drawing over the modal edge.
         let limit = ((w - 40.0) / 7.5).max(20.0) as usize;
         let mut line = String::new();
         let mut row = 0;
@@ -160,62 +195,86 @@ impl Login {
                     Face::Regular,
                     14.0,
                     x + 20.0,
-                    y + 174.0 + row as f32 * 20.0,
+                    y + 166.0 + row as f32 * 20.0,
                     color::TEXT,
                     &line,
                 );
                 row += 1;
                 line.clear();
-                if row >= 4 {
+                if row >= 5 {
                     break;
                 }
             }
             if !line.is_empty() {
-                line.push(' ')
+                line.push(' ');
             }
             line.push_str(word);
         }
-        if row < 4 {
+        if row < 5 {
             ui.text(
                 Face::Regular,
                 14.0,
                 x + 20.0,
-                y + 174.0 + row as f32 * 20.0,
+                y + 166.0 + row as f32 * 20.0,
                 color::TEXT,
                 &line,
             );
         }
-        ui.text(Face::Regular,13.0,x+20.0,y+h-144.0,color::MUTED,"Tokens stay in memory for this app session. Passwords are entered in Microsoft's browser.");
         let half = (w - 52.0) / 2.0;
+        if self.message.contains("not approved by Mojang") {
+            button(
+                ui,
+                targets,
+                [x + 20.0, y + h - 196.0, w - 40.0, 38.0],
+                "Request Minecraft API approval",
+                Action::ReviewApp,
+                false,
+            );
+        }
+        let (label, action) = if matches!(self.state, Some(SignInState::Code(_))) {
+            ("Copy code and open browser", Action::LoginLink)
+        } else if self.pending() {
+            ("Restart browser sign-in", Action::SignIn)
+        } else {
+            ("Sign in with browser", Action::SignIn)
+        };
         button(
             ui,
             targets,
-            [x + 20.0, y + h - 110.0, half, 42.0],
-            if matches!(self.state, Some(SignInState::Code(_))) {
-                "Open Microsoft sign-in"
-            } else {
-                "Sign in"
-            },
-            if matches!(self.state, Some(SignInState::Code(_))) {
-                Action::LoginLink
-            } else {
-                Action::SignIn
-            },
+            [x + 20.0, y + h - 148.0, w - 40.0, 42.0],
+            label,
+            action,
             true,
         );
         button(
             ui,
             targets,
-            [x + 32.0 + half, y + h - 110.0, half, 42.0],
-            "Sign out",
-            Action::SignOut,
+            [x + 20.0, y + h - 98.0, half, 38.0],
+            "Use a device code instead",
+            Action::DeviceSignIn,
             false,
         );
         button(
             ui,
             targets,
-            [x + 20.0, y + h - 58.0, w - 40.0, 42.0],
-            "Close",
+            [x + 32.0 + half, y + h - 98.0, half, 38.0],
+            if self.pending() {
+                "Cancel sign-in"
+            } else {
+                "Sign out"
+            },
+            if self.pending() {
+                Action::CancelLogin
+            } else {
+                Action::SignOut
+            },
+            false,
+        );
+        button(
+            ui,
+            targets,
+            [x + 20.0, y + h - 52.0, w - 40.0, 36.0],
+            "Back (keeps sign-in pending)",
             Action::CloseLogin,
             false,
         );
