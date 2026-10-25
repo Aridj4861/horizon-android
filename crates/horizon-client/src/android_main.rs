@@ -17,9 +17,11 @@ mod browser;
 mod catalog;
 #[path = "android/platform.rs"]
 mod platform;
+#[path = "android/secure_store.rs"]
+mod secure_store;
 // The shared account protocol needs only the launcher's version and data path.
 mod backend {
-    pub const VERSION: &str = "0.6.4";
+    pub const VERSION: &str = "0.6.5";
     static HOME: std::sync::OnceLock<std::path::PathBuf> = std::sync::OnceLock::new();
     pub fn initialize(home: std::path::PathBuf) {
         let _ = HOME.set(home);
@@ -96,6 +98,9 @@ fn android_main(app: AndroidApp) {
         return;
     };
     backend::initialize(home.clone());
+    if let Ok(vm) = unsafe { jni::JavaVM::from_raw(app.vm_as_ptr().cast()) } {
+        secure_store::initialize(vm);
+    }
     let engine_data = app.asset_manager().open(c"engine-data.zip");
     APP.with(|slot| *slot.borrow_mut() = Some(app));
     horizon_client::android_runtime::install_clipboard(
@@ -109,6 +114,10 @@ fn android_main(app: AndroidApp) {
     {
         log::error!("Cannot open {}: {error}", home.display());
         return;
+    }
+    #[cfg(debug_assertions)]
+    if secure_store::development_probe() {
+        std::process::exit(0);
     }
     horizon_client::crash::install(home.clone(), "client");
     let _ = std::fs::remove_file(home.join("android-error.txt"));

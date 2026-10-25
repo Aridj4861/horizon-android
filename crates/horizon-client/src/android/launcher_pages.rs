@@ -119,13 +119,13 @@ impl Launcher {
             color::TEXT,
             "Horizon Android",
         );
-        ui.text(
-            Face::Regular,
-            14.0,
-            w - 320.0,
-            38.0,
-            color::MUTED,
-            "26.3 / Android 0.6.4",
+        button(
+            &mut ui,
+            &mut self.targets,
+            [w - 320.0, 24.0, 288.0, 46.0],
+            &self.login.status(),
+            Action::Account,
+            self.login.signed_in,
         );
         let tabs = Page::ALL.len() as f32;
         let tab_width = (w - 64.0) / tabs;
@@ -169,8 +169,8 @@ impl Launcher {
                     self.total.load(Ordering::Relaxed) / 1048576
                 )
             } else if horizon_client::official_install::ready(&self.home) {
-                if let Some(account) = crate::account::Accounts::load().selected() {
-                    format!("Installed. Minecraft profile: {}", account.name)
+                if self.login.profile.is_some() {
+                    format!("Installed. {}", self.login.status())
                 } else {
                     "Installed. Ready to play offline.".into()
                 }
@@ -546,6 +546,23 @@ impl Launcher {
             .map(|(_, a)| *a);
         if self.catalog.busy() {
             return Ok(());
+        }
+        if action.is_some() && horizon_client::official_install::ready(&self.home) {
+            let audio = self.audio.get_or_insert_with(|| {
+                horizon_client::audio::Audio::new(&self.home.join(".local/horizon-client/26.3"))
+            });
+            let settings = horizon_client::settings::Settings::load(
+                &self
+                    .catalog
+                    .config
+                    .game_home(&self.home)
+                    .join("options.txt"),
+            );
+            audio.master = settings.volumes[0];
+            let mut volumes = settings.volumes;
+            volumes[0] = 1.0;
+            horizon_client::settings::set_source_volumes(volumes);
+            audio.play_button_click();
         }
         match action {
             Some(Action::Account) => {

@@ -671,6 +671,8 @@ pub fn store() -> &'static dyn SecretStore {
     static STORE: OnceLock<Box<dyn SecretStore>> = OnceLock::new();
     STORE
         .get_or_init(|| {
+            #[cfg(target_os = "android")]
+            return Box::new(crate::secure_store::AndroidStore);
             #[cfg(any(
                 target_os = "linux",
                 target_os = "freebsd",
@@ -681,7 +683,10 @@ pub fn store() -> &'static dyn SecretStore {
             {
                 return Box::new(SystemStore);
             }
-            Box::<MemoryStore>::default()
+            #[cfg(not(target_os = "android"))]
+            {
+                Box::<MemoryStore>::default()
+            }
         })
         .as_ref()
 }

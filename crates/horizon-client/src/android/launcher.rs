@@ -38,6 +38,7 @@ pub(super) struct Launcher {
     window: Option<Arc<Window>>,
     renderer: Option<Renderer>,
     gui: Option<game::UiResources>,
+    pub(super) audio: Option<horizon_client::audio::Audio>,
     game: Option<Box<dyn ApplicationHandler>>,
     cursor: (f64, f64),
     progress: Arc<AtomicU64>,
@@ -61,6 +62,7 @@ impl Launcher {
             window: None,
             renderer: None,
             gui: None,
+            audio: None,
             game: None,
             cursor: (0.0, 0.0),
             progress: Arc::default(),
@@ -87,6 +89,7 @@ impl Launcher {
         }
         crate::platform::hide();
         horizon_client::auth::clear_current();
+        self.session_ready = false;
         horizon_client::discord_presence::stop();
         horizon_client::ui_theme::reset_atlas();
         self.cursor = (0.0, 0.0);
@@ -97,6 +100,7 @@ impl Launcher {
             return;
         }
         self.catalog.refresh(&self.home);
+        self.login.refresh_status();
         self.catalog.page = Page::Play;
         if let Err(error) = self.open(events) {
             self.fail(error);
@@ -174,6 +178,7 @@ impl Launcher {
             self.session_ready = false;
             std::fs::create_dir_all(&game_home)?;
             std::env::set_current_dir(game_home)?;
+            self.audio = None;
             let game = game::android_game()?;
             // Android has one native window; release its surface before handing it over.
             self.renderer = None;
@@ -296,6 +301,9 @@ impl ApplicationHandler for Launcher {
                 crate::platform::hide();
             }
             self.catalog.edit(out, &self.home);
+        }
+        if let Some(audio) = &mut self.audio {
+            audio.tick(false, &Default::default());
         }
         self.catalog.poll(&self.home);
         self.login.poll();

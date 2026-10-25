@@ -5,6 +5,8 @@ use horizon_client::ui_theme::{Face, Ui, color};
 
 pub(super) struct Login {
     pub visible: bool,
+    pub signed_in: bool,
+    pub profile: Option<String>,
     task: Option<SignIn>,
     auto_open_device: bool,
     state: Option<SignInState>,
@@ -12,14 +14,38 @@ pub(super) struct Login {
 }
 impl Login {
     pub fn new() -> Self {
-        Self {
+        let mut login = Self {
             visible: false,
+            signed_in: false,
+            profile: None,
             task: None,
             auto_open_device: false,
             state: None,
             message: String::new(),
+        };
+        login.refresh_status();
+        login
+    }
+    pub(super) fn refresh_status(&mut self) {
+        let account = Accounts::load().selected().cloned();
+        self.profile = account.as_ref().map(|a| a.name.clone());
+        self.signed_in = account.is_some_and(|a| {
+            account::store()
+                .get(&a.uuid)
+                .ok()
+                .flatten()
+                .is_some_and(|s| serde_json::from_str::<Secrets>(&s).is_ok())
+        });
+    }
+    pub fn status(&self) -> String {
+        match (&self.profile, self.signed_in) {
+            (Some(name), true) => format!("Signed in: {name}"),
+            (Some(name), false) => format!("Sign in required: {name}"),
+            _ if self.pending() => "Signing in...".into(),
+            _ => "Offline / Sign in".into(),
         }
     }
+
     pub fn pending(&self) -> bool {
         self.task.is_some()
     }
@@ -70,6 +96,7 @@ impl Login {
                     Err(e) => e.clone(),
                 };
                 self.task = None;
+                self.refresh_status();
             }
         }
         if self.auto_open_device && matches!(self.state, Some(SignInState::Code(_))) {
@@ -90,6 +117,7 @@ impl Login {
                 Err(e) => e,
             };
         }
+        self.refresh_status();
     }
     pub fn copy_code(&mut self) {
         if let Some(SignInState::Code(code)) = &self.state {
@@ -149,19 +177,17 @@ impl Login {
             color::TEXT,
             "Microsoft / Xbox",
         );
-        let account = Accounts::load()
-            .selected()
-            .map(|a| format!("Minecraft profile: {}", a.name))
-            .unwrap_or_else(|| {
-                "Sign in with the Microsoft account that owns Minecraft: Java Edition.".into()
-            });
         ui.text(
-            Face::Regular,
-            14.0,
+            Face::Medium,
+            18.0,
             x + 20.0,
             y + 58.0,
-            color::MUTED,
-            &account,
+            if self.signed_in {
+                color::ACCENT
+            } else {
+                color::MUTED
+            },
+            &self.status(),
         );
         if let Some(SignInState::Code(code)) = &self.state {
             button(
@@ -179,7 +205,11 @@ impl Login {
                 x + 20.0,
                 y + 104.0,
                 color::TEXT,
-                "Your password is entered in Microsoft's browser.",
+                if self.signed_in {
+                    "Account saved securely. Sessions renew automatically."
+                } else {
+                    "Your password is entered in Microsoft's browser."
+                },
             );
         }
         let text = match &self.state {
@@ -236,7 +266,14 @@ impl Login {
         } else if self.pending() {
             ("Restart browser sign-in", Action::SignIn)
         } else {
-            ("Sign in with browser", Action::SignIn)
+            (
+                if self.signed_in {
+                    "Switch Microsoft account"
+                } else {
+                    "Sign in with browser"
+                },
+                Action::SignIn,
+            )
         };
         button(
             ui,
@@ -261,12 +298,20 @@ impl Login {
             if self.pending() {
                 "Cancel sign-in"
             } else {
-                "Sign out"
+                if self.profile.is_some() {
+                    "Sign out"
+                } else {
+                    "Close"
+                }
             },
             if self.pending() {
                 Action::CancelLogin
             } else {
-                Action::SignOut
+                if self.profile.is_some() {
+                    Action::SignOut
+                } else {
+                    Action::CloseLogin
+                }
             },
             false,
         );
@@ -274,7 +319,11 @@ impl Login {
             ui,
             targets,
             [x + 20.0, y + h - 52.0, w - 40.0, 36.0],
-            "Back (keeps sign-in pending)",
+            if self.pending() {
+                "Back (sign-in continues)"
+            } else {
+                "Done"
+            },
             Action::CloseLogin,
             false,
         );
