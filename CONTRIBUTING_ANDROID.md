@@ -37,5 +37,7 @@ Never merge experimental branches automatically.
 
 `--release-candidate` produces a non-debuggable local APK, remaps personal build
 paths and checks known credential patterns and packaged data paths. This checks
-privacy, not permission to redistribute bundled Minecraft resources. Public APK
-distribution remains separate work; see [publication notes](docs/android-publication.md).
+privacy, not permission to redistribute bundled Minecraft resources. Use
+`--public` for distribution: it filters the generated table bundle, downloads
+original world data/textures from Mojang on the phone, and disables automatic
+agent control. See [publication notes](docs/android-publication.md).

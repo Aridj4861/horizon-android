@@ -16,6 +16,7 @@ Emulator frame counters must not be advertised as phone performance.
 | Graphics / streaming | Existing game resolution, distance, FPS, quality and worker controls. Launcher selects real Vulkan draw paths and does not override them |
 | Native mods | Wasmtime `.hmod` runtime; existing capabilities and errors appear in the game mod menu. Direct HTTPS import; no Java-mod search or Java/Mixin execution |
 | Resource packs | Checksum-verified resource-pack search/install; modpack browsing, importing, selection and automatic launch hooks are removed on Android |
+| APK distribution | Dedicated `--public` build: 32 generated tables, original resources downloaded from official sources on the phone, no automatic agent socket; no player PC preparation |
 | Single player | Default integrated server and optional in-frame path. Editor pauses unpublished single player through the engine pause decision |
 | Servers | Existing protocol 777 client. Manual matching-version server address supported; Android device-code sign-in and session handoff implemented; temporary Switch dev ID with Microsoft Live device-code flow, browser Custom Tab, code copy and persistent pending login; initial code request accepted, full account login unverified |
 | Play with Friends | Shared core exists, but relay/account/clipboard/background behavior needs an Android end-to-end pass before advertising parity |

@@ -60,28 +60,40 @@ and [resource preparation](https://github.com/ludovic111/horizon/blob/74768d2eeb
 Publishing this fork does not require permission from upstream under its MIT
 license; retain its copyright and license notices.
 
-Developer APKs contain generated `engine-data.zip` and the original Bedrock
-sample control textures. They remain private local build products. A public
-source tree or a passing privacy scan does not authorize redistribution of those
-Mojang files. Do not upload the existing developer APKs to GitHub Releases.
-The [Minecraft EULA](https://www.minecraft.net/en-us/eula) distinguishes original
-tools/mods from redistribution of Minecraft content.
+The Android distribution now has a dedicated build mode:
 
-`python tools/android_build.py --abi arm64-v8a --release-candidate` creates a
-non-debuggable, optimized local candidate, keeps the existing installation's
-private signing identity, remaps personal compiler paths and runs
-`tools/check_android_release.py`. Its report checks archive paths, known token/key
-formats, packaged private data and manifest debuggability; it prints no suspected
-credential values. The report explicitly does not clear game-resource licensing.
-Keys, account tokens, reports and generated APKs stay in `.local/`.
+```sh
+python tools/android_build.py --abi arm64-v8a --public
+```
 
-Before a public playable APK, separate user-owned resource preparation/import
-from the application, remove automatic development control, establish the
-publisher's production account configuration and review platform/service URLs.
-Only then attach a signed APK, its SHA-256 and an audit summary to a prerelease.
-The owner supplied four original Android screenshots on 26 October 2026, now
-shown in the README. Their instantaneous counters are not benchmark results.
-Emulator frame counters are not phone benchmarks.
+VersionName stays **0.6.7**; Android versionCode is 16 so it upgrades earlier
+0.6.7 installations. The APK contains the Rust engine, licensed application
+fonts/frameworks and generated Horizon tables. The distribution table allowlist
+excludes original structure templates, copied worldgen JSON bundles and raw
+block/damage tag resources. Original JARs, class files, PNGs, sounds, accounts,
+saves and private signing material are not bundled.
+
+On the phone, the existing installer downloads the pinned Minecraft client
+and asset objects from Mojang, checks their official hashes, then reconstructs
+worldgen maps/tags and structure files from that private client download. Touch
+textures and their original license download from Mojang/bedrock-samples at a
+pinned revision, with individual SHA-256/size checks. The repository contains
+only their download manifest, not the images. No resource import or PC is
+required for a player. Build-time generation of the engine tables still uses
+the developer's privately prepared game inputs.
+
+Public builds omit the automatic agent-control socket and ignore the local
+`android-launch.json` development override. They remain optimized and
+non-debuggable, preserve the existing private signing identity for updates,
+and remap compiler paths. The public payload audit rejects original resource
+archives/paths, known credentials and packaged player data. This is a technical
+packaging audit, not a legal certification or an exhaustive secret scanner.
+
+The current account configuration remains a development integration. Do not
+claim Mojang/Microsoft approval or universal server/anticheat compatibility.
+
+The README shows the owner's POCO M8 Pro captures at 16 chunks and Fancy
+graphics, with separate captions for the snowy biome and Hypixel Arcade.
 
 The Android fork still shares upstream service URLs in parts of the desktop
 code. They are not replaced with invented fork services. Public branding,
@@ -106,3 +118,7 @@ Merge `4a2840e1` integrates 59 more commits through `74768d2e` on 26 October,
 including wire item components, localized UI, furnace XP fixes and the desktop
 OpenGL fallback. Android continues selecting its existing Vulkan modes. The
 upstream mod UI remains experimental and requires a mod to opt in explicitly.
+
+Merge `1f5b9af6` integrates 27 more upstream commits through `d58d26c7`:
+firework ownership/flight/boosts, mob poses, lore tooltips, lava cauldrons and
+server-thread command completion. No experimental branch was merged.
