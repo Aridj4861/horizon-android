@@ -176,3 +176,13 @@ python3 tools/parity.py dedicated_server server_entities server_player_damage
 [docs/server-levels.md](docs/server-levels.md) (levels per dimension) ·
 [docs/rust-parity.md](docs/rust-parity.md) (what is ported) · [docs/known-issues.md](docs/known-issues.md) ·
 [docs/release-flow.md](docs/release-flow.md) · [docs/README.md](docs/README.md) (index).
+
+
+## Android fork maintenance
+
+For Android development, fetch and review `upstream/main` before release builds,
+and during longer sessions when new fixes may address the current work. Merge
+reviewed stable history into `android`; resolve Android module paths and platform
+bridges explicitly, keep upstream deployment workflows inactive, and update
+`docs/android-upstream.json`. Run Android checks before pushing. Do not merge
+experimental upstream branches automatically or claim emulator FPS as phone FPS.

@@ -30,29 +30,34 @@ as installed resources. Uninstalling removes app data.
 Version 0.5.0 implements the three interaction schemes named in the official
 [Bedrock changelog](https://www.minecraft.net/en-us/article/minecraft-1-21-60-bedrock-changelog):
 
-- **Joystick & aim crosshair**: analog movement, camera drag, attack/mine and
+- **Joystick & aim crosshair**: eight-direction movement (optional 360-degree analog movement), camera drag, attack/mine and
   use/place buttons, jump, sneak and sprint.
 - **Joystick & tap to interact**: tap a world point to use/place, tap an entity
   to attack, hold to mine. Held consumables, shields and ranged items use the
   held-use action instead. Dragging turns the camera and cancels a world tap.
 - **D-Pad & tap to interact**: directional movement with the same world gestures.
-  Enable **Split controls** for crosshair aiming and action buttons.
+- **D-Pad & aim crosshair**: directional movement with crosshair aiming and action buttons.
 
-The top-center row contains chat, pause and a gear for **Touch settings**.
-Open the gear while playing to choose a scheme, select and drag controls, and
-adjust the selected control's size and opacity with sliders. Sensitivity has
-its own slider. Left-handed mode mirrors positions; auto sprint is optional.
+The top-center row contains chat, pause and a gear opening the normal Options.
+Open **Options > Controls > Touch Controls** to choose a scheme, adjust touch
+sensitivity and circle size (16–64 GUI pixels, default 32), enable 360-degree
+movement, change handedness, or show/hide the Sprint button. The settings use
+the same buttons, sliders, scrolling and Back/Done navigation as other options.
+**Auto Sprint** is in Controls next to **Auto-Jump**. Eight-direction Java input
+remains the default; the optional analog path changes prediction direction while
+the Java protocol's directional key flags remain boolean.
+**Customize layout** opens the draggable HUD editor with size/opacity sliders.
 In D-pad mode the center button toggles sneak; Swap jump/sneak exchanges it
 with the jump button. Zero opacity hides a control while the editor still
 shows a faint preview so it can be recovered.
 Each scheme keeps an independent layout. Done saves `horizon-touch.json` in the
-current profile; Cancel/Android Back restores the previous settings, and Reset
+current profile; Cancel/Android Back restores the previous layout, and Reset
 restores the current scheme's positions, sizes and opacity. Single-player
 pauses during editing; a remote server continues running. No game actions are
 sent by editor touches. Switching off controller support does not disable touch.
 
 The nine hotbar slots select items; the movable ellipsis opens inventory.
-The use button also appears for entity/item interactions in tap modes. These
+The optional use button appears for eligible targets in tap modes when enabled. These
 controls map to existing Horizon actions, including flight/swimming movement,
 controller rebinding and toggle sneak. They do not replace vanilla gameplay.
 Version 0.5.1 replaces the drawn icons with original normal/pressed PNGs from
@@ -404,3 +409,64 @@ Startup catch-up and per-command ADB overhead are excluded from this timing.
 No renderer/shader/chunk-streaming optimization or resolution-scale defaults
 were changed by 0.6.4/0.6.5; the reported POCO FPS regression has not been measured
 on the physical device. UI/input overhead remains a separate profiling concern.
+
+
+## Android 0.6.6
+
+Upstream is merged through `7fd1f311` (138 additional commits): independent
+server sprint state, transfer/cookie handling, remote potion contents, container
+range/crafting fixes, passenger poses, skins, particles and scheduled chunk ticks.
+The new registry modules retain explicit file paths for Android's shared launcher
+imports. Upstream deployment workflows remain inactive in this fork.
+
+Remote player teams now use profile names, matching Player.getScoreboardName,
+while non-player entities use UUIDs. Profile names remain available after a server
+hides an NPC from the tab list. This restores collisionRule handling for those
+players; ordinary entity and boat collisions still run. The team-rules Java oracle
+also checks conflicting profile-name/UUID memberships. Hypixel/Watchdog requires
+physical account testing; no blanket anticheat compatibility is claimed.
+
+Old potion state and cached effect modifiers are discarded at session/world
+boundaries after saving. Joining another world restores that world's own saved
+effects. The Android Sprint button sends a momentary held request independently
+of keyboard Toggle Sprint. Releasing movement still ends the vanilla sprint;
+hiding Sprint leaves double-forward and the optional Auto Sprint available.
+
+Pause and Settings reuse Chat's square Bedrock frame. Chat, Pause, Settings,
+inventory opening, slot presses and creative-tab presses call the existing audio
+engine and respect its category/master volumes. The touch circle is twice the
+previous default diameter and can be resized with the normal slider.
+
+The 0.6.5 validation above describes that release, not a fresh run of its entire
+suite. Current 0.6.6 validation: 19 touch tests, 29 options tests (one existing
+ignored test), one profile-team regression test and 16 gamepad tests passed.
+The isolated API 35 AVD verified a sprint request with keyboard Toggle Sprint on,
+stop followed by walking without sprint, Auto Sprint beside Auto-Jump, saved
+52-pixel circle/analog movement/hidden Sprint settings, and layout persistence
+after another option changed. A 60:100 joystick gesture moved at a measured
+0.59481 lateral/forward ratio. An infinite speed effect was absent in a second
+world and restored on rejoining its own saved world. Sound feedback and physical
+vibration still need phone confirmation. No physical POCO FPS measurement is
+claimed.
+
+
+For publication, a separate `--release-candidate` packaging option disables
+Android debuggability and remaps personal compiler paths before the privacy audit.
+This remains a local candidate: bundled Mojang resource files prevent treating a
+privacy pass as permission to publish the APK. See the [publication boundary](android-publication.md#binary-releases-need-a-separate-resource-pipeline).
+The final optimized emulator APK also passed launch and a background/cancel test:
+partly edited HUD positions were discarded on suspend and were not written by a
+subsequent options change. The team-rules oracle matched all 6000 Java cases,
+including conflicting UUID/name memberships, with zero oracle errors.
+
+
+The same cross-world effect isolation, restoration of the world's own saved
+effect, and sprint-stop-walk sequence passed in `--in-frame` mode as well as the
+default integrated-server path. Seven crash-format tests passed, including
+Windows path redaction without embedding the builder's home directory.
+The final local candidate's privacy audit inspected 2018 archive entries, found
+no flagged private files/credential patterns/personal Windows paths, and verified
+`debuggable=false`. This is a bounded check, not a guarantee against every secret
+format, and it does not authorize distributing the bundled Mojang resources.
+Screenshots and emulator FPS claims are intentionally excluded from the public
+showcase pending the owner's verification.

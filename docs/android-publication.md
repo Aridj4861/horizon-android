@@ -49,17 +49,29 @@ Bedrock textures are supplied through `tools/android_bedrock_controls.py` to
 private `.local/android/bedrock-controls.zip`, with pinned Git blob checks and
 the original Mojang LICENSE.md. The PNGs and generated ZIP never enter Git.
 
-## Binary releases need a separate packaging step
+## Binary releases need a separate resource pipeline
 
-Current APKs are local debuggable development builds with a private development
-signing key and generated `engine-data.zip`. The repository rule forbids
-publishing prepared Minecraft resources, and the source export never includes
-this ZIP or an APK. Before a public APK release, design a resource preparation
-path that respects that boundary, use a publisher-owned release key, disable
-debugging/development control, choose the fork's application ID and update
-endpoints, and establish the account/sign-in configuration. Keep signing keys
-and account tokens outside the source tree. Do not upload the local development
-APK as an automatic public release just because source export checks pass.
+Developer APKs contain generated `engine-data.zip` and the original Bedrock
+sample control textures. They remain private local build products. A public
+source tree or a passing privacy scan does not authorize redistribution of those
+Mojang files. Do not upload the existing developer APKs to GitHub Releases.
+The [Minecraft EULA](https://www.minecraft.net/en-us/eula) distinguishes original
+tools/mods from redistribution of Minecraft content.
+
+`python tools/android_build.py --abi arm64-v8a --release-candidate` creates a
+non-debuggable, optimized local candidate, keeps the existing installation's
+private signing identity, remaps personal compiler paths and runs
+`tools/check_android_release.py`. Its report checks archive paths, known token/key
+formats, packaged private data and manifest debuggability; it prints no suspected
+credential values. The report explicitly does not clear game-resource licensing.
+Keys, account tokens, reports and generated APKs stay in `.local/`.
+
+Before a public playable APK, separate user-owned resource preparation/import
+from the application, remove automatic development control, establish the
+publisher's production account configuration and review platform/service URLs.
+Only then attach a signed APK, its SHA-256 and an audit summary to a prerelease.
+Screenshots and performance claims are deferred until the owner has verified
+representative captures. Emulator frame counters are not phone benchmarks.
 
 The Android fork still shares upstream service URLs in parts of the desktop
 code. They are not replaced with invented fork services. Public branding,
@@ -73,3 +85,9 @@ entry point, native launcher, touch rays and compatibility rendering. The old
 working state is preserved locally at `backup/android-0.5.1`; no history was
 rewritten. The new mod-registry workflow is retained inactive like the other
 upstream workflows. The source manifest now records the merged upstream revision.
+
+
+Merge `dc6d3126` integrates 138 more commits through `7fd1f311`, including sprint
+state, transfers/cookies, remote potion contents and container fixes. Android
+0.6.6 also fixes player-profile team resolution and session effects, and provides
+standard touch settings with circle size and optional analog movement.

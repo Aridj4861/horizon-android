@@ -1,34 +1,61 @@
-# Horizon Android — development fork
+# Horizon Android
 
-An unofficial Android port of [Horizon by Ludovic and contributors](https://github.com/ludovic111/horizon).
-The Rust engine implements Minecraft Java 26.3; this is not an arbitrary-version
-Java launcher or a Fabric/Forge loader. Original MIT copyright and third-party
-notices are retained in [LICENSE](LICENSE) and [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+A native Android port of [Horizon](https://github.com/ludovic111/horizon), the
+Rust engine for Minecraft Java 26.3. Unofficial and in active development.
 
-Android adds a native launcher and verified resource downloads, three touch
-control schemes with a layout editor, system keyboard/clipboard, AAudio sound,
-phone vibration and Vulkan rendering modes. See [Android build/use](docs/android.md),
-[feature support](docs/android-features.md) and [fork publication](docs/android-publication.md).
-Android 0.6 adds return-to-launcher, integrated-server mining vibration fixes,
-native `.hmod` import, and a Microsoft/Xbox sign-in panel. Android 0.6.1 configures
-the public Microsoft client ID and removes modpack browsing, selection and
-automatic launch hooks. Android 0.6.2 temporarily selects the public Switch dev
-registration, adds browser Custom Tabs and automatic code copying, and keeps
-login pending across browser switches. Full account sign-in is not yet verified.
-No Minecraft JARs, assets, prepared tables, APKs or signing keys belong in Git.
+**Android 9+ · Vulkan · Four touch schemes · Native `.hmod` mods**
 
-The Android branch preserves upstream history from
-[`d65282fb0f0f`](https://github.com/ludovic111/horizon/commit/d65282fb0f0fd7ba57876aef87dc4c6c2b5fa04b)
-and merges upstream through [`6a065fa4`](https://github.com/ludovic111/horizon/commit/6a065fa4899271403407fff12f3966481d4cd41c).
-The public fork is [Vasysik/horizon-android](https://github.com/Vasysik/horizon-android).
-Upstream release/runner workflows are retained as inactive references; the
-Android source check is manual. See [provenance](docs/android-upstream.json).
+[Build & play](docs/android.md) · [Contribute](CONTRIBUTING_ANDROID.md) ·
+[Report an Android bug](https://github.com/Vasysik/horizon-android/issues/new?template=android-bug.yml)
 
-Original Bedrock touch textures are prepared from Mojang's pinned sample
-repository into private `.local/` files. They are not included in this Git
-repository or licensed under Horizon's MIT license. Local development APKs
-include them with their original license/provenance.
----
+## What works
+
+- Four touch schemes: joystick or D-pad, each with tap or crosshair aiming.
+- Editable button positions, sizes and opacity; handedness, circle size, optional
+  360-degree movement, Auto Sprint and Sprint-button visibility.
+- Java multiplayer; the repository owner reports working Hypixel access.
+- Native launcher, verified resource downloads, resource packs and `.hmod` import.
+- Vulkan rendering modes and resolution scaling; Android keyboard, clipboard,
+  AAudio sound and phone vibration through the existing game settings.
+- Account status and Android Keystore storage; the current sign-in configuration
+  is still for development. [Feature support and remaining work](docs/android-features.md).
+
+The engine targets Minecraft Java **26.3**. Mods use Horizon's native `.hmod`
+format; Fabric/Forge Java code does not run in this client. Server and anticheat
+compatibility requires testing on the actual server.
+
+## Help build it
+
+Try a developer build, send a reproducible bug report, or contribute a focused
+pull request against `android`. Touch input, accessibility, hardware controllers,
+Android lifecycle and real-phone profiling are useful areas to help.
+[Start here](CONTRIBUTING_ANDROID.md).
+
+If the port is useful to you, **star the repository** so other players and
+contributors can find it.
+
+## Builds and source
+
+[Build instructions](docs/android.md#build-developers-only) explain the SDK/NDK
+setup and preparation from your own Minecraft installation. Public downloadable
+APKs are not available yet: current developer builds include prepared Minecraft
+data and original sample textures. Those resources must be separated from the
+application before public APK distribution. [Publication notes](docs/android-publication.md).
+
+This branch preserves upstream authorship and history, merged through
+[`7fd1f311`](https://github.com/ludovic111/horizon/commit/7fd1f3118f69e803b9d4e4c60e8ed4ef948146d1).
+[Provenance](docs/android-upstream.json) records the base and merges. Android
+0.6.6 adds the standard touch settings and session/collision fixes on top of 138
+additional upstream commits. Upstream deployment workflows stay inactive here.
+
+Original copyright and third-party notices are retained in [LICENSE](LICENSE)
+and [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). Mojang textures are not
+licensed under Horizon's MIT license. Game files, prepared resources, accounts,
+APKs and signing keys stay outside Git. This project is not affiliated with or
+endorsed by Mojang or Microsoft.
+
+<details>
+<summary>Upstream Horizon documentation (desktop)</summary>
 
 The following is the upstream desktop project description. Its download links,
 CI badges and parity claims describe upstream Horizon, not validation of this
@@ -205,3 +232,5 @@ Third-party credits and licenses: [Third-party notices](THIRD_PARTY_NOTICES.md).
 ## Author
 
 Made by [Ludovic Marie](https://lu4ovic.com) ([@ludovic111](https://github.com/ludovic111)).
+
+</details>

@@ -54,12 +54,15 @@ def main():
     parser.add_argument('--sdk', type=Path, default=os.environ.get('ANDROID_HOME') or Path(os.environ.get('LOCALAPPDATA', str(Path.home()))) / 'Android/Sdk')
     parser.add_argument('--java-home', type=Path, default=os.environ.get('JAVA_HOME') or 'C:/Program Files/Android/Android Studio/jbr')
     parser.add_argument('--skip-rust', action='store_true')
+    parser.add_argument('--release-candidate', action='store_true', help='Build a non-debuggable candidate and audit privacy; this does not authorize redistribution of bundled game resources')
     parser.add_argument('--profile', choices=['fast', 'dev'], default='fast', help='Optimized by default; dev is for debugging only')
     parser.add_argument('--gradle', type=Path, help='Gradle 8.14 executable (otherwise discover the cached distribution)')
     parser.add_argument('--check', action='store_true', help='Only type-check the Android target')
     parser.add_argument('--clippy', action='store_true', help='Run Android Clippy with warnings denied')
     parser.add_argument('--bootstrap', type=Path, help=argparse.SUPPRESS)  # Old scripts: no longer used.
     args = parser.parse_args()
+    if args.release_candidate and args.profile != 'fast':
+        parser.error('--release-candidate requires the optimized fast profile')
     suffix = '.exe' if os.name == 'nt' else ''
     tools = latest(args.sdk / 'build-tools')
     ndk = latest(args.sdk / 'ndk') / 'toolchains/llvm/prebuilt' / ('windows-x86_64' if os.name == 'nt' else 'linux-x86_64')
@@ -74,6 +77,12 @@ def main():
     environment[f'AR_{triple}'] = str(ndk / 'bin' / ('llvm-ar' + suffix))
     environment[f'CARGO_TARGET_{triple.upper()}_LINKER'] = str(clang)
     environment['CARGO_PROFILE_DEV_DEBUG'] = '0'
+    if args.release_candidate:
+        flags = environment.get('CARGO_ENCODED_RUSTFLAGS', '').split('\x1f') if environment.get('CARGO_ENCODED_RUSTFLAGS') else environment.get('RUSTFLAGS', '').split()
+        for original, replacement in [(Path.home(), '/build'), (ROOT, '/horizon')]:
+            for prefix in dict.fromkeys([str(original), original.as_posix()]):
+                flags.append(f'--remap-path-prefix={prefix}={replacement}')
+        environment['CARGO_ENCODED_RUSTFLAGS'] = '\x1f'.join(flags)
     if args.check or args.clippy:
         command = ['cargo', 'clippy' if args.clippy else 'check', '-p', 'horizon-android', '--target', target]
         if args.clippy:
@@ -110,12 +119,16 @@ def main():
             raise FileNotFoundError('Install Gradle 8.14 or pass --gradle PATH')
         gradle = candidates[0]
     environment['ANDROID_HOME'] = str(args.sdk)
-    run([gradle, '--no-daemon', '-p', ROOT / 'packaging/android', '-Pabi=' + args.abi, 'assembleDebug'], cwd=ROOT, env=environment)
-    apk = output / 'horizon-android.apk'
-    shutil.copyfile(ROOT / '.local/android/gradle-build/outputs/apk/debug/HorizonAndroid-debug.apk', apk)
+    variant = 'release' if args.release_candidate else 'debug'
+    run([gradle, '--no-daemon', '-p', ROOT / 'packaging/android', '-Pabi=' + args.abi, 'assemble' + variant.title()], cwd=ROOT, env=environment)
+    apk = output / ('horizon-android-release.apk' if args.release_candidate else 'horizon-android.apk')
+    shutil.copyfile(ROOT / f'.local/android/gradle-build/outputs/apk/{variant}/HorizonAndroid-{variant}.apk', apk)
     # Invoke the signing JAR directly so Windows does not need a batch-file shell.
     signer = [args.java_home / 'bin' / ('java' + suffix), '-jar', tools / 'lib/apksigner.jar']
     run([*signer, 'verify', '--verbose', apk])
+    if args.release_candidate:
+        import sys
+        run([sys.executable, ROOT / 'tools/check_android_release.py', apk, '--aapt2', tools / ('aapt2' + suffix)], cwd=ROOT)
     print(f'APK: {apk}', flush=True)
 
 
