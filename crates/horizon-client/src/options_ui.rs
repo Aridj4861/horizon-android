@@ -897,6 +897,8 @@ enum Act {
     /// Credits & Attribution's Credits button (WinScreen without the poem).
     Credits,
     CopyAgentDetails,
+    #[cfg(target_os = "android")]
+    TouchControls,
 }
 enum WKind {
     Button {
@@ -948,6 +950,8 @@ pub enum Event {
     Credits,
     /// Copy how an agent connects (the AI Agent page).
     CopyAgentDetails,
+    #[cfg(target_os = "android")]
+    TouchControls,
 }
 /// `SliderableValueSet.applyValueImmediately`: these apply 600 ms after
 /// the last change (`OptionInstanceSliderButton.delayedApplyAt`).
@@ -1409,16 +1413,34 @@ impl OptionsUi {
                     Opt::ToggleSprint,
                     Opt::AutoJump,
                 ]));
-                // Horizon's controller page, after vanilla's rows.
                 rows.push(Row::Buttons(
                     button(
                         0.0,
                         0.0,
-                        310.0,
+                        if cfg!(target_os = "android") {
+                            150.0
+                        } else {
+                            310.0
+                        },
                         Text::literal("Controller Settings..."),
                         Act::Push(Page::Controller),
                     ),
-                    None,
+                    {
+                        #[cfg(target_os = "android")]
+                        {
+                            Some(button(
+                                0.0,
+                                0.0,
+                                150.0,
+                                Text::literal("Touch Controls..."),
+                                Act::TouchControls,
+                            ))
+                        }
+                        #[cfg(not(target_os = "android"))]
+                        {
+                            None
+                        }
+                    },
                 ));
                 self.filter_option_rows(rows)
             }
@@ -2501,6 +2523,8 @@ impl OptionsUi {
                         Act::OpenModFolder => events.push(Event::OpenModFolder),
                         Act::Credits => events.push(Event::Credits),
                         Act::CopyAgentDetails => events.push(Event::CopyAgentDetails),
+                        #[cfg(target_os = "android")]
+                        Act::TouchControls => events.push(Event::TouchControls),
                         Act::None => {}
                     }
                 }

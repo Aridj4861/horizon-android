@@ -298,3 +298,37 @@ keyboard shortcut opens chat before displaying the IME.
 On the isolated API 35 AVD, the previous build closed the IME on Add Server's
 address field. The fixed build kept it open, accepted an address, reopened on
 another field and saved the address to the test profile's server list.
+
+
+## Android 0.6.4: touch gestures and controls
+
+On Android, Options > Controls > Touch Controls opens the same settings as the
+gear beside Pause. Select a control scheme on the settings page, then Customize
+layout to move buttons and change size/opacity. Settings use visible switches;
+the sensitivity slider accepts dragging. Save/Done persists the profile layout;
+Cancel or Android Back restores the settings from before the editor opened.
+The editor toolbar leaves the default chat, pause and inventory buttons exposed.
+
+In tap mode a short tap on a mob attacks; holding a mob performs an available
+interaction, such as feeding or trading. Holding elsewhere mines, or uses a held
+consumable/shield/bow as appropriate. Once a use gesture commits, drifting the
+same finger cannot turn it into camera movement or mining, even if its last item
+was consumed. A second finger can still turn the camera. Release ends the hold.
+
+Non-crosshair controls draw a touch circle and the current mining progress at
+the finger target. The centre block outline is hidden when there is no active
+touch target. Crosshair mode keeps its ordinary centred target.
+The factory sprint button sits in the right action cluster near Jump, following
+Minecraft's official touch-control illustrations. Only the former factory
+position is migrated; customized positions are retained. Reference:
+https://www.minecraft.net/en-us/article/minecraft-controls . This is a native
+Horizon implementation; remaining Bedrock differences should be reported.
+
+
+Validation used 15 touch-input unit tests and Android Clippy with warnings
+denied. On the isolated API 35 AVD, an off-centre short tap with wheat attacked
+a cow (health 10 to 9); an off-centre hold fed a fresh cow (wheat 16 to 15,
+health stayed 10); a hold opened the farmer's merchant menu. A drifting hold ate
+an apple (food 6 to 10), kept yaw unchanged and released item use on finger-up.
+The Controls entry saved a moved sprint button and returned to Controls;
+Android Back cancelled an edit. The system-keyboard fix from 0.6.3 is included.

@@ -19,7 +19,7 @@ mod catalog;
 mod platform;
 // The shared account protocol needs only the launcher's version and data path.
 mod backend {
-    pub const VERSION: &str = "0.6.3";
+    pub const VERSION: &str = "0.6.4";
     static HOME: std::sync::OnceLock<std::path::PathBuf> = std::sync::OnceLock::new();
     pub fn initialize(home: std::path::PathBuf) {
         let _ = HOME.set(home);

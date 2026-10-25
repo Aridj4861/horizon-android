@@ -124,7 +124,7 @@ impl Default for Settings {
     fn default() -> Self {
         let base = [
             Placement::new(0.13, 0.76, 0.32),
-            Placement::new(0.13, 0.50, 0.105),
+            Placement::new(0.72, 0.78, 0.105),
             Placement::new(0.92, 0.78, 0.16),
             Placement::new(0.81, 0.86, 0.115),
             Placement::new(0.80, 0.64, 0.16),
@@ -155,6 +155,13 @@ impl Settings {
             .and_then(|b| serde_json::from_slice(&b).ok())
             .unwrap_or_default();
         s.sanitize();
+        // Move the old factory sprint position only; keep customized placements.
+        for mode in [Mode::Crosshair, Mode::Tap] {
+            let sprint = &mut s.layouts[mode.index()][Control::Sprint as usize];
+            if sprint.center == [0.13, 0.50] && (sprint.size - 0.105).abs() < 0.0001 {
+                sprint.center = [0.72, 0.78];
+            }
+        }
         s
     }
     pub fn sanitize(&mut self) {

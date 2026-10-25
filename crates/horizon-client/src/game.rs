@@ -4874,7 +4874,7 @@ impl Game<'_> {
             self.draw_win_screen(&mut batch);
             return batch;
         }
-        if self.screen == Screen::Options {
+        if self.screen == Screen::Options && !self.touch_editing() {
             self.draw_options(&mut batch);
             return batch;
         }
@@ -4883,6 +4883,9 @@ impl Game<'_> {
             if let Some(sound) = title.update_toast(self.settings.notification_display_time) {
                 self.audio.play(sound, None, 1.0, 1.0);
             }
+        }
+        if self.touch_editing() && self.title.is_some() {
+            return batch;
         }
         if let Some(title) = &self.title {
             title.draw(
@@ -9911,6 +9914,9 @@ impl Game<'_> {
         else {
             return Ok(false);
         };
+        // Load the profile's scheme before drawing the first frame or outline.
+        #[cfg(target_os = "android")]
+        self.pad.touch.viewport(size[0], size[1]);
         let alpha = self.clock.fraction();
         // Camera.getCameraEntityPartialTicks: the view, the hand and the
         // player's own model stay smooth while the level is frozen.
@@ -10023,7 +10029,18 @@ impl Game<'_> {
         let debug_crosshair = horizon_client::gizmos::camera_relative(&crosshair.on_top, at, view);
         // LevelExtractor.extractBlockOutline: model translucency controls draw order.
         let mut outline_after_terrain = false;
-        let outline = if self.screen == Screen::Playing && !self.spectator() {
+        let touch_target_visible = self.interaction_crosshair() || {
+            #[cfg(target_os = "android")]
+            {
+                self.pad.touch.aim.or(self.pad.touch_aim).is_some()
+            }
+            #[cfg(not(target_os = "android"))]
+            {
+                true
+            }
+        };
+        let outline = if self.screen == Screen::Playing && !self.spectator() && touch_target_visible
+        {
             self.pick()
                 .map(|h| {
                     let state = self.world.block(h.pos[0], h.pos[1], h.pos[2]);
@@ -10059,13 +10076,16 @@ impl Game<'_> {
         };
         let mut hud = horizon_client::spans::time("hud", || self.hud(size));
         #[cfg(target_os = "android")]
-        if self.title.is_none() && self.screen == Screen::Playing {
+        if self.pad.touch.editor.is_some()
+            || (self.title.is_none() && self.screen == Screen::Playing)
+        {
             self.pad.touch.context_use =
                 self.entity_targeted() || self.touch_item_held_use() || self.riding.is_some();
             self.pad.touch.vertical_movement = self.player.as_ref().is_some_and(|p| p.flying);
             self.pad.touch.swimming = self.player.as_ref().is_some_and(|p| p.swimming);
             self.pad.touch.mounted = self.riding.is_some();
             self.pad.touch.sneaking = self.keys.contains(&KeyCode::ShiftLeft);
+            self.pad.touch.break_progress = self.touch_mining_progress();
             self.pad.touch.draw(&mut hud, &self.gui.atlas);
         }
         #[cfg(target_os = "android")]
@@ -10985,6 +11005,7 @@ impl ApplicationHandler for Game<'_> {
                         return;
                     }
                 }
+                self.pad.touch.hold_uses_item = self.touch_item_held_use();
                 let delta = self.pad.touch.update(
                     touch.id,
                     [
@@ -11005,7 +11026,7 @@ impl ApplicationHandler for Game<'_> {
                     self.android_show_keyboard();
                 } else if self.pad.touch.settings_requested {
                     self.android_release_touch_keys(true);
-                    self.pad.touch.open_editor();
+                    self.pad.touch.open_settings();
                     let _ = self.play_mouse(MouseButton::Left, false);
                     let _ = self.play_mouse(MouseButton::Right, false);
                     self.pause = self.pauses_game();

@@ -115,7 +115,9 @@ impl Game<'_> {
     /// Once per loop iteration: read the pads and act on button changes.
     pub(super) fn poll_pads(&mut self, event_loop: &ActiveEventLoop) {
         #[cfg(target_os = "android")]
-        if self.screen != Screen::Playing && self.pad.touch.editor.is_some() {
+        if !matches!(self.screen, Screen::Playing | Screen::Options)
+            && self.pad.touch.editor.is_some()
+        {
             self.pad.touch.cancel_editor();
         }
         #[cfg(target_os = "android")]
@@ -142,10 +144,16 @@ impl Game<'_> {
             if let Some(point) = self.pad.touch.aim {
                 self.pad.touch_aim = Some(point);
             }
-            if self.pad.touch.aim.is_some() && touch.triggers[1] > 0.0 && self.touch_item_held_use()
+            if self.pad.touch.aim.is_some()
+                && self.pad.touch.holding
+                && (self.pad.touch.holding_use
+                    || self.touch_item_held_use()
+                    || self.touch_entity_accepts_use())
             {
                 touch.triggers = [1.0, 0.0];
+                self.pad.touch.latch_use();
             } else if self.pad.touch.aim.is_some()
+                && !self.pad.touch.holding
                 && touch.triggers[0] > 0.0
                 && self.entity_targeted()
             {
@@ -249,6 +257,16 @@ impl Game<'_> {
             self.pad_action(action, down)?;
         }
         Ok(())
+    }
+
+    #[cfg(target_os = "android")]
+    fn touch_entity_accepts_use(&self) -> bool {
+        self.mob_hit()
+            .filter(|(_, distance)| self.before_block(*distance))
+            .is_some_and(|(i, _)| {
+                self.remote_mob_takes(i, horizon_client::first_person::Hand::Main)
+                    || self.remote_mob_takes(i, horizon_client::first_person::Hand::Off)
+            })
     }
 
     /// Touch fly/swim down is held even when ground sneaking is toggled.

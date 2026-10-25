@@ -2,15 +2,23 @@ use super::*;
 
 pub struct Editor {
     pub selected: Option<Control>,
+    settings_page: bool,
     option: Option<usize>,
     apply_all: bool,
     original: Settings,
     drag: Option<(u64, Drag)>,
     error: Option<String>,
 }
+impl Editor {
+    pub(super) fn settings_page(&self) -> bool {
+        self.settings_page
+    }
+}
+
 enum Drag {
     Control([f32; 2]),
     Slider(usize),
+    Sensitivity,
 }
 const OPTIONS: [&str; 4] = ["Split", "Left hand", "Auto sprint", "Swap jump/sneak"];
 
@@ -19,12 +27,17 @@ impl TouchControls {
         self.clear();
         self.editor = Some(Editor {
             selected: None,
+            settings_page: false,
             option: None,
             apply_all: false,
             original: self.settings.clone(),
             drag: None,
             error: None,
         });
+    }
+    pub fn open_settings(&mut self) {
+        self.open_editor();
+        self.editor.as_mut().unwrap().settings_page = true;
     }
     pub fn cancel_editor(&mut self) {
         if let Some(e) = self.editor.take() {
@@ -38,8 +51,66 @@ impl TouchControls {
         let Some(mut e) = self.editor.take() else {
             return false;
         };
+        if e.settings_page {
+            if started {
+                if layout::contains([0.05, 0.84, 0.28, 0.10], p) {
+                    e.settings_page = false;
+                } else if layout::contains([0.36, 0.84, 0.28, 0.10], p) {
+                    match self.settings.save() {
+                        Ok(()) => {
+                            self.clear();
+                            return true;
+                        }
+                        Err(error) => e.error = Some(error.to_string()),
+                    }
+                } else if layout::contains([0.67, 0.84, 0.28, 0.10], p) {
+                    self.settings = e.original;
+                    self.clear();
+                    return true;
+                } else if layout::contains([0.52, 0.70, 0.43, 0.08], p) {
+                    e.drag = Some((id, Drag::Sensitivity));
+                } else {
+                    for (i, mode) in Mode::ALL.into_iter().enumerate() {
+                        if layout::contains([0.05, 0.19 + i as f32 * 0.16, 0.43, 0.13], p) {
+                            self.settings.mode = mode;
+                        }
+                    }
+                    for i in 0..4 {
+                        if layout::contains([0.52, 0.19 + i as f32 * 0.12, 0.43, 0.09], p) {
+                            match i {
+                                0 if self.settings.mode == Mode::Dpad => {
+                                    self.settings.split_controls ^= true
+                                }
+                                1 => self.settings.left_handed ^= true,
+                                2 if self.settings.mode != Mode::Dpad => {
+                                    self.settings.sprint_with_joystick ^= true
+                                }
+                                3 if self.settings.mode == Mode::Dpad => {
+                                    self.settings.swap_jump_sneak ^= true
+                                }
+                                _ => {}
+                            }
+                        }
+                    }
+                }
+            }
+            if matches!(&e.drag, Some((owner, Drag::Sensitivity)) if *owner == id) {
+                self.settings.sensitivity = 0.1 + ((p[0] - 0.53) / 0.41).clamp(0.0, 1.0) * 2.9;
+                if ended {
+                    e.drag = None;
+                }
+            }
+            self.editor = Some(e);
+            return false;
+        }
         if started {
-            if layout::contains([0.32, 0.91, 0.11, 0.075], p) {
+            if layout::contains([0.02, 0.14, 0.335, 0.075], p) {
+                e.settings_page = true;
+                e.drag = None;
+                self.editor = Some(e);
+                return false;
+            }
+            if layout::contains([0.02, 0.04, 0.105, 0.075], p) {
                 match self.settings.save() {
                     Ok(()) => {
                         self.clear();
@@ -47,32 +118,13 @@ impl TouchControls {
                     }
                     Err(error) => e.error = Some(error.to_string()),
                 }
-            } else if layout::contains([0.44, 0.91, 0.11, 0.075], p) {
+            } else if layout::contains([0.135, 0.04, 0.105, 0.075], p) {
                 self.settings = e.original;
                 self.clear();
                 return true;
-            } else if layout::contains([0.56, 0.91, 0.12, 0.075], p) {
+            } else if layout::contains([0.25, 0.04, 0.105, 0.075], p) {
                 self.settings.layouts[self.settings.mode.index()] =
                     Settings::default().layouts[self.settings.mode.index()];
-            } else if (0.12..0.20).contains(&p[1]) {
-                let index = ((p[0] - 0.02) / 0.32).floor() as usize;
-                if let Some(mode) = Mode::ALL.get(index) {
-                    self.settings.mode = *mode;
-                }
-            } else if (0.22..0.29).contains(&p[1]) {
-                match ((p[0] - 0.02) / 0.24).floor() as usize {
-                    0 if self.settings.mode == Mode::Dpad => {
-                        self.settings.split_controls = !self.settings.split_controls
-                    }
-                    1 => self.settings.left_handed = !self.settings.left_handed,
-                    2 if self.settings.mode != Mode::Dpad => {
-                        self.settings.sprint_with_joystick = !self.settings.sprint_with_joystick
-                    }
-                    3 if self.settings.mode == Mode::Dpad => {
-                        self.settings.swap_jump_sneak = !self.settings.swap_jump_sneak
-                    }
-                    _ => {}
-                }
             } else if layout::contains([0.32, 0.61, 0.36, 0.06], p)
                 && e.selected.is_some()
                 && e.option.is_some()
@@ -118,6 +170,7 @@ impl TouchControls {
                         center[1].clamp(place.size / 2.0, 1.0 - place.size / 2.0),
                     ];
                 }
+                Drag::Sensitivity => {}
                 Drag::Slider(index) => {
                     let value = ((p[0] - 0.335) / 0.33).clamp(0.0, 1.0);
                     for (i, place) in self.settings.layouts[self.settings.mode.index()]
@@ -146,42 +199,110 @@ impl TouchControls {
         let e = self.editor.as_ref().unwrap();
         let (w, h) = (b.width, b.height);
         let text = rgba(245, 245, 245, 255);
-        for (i, mode) in Mode::ALL.into_iter().enumerate() {
-            plate(
+        if e.settings_page {
+            b.fill(a, 0.0, 0.0, w, h, rgba(24, 26, 29, 255));
+            let title = "Touch controls";
+            b.text(
+                a,
+                title,
+                (w - HudBatch::text_width(a, title)) / 2.0,
+                h * 0.07,
+                text,
+                true,
+            );
+            for (i, mode) in Mode::ALL.into_iter().enumerate() {
+                plate(
+                    b,
+                    a,
+                    [0.05, 0.19 + i as f32 * 0.16, 0.43, 0.13],
+                    mode.label(),
+                    self.settings.mode == mode,
+                );
+            }
+            for (i, (name, on)) in OPTIONS
+                .into_iter()
+                .zip([
+                    self.settings.split_controls,
+                    self.settings.left_handed,
+                    self.settings.sprint_with_joystick,
+                    self.settings.swap_jump_sneak,
+                ])
+                .enumerate()
+            {
+                if (i == 0 || i == 3) && self.settings.mode != Mode::Dpad
+                    || i == 2 && self.settings.mode == Mode::Dpad
+                {
+                    continue;
+                }
+                let y = 0.19 + i as f32 * 0.12;
+                b.text(a, name, w * 0.52, h * (y + 0.025), text, true);
+                // A sliding switch keeps the setting state visible at a glance.
+                b.fill(
+                    a,
+                    w * 0.87,
+                    h * y,
+                    w * 0.08,
+                    h * 0.08,
+                    if on {
+                        rgba(65, 145, 55, 255)
+                    } else {
+                        rgba(80, 80, 80, 255)
+                    },
+                );
+                b.fill(
+                    a,
+                    w * if on { 0.912 } else { 0.872 },
+                    h * (y + 0.008),
+                    w * 0.036,
+                    h * 0.064,
+                    rgba(235, 235, 235, 255),
+                );
+            }
+            b.text(
+                a,
+                &format!("Sensitivity: {:.2}", self.settings.sensitivity),
+                w * 0.52,
+                h * 0.65,
+                text,
+                true,
+            );
+            nine(
                 b,
                 a,
-                [0.02 + i as f32 * 0.32, 0.12, 0.30, 0.08],
-                mode.label(),
-                self.settings.mode == mode,
+                "ui/slider_background",
+                1.0,
+                [w * 0.53, h * 0.73, w * 0.41, h * 0.025],
+                rgba(255, 255, 255, 255),
             );
-        }
-        for (i, (name, on)) in OPTIONS
-            .into_iter()
-            .zip([
-                self.settings.split_controls,
-                self.settings.left_handed,
-                self.settings.sprint_with_joystick,
-                self.settings.swap_jump_sneak,
-            ])
-            .enumerate()
-        {
-            plate(
+            nine(
                 b,
                 a,
-                [0.02 + i as f32 * 0.24, 0.22, 0.22, 0.07],
-                &format!("{name}: {}", if on { "On" } else { "Off" }),
-                on,
+                "ui/slider_button_default",
+                2.0,
+                [
+                    w * (0.53 + (self.settings.sensitivity - 0.1) / 2.9 * 0.41) - 3.0,
+                    h * 0.71,
+                    6.0,
+                    h * 0.065,
+                ],
+                rgba(255, 255, 255, 255),
             );
+            for (x, label) in [(0.05, "Customize layout"), (0.36, "Save"), (0.67, "Cancel")] {
+                plate(b, a, [x, 0.84, 0.28, 0.10], label, false);
+            }
+            if e.error.is_some() {
+                b.text(
+                    a,
+                    "Save failed. Retry Save.",
+                    w * 0.05,
+                    h * 0.77,
+                    rgba(255, 120, 120, 255),
+                    true,
+                );
+            }
+            return;
         }
-        let label = "Touch controls: tap a button, then drag it";
-        b.text(
-            a,
-            label,
-            (w - HudBatch::text_width(a, label)) / 2.0,
-            h * 0.32,
-            text,
-            true,
-        );
+        plate(b, a, [0.02, 0.14, 0.335, 0.075], "Touch settings...", false);
         if let Some(selected) = e.selected {
             let p = self.settings.placement(selected);
             plate(
@@ -249,9 +370,9 @@ impl TouchControls {
             }
         }
         for (rect, label) in [
-            ([0.32, 0.91, 0.11, 0.075], "Done"),
-            ([0.44, 0.91, 0.11, 0.075], "Cancel"),
-            ([0.56, 0.91, 0.12, 0.075], "Reset"),
+            ([0.02, 0.04, 0.105, 0.075], "Done"),
+            ([0.135, 0.04, 0.105, 0.075], "Cancel"),
+            ([0.25, 0.04, 0.105, 0.075], "Reset"),
         ] {
             plate(b, a, rect, label, false);
         }
@@ -286,17 +407,17 @@ fn plate(b: &mut HudBatch, a: &HudAtlas, [x, y, w, h]: [f32; 4], label: &str, on
             a,
             &format!("{first} &"),
             x * bw + 3.0,
-            y * bh + (h * bh - 16.0) / 2.0,
+            y * bh + (h * bh - 20.0) / 2.0,
             rgba(35, 35, 35, 255),
-            true,
+            false,
         );
         b.text(
             a,
             second,
             x * bw + 3.0,
-            y * bh + (h * bh - 16.0) / 2.0 + 8.0,
+            y * bh + (h * bh - 20.0) / 2.0 + 10.0,
             rgba(35, 35, 35, 255),
-            true,
+            false,
         );
     } else {
         let mut display = label.to_owned();
@@ -309,7 +430,7 @@ fn plate(b: &mut HudBatch, a: &HudAtlas, [x, y, w, h]: [f32; 4], label: &str, on
             x * bw + 3.0,
             y * bh + (h * bh - 8.0) / 2.0,
             rgba(35, 35, 35, 255),
-            true,
+            false,
         );
     }
 }

@@ -11,6 +11,8 @@ use winit::{event::KeyEvent, keyboard::ModifiersState};
 pub(super) struct StartupMenu {
     #[cfg(target_os = "android")]
     touch: horizon_client::touch_ui::TouchUi,
+    #[cfg(target_os = "android")]
+    controls: horizon_client::touch::TouchControls,
     title: Option<Title>,
     options: OptionsUi,
     options_open: bool,
@@ -82,6 +84,10 @@ impl StartupMenu {
     }
 
     pub(super) fn handoff(&mut self, game: &mut Game<'_>) {
+        #[cfg(target_os = "android")]
+        {
+            game.pad.touch = std::mem::take(&mut self.controls);
+        }
         game.title = self.title.take();
         game.pending_entry = self.pending.take();
         game.cursor = self.cursor;
@@ -337,6 +343,12 @@ impl Loading {
     fn menu_option_events(&mut self, events: Vec<Event>) {
         for event in events {
             match event {
+                #[cfg(target_os = "android")]
+                Event::TouchControls => {
+                    let size = self.menu_size();
+                    self.menu.controls.viewport(size[0], size[1]);
+                    self.menu.controls.open_settings();
+                }
                 Event::Changed => {
                     self.save_menu_settings();
                     self.apply_menu_settings();
@@ -465,6 +477,33 @@ impl Loading {
         event_loop: &ActiveEventLoop,
         event: WindowEvent,
     ) -> Result<()> {
+        #[cfg(target_os = "android")]
+        if self.menu.controls.editor.is_some() {
+            if matches!(&event, WindowEvent::KeyboardInput { event, .. } if event.state == ElementState::Pressed && (event.logical_key == winit::keyboard::Key::Named(winit::keyboard::NamedKey::BrowserBack) || event.physical_key == PhysicalKey::Code(KeyCode::Escape)))
+            {
+                self.menu.controls.cancel_editor();
+                return Ok(());
+            }
+            if let WindowEvent::Touch(t) = &event {
+                use winit::event::TouchPhase;
+                let size = self.menu_size();
+                self.menu.controls.viewport(size[0], size[1]);
+                if t.phase == TouchPhase::Cancelled {
+                    self.menu.controls.cancel_editor();
+                } else {
+                    self.menu.controls.edit_touch(
+                        t.id,
+                        [
+                            t.location.x as f32 / size[0].max(1) as f32,
+                            t.location.y as f32 / size[1].max(1) as f32,
+                        ],
+                        t.phase == TouchPhase::Started,
+                        t.phase == TouchPhase::Ended,
+                    );
+                }
+                return Ok(());
+            }
+        }
         #[cfg(target_os = "android")]
         if matches!(&event,WindowEvent::KeyboardInput {event,..} if event.state==ElementState::Pressed && event.logical_key==winit::keyboard::Key::Named(winit::keyboard::NamedKey::BrowserBack))
         {
@@ -768,6 +807,11 @@ impl Loading {
 
     pub(super) fn draw_menu(&mut self, batch: &mut HudBatch) {
         let Some(gui) = &self.gui else { return };
+        #[cfg(target_os = "android")]
+        if self.menu.controls.editor.is_some() {
+            self.menu.controls.draw(batch, &gui.atlas);
+            return;
+        }
         if self.menu.pending.is_some() {
             horizon_client::level_loading::draw_progress(
                 batch,
