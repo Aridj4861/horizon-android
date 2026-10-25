@@ -135,7 +135,7 @@ impl TouchControls {
                             (-1, 0) => state.left[0] < -0.2,
                             _ => state.left[0] > 0.2,
                         };
-                        sprite(
+                        fitted_sprite(
                             b,
                             a,
                             &format!("controls/{name}{}", if pressed { "_pressed" } else { "" }),
@@ -213,7 +213,7 @@ impl TouchControls {
                     Control::Chat => region(b, a, "gui", [200.0, 82.0, 18.0, 17.0], bounds, color),
                     Control::Inventory | Control::Settings => {
                         sprite(b, a, "ui/joystick_knob", bounds, color);
-                        sprite(
+                        fitted_sprite(
                             b,
                             a,
                             name,
@@ -223,7 +223,7 @@ impl TouchControls {
                     }
                     Control::Pause => {
                         sprite(b, a, "ui/joystick_knob", bounds, color);
-                        sprite(
+                        fitted_sprite(
                             b,
                             a,
                             name,
@@ -431,6 +431,23 @@ fn nine(
 
 fn sprite(b: &mut HudBatch, a: &HudAtlas, name: &str, [x, y, w, h]: [f32; 4], color: u32) {
     b.sprite_scaled(a, &format!("gui/bedrock/{name}"), x, y, w, h, color);
+}
+/// Glyphs such as the inventory ellipsis are deliberately wide and short.
+/// Fit their original pixels inside the hit target without stretching them.
+fn fitted_sprite(b: &mut HudBatch, a: &HudAtlas, name: &str, [x, y, w, h]: [f32; 4], color: u32) {
+    let key = format!("gui/bedrock/{name}");
+    if let Some(rect) = a.sprites.get(&key).copied() {
+        let scale = (w / rect.w as f32).min(h / rect.h as f32);
+        let (width, height) = (rect.w as f32 * scale, rect.h as f32 * scale);
+        b.rect_uv(
+            x + (w - width) / 2.0,
+            y + (h - height) / 2.0,
+            width,
+            height,
+            rect,
+            color,
+        );
+    }
 }
 fn region(
     b: &mut HudBatch,
