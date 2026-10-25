@@ -142,64 +142,159 @@ impl Launcher {
         }
         let page = self.catalog.page;
         if page == Page::Play {
+            use horizon_client::official_install::InstallStage;
+            let installed = horizon_client::official_install::ready(&self.home);
+            let installing = self.worker.is_some();
+            let progress = *self.install.lock().unwrap();
+            let top = 160.0;
             ui.text(
                 Face::Medium,
-                28.0,
                 32.0,
-                165.0,
+                32.0,
+                top,
                 color::TEXT,
-                "Minecraft 26.3",
-            );
-            ui.text(
-                Face::Regular,
-                18.0,
-                32.0,
-                210.0,
-                color::MUTED,
-                &format!(
-                    "Profile {} / {} / native WebAssembly mods",
-                    self.catalog.config.profile,
-                    self.catalog.config.renderer.label()
-                ),
-            );
-            let text = if self.worker.is_some() {
-                format!(
-                    "Mojang download: {} / {} MiB",
-                    self.progress.load(Ordering::Relaxed) / 1048576,
-                    self.total.load(Ordering::Relaxed) / 1048576
-                )
-            } else if horizon_client::official_install::ready(&self.home) {
-                if self.login.profile.is_some() {
-                    format!("Installed. {}", self.login.status())
+                if installing {
+                    "Getting your game ready"
+                } else if installed {
+                    "Ready to play"
                 } else {
-                    "Installed. Ready to play offline.".into()
-                }
-            } else {
-                "Download game resources and sound directly from Mojang (HTTPS).".into()
-            };
-            ui.text(Face::Regular, 18.0, 32.0, 262.0, color::MUTED, &text);
-            ui.text(
-                Face::Regular,
-                16.0,
-                32.0,
-                310.0,
-                color::MUTED,
-                "Native .hmod add-ons and resource packs. Account and server in Settings.",
-            );
-            button(
-                &mut ui,
-                &mut self.targets,
-                [32.0, h - 100.0, 320.0, 60.0],
-                if self.worker.is_some() {
-                    "Downloading..."
-                } else if horizon_client::official_install::ready(&self.home) {
-                    "Play"
-                } else {
-                    "Download 26.3"
+                    "Your Java worlds, on Android"
                 },
-                Action::Play,
-                true,
             );
+            ui.text(
+                Face::Regular,
+                17.0,
+                32.0,
+                top + 47.0,
+                color::MUTED,
+                &format!("Minecraft 26.3  /  Profile {}", self.catalog.config.profile),
+            );
+            if installing {
+                let current = InstallStage::ALL
+                    .iter()
+                    .position(|s| *s == progress.stage)
+                    .unwrap_or(0);
+                let row_height = ((h - 360.0) / 6.0).clamp(25.0, 40.0);
+                if h >= 620.0 {
+                    for (index, stage) in InstallStage::ALL.iter().enumerate() {
+                        let y = top + 90.0 + index as f32 * row_height;
+                        let label = if index < current {
+                            format!("{:02}  {}  - done", index + 1, stage.label())
+                        } else {
+                            format!("{:02}  {}", index + 1, stage.label())
+                        };
+                        ui.text(
+                            Face::Regular,
+                            16.0,
+                            32.0,
+                            y,
+                            if index == current {
+                                color::TEXT
+                            } else {
+                                color::MUTED
+                            },
+                            &label,
+                        );
+                    }
+                } else {
+                    ui.text(
+                        Face::Regular,
+                        18.0,
+                        32.0,
+                        top + 100.0,
+                        color::TEXT,
+                        progress.stage.label(),
+                    );
+                    ui.text(
+                        Face::Regular,
+                        15.0,
+                        32.0,
+                        top + 138.0,
+                        color::MUTED,
+                        &format!("Step {} of 6", current + 1),
+                    );
+                }
+                let fraction = if progress.total > 0 {
+                    progress.done as f32 / progress.total as f32
+                } else {
+                    0.0
+                };
+                let overall = (current as f32 + fraction.clamp(0.0, 1.0)) / 6.0;
+                let bar_y = h - 152.0;
+                ui.rounded(32.0, bar_y, w - 64.0, 4.0, 2.0, color::RAISED);
+                if overall > 0.0 {
+                    ui.rounded(32.0, bar_y, (w - 64.0) * overall, 4.0, 2.0, color::ACCENT);
+                }
+                let detail = match progress.stage {
+                    InstallStage::Download => format!(
+                        "{:.1} / {:.1} MiB  - verified downloads",
+                        progress.done as f64 / 1048576.0,
+                        progress.total as f64 / 1048576.0
+                    ),
+                    InstallStage::Controls => format!(
+                        "{} / {} control files verified",
+                        progress.done, progress.total
+                    ),
+                    _ => "Please keep Horizon open. Downloaded files are kept for retry.".into(),
+                };
+                ui.text(
+                    Face::Regular,
+                    14.0,
+                    32.0,
+                    bar_y + 12.0,
+                    color::MUTED,
+                    &detail,
+                );
+            } else {
+                let rows = if installed {
+                    [
+                        "01  Choose a world or join a Java server",
+                        "02  Customize touch controls in Options > Controls",
+                        "03  Resource packs and native .hmod additions in the tabs above",
+                    ]
+                } else {
+                    [
+                        "01  Download Minecraft resources and sound from Mojang",
+                        "02  Horizon verifies and installs everything on this phone",
+                        "03  Play your worlds offline or sign in for multiplayer",
+                    ]
+                };
+                for (index, line) in rows.iter().enumerate() {
+                    ui.text(
+                        Face::Regular,
+                        17.0,
+                        32.0,
+                        top + 100.0 + index as f32 * 42.0,
+                        color::MUTED,
+                        line,
+                    );
+                }
+            }
+            if installing {
+                ui.text(
+                    Face::Medium,
+                    19.0,
+                    32.0,
+                    h - 90.0,
+                    color::TEXT,
+                    progress.stage.label(),
+                );
+            } else {
+                button(
+                    &mut ui,
+                    &mut self.targets,
+                    [32.0, h - 100.0, 320.0, 60.0],
+                    if installed {
+                        "Play"
+                    } else if self.error.is_some() {
+                        "Retry installation"
+                    } else {
+                        "Download Minecraft 26.3"
+                    },
+                    Action::Play,
+                    true,
+                );
+            }
         } else if page == Page::Mods {
             ui.text(
                 Face::Medium,
@@ -534,8 +629,8 @@ impl Launcher {
         let mut b = HudBatch::new([r.config.width, r.config.height]);
         let ui = Ui::new(&self.gui.as_ref().unwrap().atlas, &mut b, (0.0, 0.0));
         let p = [
-            self.cursor.0 as f32 / ui.density,
-            self.cursor.1 as f32 / ui.density,
+            (self.cursor.0 as f32 - ui.batch.origin[0] * ui.batch.scale) / ui.density,
+            (self.cursor.1 as f32 - ui.batch.origin[1] * ui.batch.scale) / ui.density,
         ];
         let action = self
             .targets
@@ -644,6 +739,17 @@ impl Launcher {
                 self.catalog.config.profile = profile;
                 self.catalog.config.save(&self.home)?;
                 self.catalog.refresh(&self.home);
+                let touch = horizon_client::touch::Settings::load_from(
+                    &self
+                        .catalog
+                        .config
+                        .profile_home(&self.home)
+                        .join("horizon-touch.json"),
+                );
+                horizon_client::hud::set_gui_margins([
+                    touch.horizontal_margin,
+                    touch.vertical_margin,
+                ]);
                 self.chooser = None;
             }
             Some(Action::Dismiss) => self.chooser = None,

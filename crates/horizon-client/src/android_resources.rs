@@ -94,6 +94,9 @@ pub fn rebuild(root: &Path) -> Result<()> {
 /// The manifest contains only names, hashes and the pinned upstream revision.
 /// PNGs remain outside our APK and source repository.
 pub fn controls(root: &Path) -> Result<()> {
+    controls_with_progress(root, |_, _| {})
+}
+pub fn controls_with_progress(root: &Path, progress: impl Fn(u64, u64)) -> Result<()> {
     use sha2::{Digest, Sha256};
     use std::io::Read;
     let manifest: serde_json::Value = serde_json::from_str(include_str!(
@@ -108,10 +111,11 @@ pub fn controls(root: &Path) -> Result<()> {
         .timeout_connect(std::time::Duration::from_secs(30))
         .timeout_read(std::time::Duration::from_secs(60))
         .build();
-    for entry in manifest["files"]
+    let entries = manifest["files"]
         .as_array()
-        .ok_or("Missing control files")?
-    {
+        .ok_or("Missing control files")?;
+    progress(0, entries.len() as u64);
+    for (index, entry) in entries.iter().enumerate() {
         let name = entry["path"].as_str().ok_or("Missing control path")?;
         let hash = entry["sha256"].as_str().ok_or("Missing control checksum")?;
         let size = entry["size"]
@@ -129,6 +133,7 @@ pub fn controls(root: &Path) -> Result<()> {
         if fs::read(&file).is_ok_and(|data| {
             data.len() as u64 == size && format!("{:x}", Sha256::digest(data)) == hash
         }) {
+            progress(index as u64 + 1, entries.len() as u64);
             continue;
         }
         let source = if name == "LICENSE.md" {
@@ -153,6 +158,7 @@ pub fn controls(root: &Path) -> Result<()> {
         }
         fs::create_dir_all(file.parent().ok_or("Missing texture parent")?)?;
         fs::write(file, bytes)?;
+        progress(index as u64 + 1, entries.len() as u64);
     }
     Ok(())
 }

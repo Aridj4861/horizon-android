@@ -19,11 +19,7 @@ use horizon_client::{
 };
 use std::{
     path::PathBuf,
-    sync::{
-        Arc,
-        atomic::{AtomicU64, Ordering},
-        mpsc,
-    },
+    sync::{Arc, Mutex, mpsc},
     time::{Duration, Instant},
 };
 use winit::{
@@ -41,8 +37,7 @@ pub(super) struct Launcher {
     pub(super) audio: Option<horizon_client::audio::Audio>,
     game: Option<Box<dyn ApplicationHandler>>,
     cursor: (f64, f64),
-    progress: Arc<AtomicU64>,
-    total: Arc<AtomicU64>,
+    install: Arc<Mutex<horizon_client::official_install::InstallProgress>>,
     worker: Option<mpsc::Receiver<std::result::Result<(), String>>>,
     error: Option<String>,
     catalog: Catalog,
@@ -65,8 +60,7 @@ impl Launcher {
             audio: None,
             game: None,
             cursor: (0.0, 0.0),
-            progress: Arc::default(),
-            total: Arc::default(),
+            install: Arc::default(),
             worker: None,
             error: None,
             catalog,
@@ -114,6 +108,14 @@ impl Launcher {
     }
 
     fn open(&mut self, events: &ActiveEventLoop) -> Result<()> {
+        let touch = horizon_client::touch::Settings::load_from(
+            &self
+                .catalog
+                .config
+                .profile_home(&self.home)
+                .join("horizon-touch.json"),
+        );
+        horizon_client::hud::set_gui_margins([touch.horizontal_margin, touch.vertical_margin]);
         if let Some(renderer) = &mut self.renderer {
             renderer.recreate_surface()?;
             let size = self.window.as_ref().unwrap().inner_size();
@@ -194,17 +196,23 @@ impl Launcher {
                 );
             }
             self.error = None;
-            self.progress.store(0, Ordering::Relaxed);
+            *self.install.lock().unwrap() = Default::default();
             let home = self.home.clone();
-            let progress = self.progress.clone();
-            let total = self.total.clone();
+            let install = self.install.clone();
             let (sender, receiver) = mpsc::channel();
             self.worker = Some(receiver);
             std::thread::spawn(move || {
-                let result = horizon_client::official_install::install(&home, |done, size| {
-                    progress.store(done, Ordering::Relaxed);
-                    total.store(size, Ordering::Relaxed);
-                });
+                let result =
+                    horizon_client::official_install::install_with_progress(&home, |update| {
+                        let mut current = install.lock().unwrap();
+                        let done = if current.stage == update.stage {
+                            current.done.max(update.done)
+                        } else {
+                            update.done
+                        };
+                        *current =
+                            horizon_client::official_install::InstallProgress { done, ..update };
+                    });
                 let _ = sender.send(result.map_err(|e| e.to_string()));
             });
         }

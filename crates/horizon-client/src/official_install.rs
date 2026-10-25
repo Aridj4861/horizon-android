@@ -167,7 +167,53 @@ fn relative(name: &str) -> Result<&Path> {
     Ok(path)
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum InstallStage {
+    #[default]
+    Metadata,
+    Download,
+    Extract,
+    WorldData,
+    Controls,
+    Finalize,
+}
+impl InstallStage {
+    pub const ALL: [Self; 6] = [
+        Self::Metadata,
+        Self::Download,
+        Self::Extract,
+        Self::WorldData,
+        Self::Controls,
+        Self::Finalize,
+    ];
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Metadata => "Checking Minecraft version",
+            Self::Download => "Downloading game resources and sound",
+            Self::Extract => "Unpacking verified files",
+            Self::WorldData => "Preparing worlds and registries",
+            Self::Controls => "Downloading touch controls",
+            Self::Finalize => "Finishing installation",
+        }
+    }
+}
+#[derive(Clone, Copy, Debug, Default)]
+pub struct InstallProgress {
+    pub stage: InstallStage,
+    pub done: u64,
+    pub total: u64,
+}
+
 pub fn install(home: &Path, progress: impl Fn(u64, u64) + Sync) -> Result<()> {
+    install_with_progress(home, |p| {
+        if p.stage == InstallStage::Download {
+            progress(p.done, p.total)
+        }
+    })
+}
+pub fn install_with_progress(home: &Path, progress: impl Fn(InstallProgress) + Sync) -> Result<()> {
+    let report = |stage, done, total| progress(InstallProgress { stage, done, total });
+    report(InstallStage::Metadata, 0, 0);
     let version = horizon_core::VANILLA_VERSION;
     let pins: Value = serde_json::from_str(LOCK)?;
     let pins = &pins["minecraft"];
@@ -239,7 +285,7 @@ pub fn install(home: &Path, progress: impl Fn(u64, u64) + Sync) -> Result<()> {
         files.len(),
         total / 1048576
     );
-    progress(0, total);
+    report(InstallStage::Download, 0, total);
     let next = AtomicUsize::new(0);
     let done = AtomicU64::new(0);
     let error = Mutex::new(None);
@@ -256,7 +302,8 @@ pub fn install(home: &Path, progress: impl Fn(u64, u64) + Sync) -> Result<()> {
                         *error.lock().unwrap() = Some(e.to_string());
                         break;
                     }
-                    progress(
+                    report(
+                        InstallStage::Download,
                         done.fetch_add(file.size, Ordering::Relaxed) + file.size,
                         total,
                     );
@@ -275,6 +322,7 @@ pub fn install(home: &Path, progress: impl Fn(u64, u64) + Sync) -> Result<()> {
     }
     fs::create_dir(&stage)?;
     let result = (|| -> Result<()> {
+        report(InstallStage::Extract, 0, 0);
         let mut zip = zip::ZipArchive::new(fs::File::open(&files[0].path)?)?;
         for i in 0..zip.len() {
             let mut entry = zip.by_index(i)?;
@@ -297,8 +345,13 @@ pub fn install(home: &Path, progress: impl Fn(u64, u64) + Sync) -> Result<()> {
             fs::copy(from, path)?;
         }
         crate::resource_install::extract(&home.join("engine-data.zip"), &stage)?;
+        report(InstallStage::WorldData, 0, 0);
         crate::android_resources::rebuild(&stage)?;
-        crate::android_resources::controls(&stage)?;
+        report(InstallStage::Controls, 0, 0);
+        crate::android_resources::controls_with_progress(&stage, |done, total| {
+            report(InstallStage::Controls, done, total)
+        })?;
+        report(InstallStage::Finalize, 0, 0);
         fs::write(stage.join("android-downloads-v2.json"), b"{\"schema\":2}")?;
         fs::copy(
             cache.join("asset-index.json"),
