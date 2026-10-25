@@ -6,5 +6,7 @@
   "matching_source_files": 3106,
   "compared_source_files": 3147,
   "modified_existing_files": 41,
-  "branch": "android"
+  "branch": "android",
+  "merged_upstream_commit": "6a065fa4899271403407fff12f3966481d4cd41c",
+  "merged_upstream_commits": 286
 }

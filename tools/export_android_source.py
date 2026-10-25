@@ -77,7 +77,8 @@ def export(root, output):
         payload.append((name, data))
         entries.append({'path': name, 'bytes': len(data), 'sha256': hashlib.sha256(data).hexdigest()})
     provenance = root / 'docs/android-upstream.json'
-    base = json.loads(provenance.read_text(encoding='utf-8')).get('base_commit') if provenance.is_file() else None
+    revisions = json.loads(provenance.read_text(encoding='utf-8')) if provenance.is_file() else {}
+    base = revisions.get('merged_upstream_commit') or revisions.get('base_commit')
     manifest = {'format': 1, 'upstream': 'https://github.com/ludovic111/horizon',
                 'upstream_revision': base, 'history': 'Preserved upstream history' if base else 'Source snapshot',
                 'inactive_upstream_workflows': inactive, 'files': entries}
