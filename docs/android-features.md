@@ -1,9 +1,9 @@
-# Android feature audit (0.6.0)
+# Android feature audit (0.6.1)
 
 This is an implementation audit, not a claim that every Horizon menu has been
 tested on every phone. Phone baseline: the user reports 100 FPS at full screen
 resolution, 16 chunks, normal graphics on POCO M8 Pro; no new FPS measurement is
-claimed for 0.6.0.
+claimed for 0.6.1.
 
 | Horizon feature | Android integration / remaining work |
 |---|---|
@@ -16,9 +16,9 @@ claimed for 0.6.0.
 | Sound and subtitles | AAudio mixer and downloaded sound assets; existing category volumes, subtitles and accessibility settings remain available |
 | Graphics / streaming | Existing game resolution, distance, FPS, quality and worker controls. Launcher selects real Vulkan draw paths and does not override them |
 | Native mods | Wasmtime `.hmod` runtime; existing capabilities and errors appear in the game mod menu. Direct HTTPS import; no Java-mod search or Java/Mixin execution |
-| Packs / modpacks | Existing content port/import pipeline and compatibility reporting; not arbitrary Java modpack execution |
+| Resource packs | Checksum-verified resource-pack search/install; modpack browsing, importing, selection and automatic launch hooks are removed on Android |
 | Single player | Default integrated server and optional in-frame path. Editor pauses unpublished single player through the engine pause decision |
-| Servers | Existing protocol 777 client. Manual matching-version server address supported; Android device-code sign-in and session handoff implemented; production login requires our own approved client ID and is not yet verified |
+| Servers | Existing protocol 777 client. Manual matching-version server address supported; Android device-code sign-in and session handoff implemented; our own public client ID is configured and Microsoft accepts device-code requests; Minecraft Services approval and production login are not yet verified |
 | Play with Friends | Shared core exists, but relay/account/clipboard/background behavior needs an Android end-to-end pass before advertising parity |
 | Saves and backups | Engine save logic works; Android Storage Access Framework import/export and share UI remain to implement. Uninstalling the app deletes internal data |
 | Lifecycle | Touch/key cancellation, vibration stop and surface release/recreation. Leaving the game returns to the native launcher; background process termination still needs broader save/recovery testing |
@@ -26,6 +26,6 @@ claimed for 0.6.0.
 | Physical device tuning | Thermal/frame-pacing and GPU-driver comparisons need measurements on the target phone; an emulator is not evidence of phone performance |
 | Desktop updates / telemetry services | Desktop deployment/auto-update infrastructure is not an Android updater; fork exports keep original workflows inactive |
 
-Priorities after this change: world import/export, app registration and production account validation,
+Priorities after this change: world import/export, Minecraft Services approval and production account validation,
 hardware input devices, then measured lifecycle and thermal behavior. Preserve
 the current engine performance baseline while adding these platform bridges.

@@ -19,7 +19,7 @@ mod catalog;
 mod platform;
 // The shared account protocol needs only the launcher's version and data path.
 mod backend {
-    pub const VERSION: &str = "0.6.0";
+    pub const VERSION: &str = "0.6.1";
     static HOME: std::sync::OnceLock<std::path::PathBuf> = std::sync::OnceLock::new();
     pub fn initialize(home: std::path::PathBuf) {
         let _ = HOME.set(home);
@@ -75,9 +75,6 @@ pub(crate) fn android_arguments() -> horizon_client::Result<Vec<String>> {
     }
     if !config.server.is_empty() {
         args.extend(["--server".into(), config.server.clone()]);
-    }
-    for path in config.pack_mods(&home) {
-        args.extend(["--dev-mod".into(), path.to_string_lossy().into_owned()]);
     }
     match std::fs::read(home.join("android-launch.json")) {
         Ok(bytes) => args.extend(serde_json::from_slice::<Vec<String>>(&bytes)?),

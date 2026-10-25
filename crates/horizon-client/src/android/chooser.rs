@@ -9,7 +9,6 @@ use horizon_client::ui_theme::{Face, Ui, color};
 pub(super) enum Kind {
     Renderer,
     Profile,
-    Pack,
 }
 pub(super) struct Chooser {
     title: &'static str,
@@ -98,34 +97,6 @@ impl Launcher {
                 (
                     "Choose profile",
                     "Each profile keeps its own game settings and saves.",
-                    choices,
-                )
-            }
-            Kind::Pack => {
-                let mut choices = vec![(
-                    "None".into(),
-                    "Use the selected profile without an imported modpack.".into(),
-                    Action::ChoosePack(0),
-                    c.pack.is_none(),
-                )];
-                choices.extend(
-                    self.catalog
-                        .pack_ids(&self.home)
-                        .into_iter()
-                        .enumerate()
-                        .map(|(i, id)| {
-                            let selected = c.pack.as_ref() == Some(&id);
-                            (
-                                id,
-                                "Imported modpack".into(),
-                                Action::ChoosePack(i + 1),
-                                selected,
-                            )
-                        }),
-                );
-                (
-                    "Choose modpack",
-                    "Choose an imported pack, or install one from Modpacks.",
                     choices,
                 )
             }

@@ -6,6 +6,9 @@ use std::{
     sync::mpsc,
 };
 
+/// Our public application identifier. Account tokens and client secrets are never bundled.
+pub const MICROSOFT_CLIENT_ID: &str = "f3f35a87-587b-4797-9d68-89c0783e6fd2";
+
 /// Real Vulkan rendering paths; these do not select a different driver or API.
 #[derive(Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -30,7 +33,6 @@ pub struct Config {
     pub name: String,
     pub server: String,
     pub microsoft_client_id: String,
-    pub pack: Option<String>,
     pub renderer: RendererMode,
 }
 impl Config {
@@ -40,6 +42,10 @@ impl Config {
             .and_then(|b| serde_json::from_slice(&b).ok())
             .unwrap_or_default();
         let mut config: Self = serde_json::from_value(value.clone()).unwrap_or_default();
+        // Existing installations saved an empty ID before our app was registered.
+        if config.microsoft_client_id.trim().is_empty() {
+            config.microsoft_client_id = MICROSOFT_CLIENT_ID.into();
+        }
         if value.get("renderer").is_none() && value["gpu_batching"].as_bool() == Some(true) {
             config.renderer = RendererMode::Vulkan;
         }
@@ -63,32 +69,8 @@ impl Config {
         }
     }
     pub fn game_home(&self, home: &Path) -> PathBuf {
-        let base = self.profile_home(home);
-        self.pack
-            .as_deref()
-            .filter(|id| browser::safe_name(id).is_some())
-            .map_or(base.clone(), |id| {
-                base.join("ported-packs").join(id).join("home")
-            })
-    }
-    pub fn pack_mods(&self, home: &Path) -> Vec<PathBuf> {
-        let Some(id) = self
-            .pack
-            .as_deref()
-            .filter(|id| browser::safe_name(id).is_some())
-        else {
-            return vec![];
-        };
-        let work = self.profile_home(home).join("ported-packs").join(id);
-        let mut mods: Vec<_> = std::fs::read_dir(work.join("mods"))
-            .into_iter()
-            .flatten()
-            .flatten()
-            .map(|e| e.path().join("carry"))
-            .filter(|p| p.join("horizon-mod.toml").is_file())
-            .collect();
-        mods.sort();
-        horizon_port_pack::pipeline::loadable(&mods).0
+        // Legacy modpack selections are ignored; their files remain untouched.
+        self.profile_home(home)
     }
 }
 #[derive(Clone, Copy, PartialEq)]
@@ -96,16 +78,14 @@ pub enum Page {
     Play,
     Mods,
     Packs,
-    Modpacks,
     Installed,
     Settings,
 }
 impl Page {
-    pub const ALL: [Self; 6] = [
+    pub const ALL: [Self; 5] = [
         Self::Play,
         Self::Mods,
         Self::Packs,
-        Self::Modpacks,
         Self::Installed,
         Self::Settings,
     ];
@@ -114,20 +94,12 @@ impl Page {
             Self::Play => "Play",
             Self::Mods => ".hmod",
             Self::Packs => "Packs",
-            Self::Modpacks => "Modpacks",
             Self::Installed => "Installed",
             Self::Settings => "Settings",
         }
     }
-    pub fn kind(self) -> Kind {
-        match self {
-            Self::Packs => Kind::ResourcePack,
-            Self::Modpacks => Kind::Modpack,
-            _ => Kind::Mod,
-        }
-    }
     pub fn is_catalog(self) -> bool {
-        matches!(self, Self::Packs | Self::Modpacks)
+        self == Self::Packs
     }
 }
 enum Reply {
@@ -172,6 +144,9 @@ impl Catalog {
     pub fn refresh(&mut self, home: &Path) {
         let game = self.config.game_home(home);
         self.installed = Installed::load(&game);
+        self.installed
+            .entries
+            .retain(|entry| entry.kind == Kind::ResourcePack);
         let on = horizon_client::mod_list::ModList::load(&game);
         let settings = horizon_client::settings::Settings::load(&game.join("options.txt"));
         self.enabled = self
@@ -250,7 +225,10 @@ impl Catalog {
             }
             return;
         }
-        let mut query = Query::new(&self.query, self.page.kind());
+        if !self.page.is_catalog() {
+            return;
+        }
+        let mut query = Query::new(&self.query, Kind::ResourcePack);
         query.everything = true;
         query.offset = self.offset;
         query.limit = 12;
@@ -300,29 +278,12 @@ impl Catalog {
             return;
         };
         let game = self.config.game_home(home);
-        let resources = home.join(".local/horizon-client/26.3");
+        if project.kind != Kind::ResourcePack {
+            return;
+        }
         self.job("Checking compatibility and downloading...", move || {
             std::fs::create_dir_all(&game).map_err(|e| e.to_string())?;
             let source = browser::modrinth::Modrinth;
-            if project.kind == Kind::Modpack {
-                let file = browser::installed::fetch_modpack(
-                    &source,
-                    &project,
-                    &game.join("mod-browser/downloads"),
-                    &|_| {},
-                )?;
-                let work = game.join("ported-packs").join(&project.id);
-                use horizon_port_pack::pipeline;
-                pipeline::import(&file, &work, &|s| log::info!("{s}"))?;
-                pipeline::inventory(&work, false, &|s| log::info!("{s}"))?;
-                pipeline::port(&work, Some(&resources), None, &|s| log::info!("{s}"))?;
-                // A modpack is an independent profile; never overlay the current saves/options.
-                let rows = pipeline::report(&work, &|s| log::info!("{s}"))?;
-                return Ok(Reply::Done(format!(
-                    "Pack imported: {} entries. Data-only port; Java code cannot run.",
-                    rows.len()
-                )));
-            }
             let entries =
                 browser::installed::install(&source, &project, true, &game, &|name, p| {
                     log::info!("{name}: {:.0}%", p * 100.0)
@@ -360,22 +321,14 @@ impl Catalog {
             }
             Err(e) => e,
         };
-        self.installed = Installed::load(&game);
+        self.refresh(home);
     }
     pub fn toggle(&mut self, home: &Path, index: usize) {
         let Some(entry) = self.installed.entries.get(index) else {
             return;
         };
         let game = self.config.game_home(home);
-        if entry.kind == Kind::Mod {
-            let mods = horizon_client::mod_list::ModList::load(&game);
-            if let Some(id) = entry.file.strip_prefix("horizon-mods/")
-                && let Err(e) = browser::java::set_enabled(&game, id, !mods.enabled.contains(id))
-            {
-                self.status = e;
-                return;
-            }
-        } else if entry.kind == Kind::ResourcePack {
+        if entry.kind == Kind::ResourcePack {
             let path = game.join("options.txt");
             let mut settings = horizon_client::settings::Settings::load(&path);
             let name = format!(
@@ -417,29 +370,5 @@ impl Catalog {
                 }
             }
         }
-    }
-    pub fn pack_ids(&self, home: &Path) -> Vec<String> {
-        let mut ids: Vec<String> =
-            std::fs::read_dir(self.config.profile_home(home).join("ported-packs"))
-                .into_iter()
-                .flatten()
-                .flatten()
-                .filter(|e| e.path().join("pack.json").is_file())
-                .map(|e| e.file_name().to_string_lossy().into_owned())
-                .collect();
-        ids.sort();
-        ids
-    }
-    pub fn select_pack(&mut self, home: &Path, pack: Option<String>) -> Result<(), String> {
-        self.config.pack = pack;
-        if self.config.pack.is_some() && self.config.pack_mods(home).is_empty() {
-            self.status =
-                "This pack has no loadable content yet; unsupported Java behavior cannot run."
-                    .into();
-            self.config.pack = None;
-        }
-        std::fs::create_dir_all(self.config.game_home(home)).map_err(|e| e.to_string())?;
-        self.refresh(home);
-        self.config.save(home)
     }
 }

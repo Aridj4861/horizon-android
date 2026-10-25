@@ -10,8 +10,10 @@ control schemes with a layout editor, system keyboard/clipboard, AAudio sound,
 phone vibration and Vulkan rendering modes. See [Android build/use](docs/android.md),
 [feature support](docs/android-features.md) and [fork publication](docs/android-publication.md).
 Android 0.6 adds return-to-launcher, integrated-server mining vibration fixes,
-native `.hmod` import, and a Microsoft/Xbox sign-in panel. Production online sign-in
-requires our own registered and Minecraft-approved public client ID; none is bundled.
+native `.hmod` import, and a Microsoft/Xbox sign-in panel. Android 0.6.1 configures
+our own public Microsoft client ID and removes modpack browsing, selection and
+automatic launch hooks. Minecraft Services approval and production sign-in are
+not yet verified.
 No Minecraft JARs, assets, prepared tables, APKs or signing keys belong in Git.
 
 The Android branch preserves upstream history from

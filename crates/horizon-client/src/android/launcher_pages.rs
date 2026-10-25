@@ -8,7 +8,6 @@ use winit::{
 #[derive(Clone, Copy)]
 pub(super) enum Action {
     ToggleNative(usize),
-    PackProfile,
     Page(Page),
     Play,
     Search,
@@ -28,7 +27,6 @@ pub(super) enum Action {
     Renderer,
     ChooseRenderer(crate::catalog::RendererMode),
     ChooseProfile(u32),
-    ChoosePack(usize),
     Dismiss,
 }
 
@@ -123,14 +121,16 @@ impl Launcher {
             w - 320.0,
             38.0,
             color::MUTED,
-            "26.3 / Android 0.6",
+            "26.3 / Android 0.6.1",
         );
+        let tabs = Page::ALL.len() as f32;
+        let tab_width = (w - 64.0) / tabs;
         for (i, page) in Page::ALL.iter().enumerate() {
-            let x = 32.0 + i as f32 * ((w - 64.0) / 6.0);
+            let x = 32.0 + i as f32 * tab_width;
             button(
                 &mut ui,
                 &mut self.targets,
-                [x, 88.0, (w - 76.0) / 6.0, 42.0],
+                [x, 88.0, tab_width - 8.0, 42.0],
                 page.name(),
                 Action::Page(*page),
                 *page == self.catalog.page,
@@ -181,17 +181,6 @@ impl Launcher {
                 310.0,
                 color::MUTED,
                 "Native .hmod add-ons and resource packs. Account and server in Settings.",
-            );
-            button(
-                &mut ui,
-                &mut self.targets,
-                [32.0, 360.0, w - 64.0, 46.0],
-                &format!(
-                    "Modpack profile: {}  v",
-                    self.catalog.config.pack.as_deref().unwrap_or("None")
-                ),
-                Action::PackProfile,
-                false,
             );
             button(
                 &mut ui,
@@ -265,7 +254,14 @@ impl Launcher {
                 Action::Search,
                 true,
             );
-            ui.text(Face::Regular,14.0,32.0,206.0,color::MUTED,if page==Page::Mods {"Search Java content mods, or paste an HTTPS .hmod URL. Java behavior cannot run."}else if page==Page::Modpacks {"Imports and ports data-driven content. Unsupported Java behavior is reported."}else{"Resource packs download with checksum verification. Enable them in Installed."});
+            ui.text(
+                Face::Regular,
+                14.0,
+                32.0,
+                206.0,
+                color::MUTED,
+                "Resource packs download with checksum verification. Enable them in Installed.",
+            );
             let top = 242.0;
             let bottom = h - 112.0;
             self.catalog.scroll = self.catalog.scroll.clamp(
@@ -564,7 +560,6 @@ impl Launcher {
             Some(Action::SignOut) => self.login.sign_out(),
             Some(Action::LoginLink) => self.login.open_link(),
             Some(Action::ToggleNative(i)) => self.catalog.toggle_native(&self.home, i),
-            Some(Action::PackProfile) => self.open_chooser(chooser::Kind::Pack),
             Some(Action::Page(page)) => {
                 self.catalog.config.save(&self.home)?;
                 self.catalog.editing = None;
@@ -621,18 +616,8 @@ impl Launcher {
                         .join(format!("profile-{profile}"))
                 })?;
                 self.catalog.config.profile = profile;
-                self.catalog.config.pack = None;
                 self.catalog.config.save(&self.home)?;
                 self.catalog.refresh(&self.home);
-                self.chooser = None;
-            }
-            Some(Action::ChoosePack(i)) => {
-                let pack = if i == 0 {
-                    None
-                } else {
-                    self.catalog.pack_ids(&self.home).get(i - 1).cloned()
-                };
-                self.catalog.select_pack(&self.home, pack)?;
                 self.chooser = None;
             }
             Some(Action::Dismiss) => self.chooser = None,

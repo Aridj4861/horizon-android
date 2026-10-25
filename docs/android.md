@@ -234,16 +234,18 @@ pixel-perfect positioning for every Bedrock version/device is not yet verified.
 
 The `.hmod` page imports native packages from a direct HTTPS URL and no longer
 searches Java mods. Fabric/Forge/JAR code does not execute in this Rust engine.
-Resource packs and the data-oriented modpack conversion are separate features.
+Resource packs remain supported. Android 0.6.1 removes the modpack UI and launch pipeline.
 
 ### Microsoft / Xbox account on Android
 
-Settings → Microsoft / Xbox account accepts the **public client ID of our own
-registered application**. Registration belongs to the repository owner: follow
+Settings → Microsoft / Xbox account uses our **registered public client ID**
+`f3f35a87-587b-4797-9d68-89c0783e6fd2` by default. A developer override remains
+available in the panel. Registration belongs to the repository owner: follow
 [Microsoft's device-code documentation](https://learn.microsoft.com/entra/identity-platform/v2-oauth2-device-code)
 and the upstream [Minecraft registration notes](microsoft-account.md), substituting
 `Vasysik/horizon-android` and our application's name for the upstream project.
-No application ID is bundled until that registration and Minecraft access exist.
+Microsoft accepted a device-code request for this ID and the requested Xbox scopes.
+That establishes the initial OAuth step, not Minecraft Services approval or game ownership.
 Do not use another launcher's ID or put a client secret in the APK.
 
 The panel shares the desktop launcher's device-code → Xbox Live → XSTS →
@@ -252,8 +254,23 @@ browser, and passes the game a private one-use session file. Session renewal run
 in a worker so the launcher remains responsive. Tokens are currently memory-only
 on Android: closing the process requires signing in again. Account names/UUIDs
 persist without tokens. Use Sign out to return to an offline profile. Production
-online-mode login remains unverified until our approved client ID is configured.
+online-mode login remains unverified until the owner completes sign-in and
+Minecraft Services accepts the app.
 
 The comparison port `CornyBirdy/horizon4android` was reviewed as a separate WIP:
 its documentation marks physical-device runtime/input checks as outstanding.
 Its Java activity implementation was not imported into this native Rust launcher.
+
+## Android 0.6.1
+
+The owner's public Microsoft client ID is configured automatically for fresh
+installations and installations with an empty saved ID. Explicit developer
+overrides remain unchanged. No client secret or account token is bundled.
+
+Removed the Modpacks tab, modpack picker on Play, importing/conversion actions
+and automatic `--dev-mod` launch arguments. Old `pack` selections in
+`android-launcher.json` are ignored; launching uses the selected normal profile.
+Old imported directories, worlds and their manifest records are not deleted.
+They remain in `profiles/profile-N/ported-packs/` (or `ported-packs/` for the
+default profile) for manual recovery. Installed shows native `.hmod` packages
+and resource packs. The desktop launcher's modpack support remains upstream's.
