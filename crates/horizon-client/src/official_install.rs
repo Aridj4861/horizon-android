@@ -23,6 +23,7 @@ pub fn ready(home: &Path) -> bool {
         .join(".local/horizon-client")
         .join(horizon_core::VANILLA_VERSION);
     crate::resource_install::ready(home)
+        && root.join("android-downloads-v2.json").is_file()
         && (!cfg!(feature = "audio") || root.join("audio-complete.json").is_file())
 }
 
@@ -296,6 +297,9 @@ pub fn install(home: &Path, progress: impl Fn(u64, u64) + Sync) -> Result<()> {
             fs::copy(from, path)?;
         }
         crate::resource_install::extract(&home.join("engine-data.zip"), &stage)?;
+        crate::android_resources::rebuild(&stage)?;
+        crate::android_resources::controls(&stage)?;
+        fs::write(stage.join("android-downloads-v2.json"), b"{\"schema\":2}")?;
         fs::copy(
             cache.join("asset-index.json"),
             stage.join("asset-index.json"),

@@ -3,6 +3,7 @@
 #![forbid(unsafe_code)]
 pub mod advancements;
 pub mod ambience;
+pub mod android_resources;
 pub mod android_runtime;
 pub mod animate_tick;
 pub mod arrows;
