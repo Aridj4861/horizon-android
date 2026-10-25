@@ -255,8 +255,9 @@ Sign in opens a browser Custom Tab automatically. The code is copied to Android'
 clipboard and passed to Microsoft's `link?otc=...` page. If the browser does not
 prefill it, paste the copied code. The code is also a tappable Copy button in the
 account panel. Back hides the panel and keeps the request pending; Cancel sign-in
-explicitly cancels it. Browser suspension does not cancel the worker. Tokens remain
-in memory for this app process and are passed to the game in a private one-use file.
+explicitly cancels it. Browser suspension does not cancel the worker. Since 0.6.5,
+refresh/access tokens are encrypted with an app-owned Android Keystore AES-GCM key
+and saved in app-private storage. The game still receives a private one-use file.
 
 For a future production build, use the project's own approved registration.
 The [Minecraft App ID review form](https://aka.ms/mce-reviewappid) is the approval
@@ -332,3 +333,74 @@ health stayed 10); a hold opened the farmer's merchant menu. A drifting hold ate
 an apple (food 6 to 10), kept yaw unchanged and released item use on finger-up.
 The Controls entry saved a moved sprint button and returned to Controls;
 Android Back cancelled an edit. The system-keyboard fix from 0.6.3 is included.
+
+
+## Android 0.6.5: persistent accounts and continuous touch input
+
+Accounts use an Android Keystore AES-256-GCM key. The app-private files contain
+ciphertext, a random 96-bit IV and an authenticated tag; the account UUID is AAD.
+Writes replace a synced temporary file atomically. Sign-out deletes the account's
+ciphertext. Tokens are never written to accounts.json or logs. The shared account
+flow refreshes sessions on launch. A cached status chip distinguishes Signed in,
+Sign in required, Signing in and Offline; returning from a game refreshes it.
+Older builds kept secrets only in process memory, so updating from 0.6.4 requires
+one new sign-in. Subsequent process restarts keep the account. Reinstalling/clearing
+app data or restoring ciphertext on another device requires a new sign-in.
+
+A camera swipe with food does not begin item use. A stationary 350 ms hold commits
+mining or use; moving that finger afterwards turns the camera while keeping the
+hold active until finger-up. The cursor follows the finger through camera motion.
+Unlike 0.6.4, committed eating no longer locks camera movement. Short mob taps
+still attack. Changing a mining target starts that target's own break progress.
+
+Four explicit choices expose joystick and D-pad, each with tap or crosshair aiming.
+The D-pad choices retain Bedrock's shared layout and split-controls storage.
+Crosshair modes always show Use/Place. In tap modes, the extra Interact button is
+**off by default** and can be enabled in Touch Controls. When enabled it appears
+for a usable target, not merely because food is held. A pressed button stays
+visible until its finger releases. Block hints use the engine's resolved behaviour
+classes; mob hints use the existing vanilla interaction predictor.
+
+Icons keep their source aspect ratio. Visible placement and hit testing share
+bounds clamped to the drawable surface, including enlarged buttons. The gear
+continues to open Touch Controls, also accessible in Options > Controls. The
+launcher, startup touch editor and in-game touch editor use Minecraft's
+`ui.button.click` through the engine Audio implementation and respect game volume.
+
+Android joystick intent is mapped to eight keyboard directions before both local
+prediction and the directional input packet. Deadzones still apply; 45-degree
+sectors prevent small finger drift from adding a strafe key. Direction normalization
+and subsequent item-use/sneak multipliers use the existing Java arithmetic. This
+fixes the previous disagreement between arbitrary analogue movement and boolean
+server input. It does not establish compatibility with a private server anticheat.
+
+Validation: 18 gesture/layout tests and 16 gamepad tests; 14,960 real Java
+KeyboardInput/LocalPlayer input comparisons; 424,684 evolving native sprint-scene
+states; 648,760 sprint-phase output lines; and 942 movement-packet/teleport cases
+(24,707 output lines) matched the pinned Java 26.3 oracle. Scope and exclusions are
+recorded in each harness's report. Hypixel/Watchdog was not tested with an account.
+The Keystore development probe passed encrypted roundtrip, tamper rejection,
+account-AAD rejection, persistence over two app processes, and deletion. The probe
+is compiled only with debug assertions and is absent from optimized APKs.
+
+On the isolated API 35 AVD, a swipe with food only turned the view; a committed
+hold ate an apple while yaw changed by 16.875 degrees and stopped use on release.
+A continuous mining drag turned 39.375 degrees and broke four wall columns.
+The optional button was disabled initially, enabled explicitly to open a merchant,
+and did not interact when looking away. The fourth scheme persisted correctly.
+
+Visual reference: stable Bedrock 26.52 as of 2026-10-25
+([official releases](https://feedback.minecraft.net/hc/en-us/sections/360001186971-Release-Changelogs)).
+The latest official sample asset set is still 1.26.50.4 at the pinned revision.
+Its HUD uses a built-in 16x16 `cursor_renderer`, without a standalone circle PNG.
+The cursor here is a native ring with a dark surround and an inner mining arc;
+bit-for-bit visual equivalence with Bedrock's closed renderer is not established.
+
+
+The final optimized AVD build kept straight movement under small sideways stick
+jitter (zero measured strafe). A warmed client over one persistent control
+connection advanced 242 ticks in 12.093 seconds, approximately 20.01 ticks/s.
+Startup catch-up and per-command ADB overhead are excluded from this timing.
+No renderer/shader/chunk-streaming optimization or resolution-scale defaults
+were changed by 0.6.4/0.6.5; the reported POCO FPS regression has not been measured
+on the physical device. UI/input overhead remains a separate profiling concern.
