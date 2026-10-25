@@ -9,10 +9,14 @@ Android adds a native launcher and verified resource downloads, three touch
 control schemes with a layout editor, system keyboard/clipboard, AAudio sound,
 phone vibration and Vulkan rendering modes. See [Android build/use](docs/android.md),
 [feature support](docs/android-features.md) and [fork publication](docs/android-publication.md).
+Android 0.6 adds return-to-launcher, integrated-server mining vibration fixes,
+native `.hmod` import, and a Microsoft/Xbox sign-in panel. Production online sign-in
+requires our own registered and Minecraft-approved public client ID; none is bundled.
 No Minecraft JARs, assets, prepared tables, APKs or signing keys belong in Git.
 
 The Android branch preserves upstream history from
-[`d65282fb0f0f`](https://github.com/ludovic111/horizon/commit/d65282fb0f0fd7ba57876aef87dc4c6c2b5fa04b).
+[`d65282fb0f0f`](https://github.com/ludovic111/horizon/commit/d65282fb0f0fd7ba57876aef87dc4c6c2b5fa04b)
+and merges upstream through [`6a065fa4`](https://github.com/ludovic111/horizon/commit/6a065fa4899271403407fff12f3966481d4cd41c).
 The public fork is [Vasysik/horizon-android](https://github.com/Vasysik/horizon-android).
 Upstream release/runner workflows are retained as inactive references; the
 Android source check is manual. See [provenance](docs/android-upstream.json).

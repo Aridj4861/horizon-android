@@ -309,3 +309,52 @@ pub fn field_at(p: [f32; 2]) -> bool {
             && (y..y + h).contains(&p[1])
     })
 }
+
+/// Only Microsoft's device-code verification pages can be opened by the login panel.
+pub fn open_login_url(url: &str) -> Result<(), String> {
+    if ![
+        "https://www.microsoft.com/link",
+        "https://microsoft.com/link",
+        "https://microsoft.com/devicelogin",
+        "https://www.microsoft.com/devicelogin",
+    ]
+    .contains(&url)
+    {
+        return Err("Unexpected Microsoft verification URL.".into());
+    }
+    crate::APP.with(|slot| {
+        let app = slot.borrow();
+        let app = app.as_ref().ok_or("Android activity unavailable")?;
+        let vm = unsafe { JavaVM::from_raw(app.vm_as_ptr().cast()) }.map_err(|e| e.to_string())?;
+        let mut env = vm.attach_current_thread().map_err(|e| e.to_string())?;
+        env.with_local_frame(16, |env| -> jni::errors::Result<()> {
+            let url = JObject::from(env.new_string(url)?);
+            let uri = env
+                .call_static_method(
+                    "android/net/Uri",
+                    "parse",
+                    "(Ljava/lang/String;)Landroid/net/Uri;",
+                    &[JValue::Object(&url)],
+                )?
+                .l()?;
+            let action = JObject::from(env.new_string("android.intent.action.VIEW")?);
+            let intent = env.new_object(
+                "android/content/Intent",
+                "(Ljava/lang/String;Landroid/net/Uri;)V",
+                &[JValue::Object(&action), JValue::Object(&uri)],
+            )?;
+            let activity = unsafe { JObject::from_raw(app.activity_as_ptr().cast()) };
+            env.call_method(
+                &activity,
+                "startActivity",
+                "(Landroid/content/Intent;)V",
+                &[JValue::Object(&intent)],
+            )?;
+            Ok(())
+        })
+        .map_err(|e| {
+            let _ = env.exception_clear();
+            e.to_string()
+        })
+    })
+}

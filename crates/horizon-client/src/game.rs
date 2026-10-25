@@ -10065,6 +10065,7 @@ impl Game<'_> {
             self.pad.touch.vertical_movement = self.player.as_ref().is_some_and(|p| p.flying);
             self.pad.touch.swimming = self.player.as_ref().is_some_and(|p| p.swimming);
             self.pad.touch.mounted = self.riding.is_some();
+            self.pad.touch.sneaking = self.keys.contains(&KeyCode::ShiftLeft);
             self.pad.touch.draw(&mut hud, &self.gui.atlas);
         }
         #[cfg(target_os = "android")]
@@ -10848,7 +10849,7 @@ impl ApplicationHandler for Game<'_> {
         if let Some(renderer) = &mut self.renderer {
             if let Err(error) = renderer.recreate_surface() {
                 self.error = Some(error);
-                event_loop.exit();
+                crate::game::exit_app(event_loop);
             } else if let Some(window) = &self.window {
                 let size = window.inner_size();
                 renderer.resize(size.width, size.height);
@@ -10879,7 +10880,7 @@ impl ApplicationHandler for Game<'_> {
             Ok(w) => Arc::new(w),
             Err(e) => {
                 self.error = Some(e.into());
-                event_loop.exit();
+                crate::game::exit_app(event_loop);
                 return;
             }
         };
@@ -10891,7 +10892,7 @@ impl ApplicationHandler for Game<'_> {
             }
             Err(e) => {
                 self.error = Some(e);
-                event_loop.exit();
+                crate::game::exit_app(event_loop);
                 return;
             }
         }
@@ -11141,7 +11142,7 @@ impl ApplicationHandler for Game<'_> {
                 WindowEvent::RedrawRequested => {
                     if let Err(error) = self.render_closing_save() {
                         self.error = Some(error);
-                        event_loop.exit();
+                        crate::game::exit_app(event_loop);
                     }
                 }
                 _ => {}
@@ -11332,7 +11333,7 @@ impl ApplicationHandler for Game<'_> {
                         self.audio.play_button_click();
                     }
                     match action {
-                        Action::Quit => event_loop.exit(),
+                        Action::Quit => crate::game::exit_app(event_loop),
                         Action::Options => self.open_options(true),
                         Action::Accessibility => self
                             .open_options_at(true, horizon_client::options_ui::Page::Accessibility),
@@ -11823,7 +11824,7 @@ impl ApplicationHandler for Game<'_> {
                                 .world_frames
                                 .is_some_and(|f| self.world_frames >= f)
                         {
-                            event_loop.exit();
+                            crate::game::exit_app(event_loop);
                         }
                     }
                 }
@@ -11834,7 +11835,7 @@ impl ApplicationHandler for Game<'_> {
         })();
         if let Err(e) = result {
             self.error = Some(e);
-            event_loop.exit();
+            crate::game::exit_app(event_loop);
         }
     }
     fn device_event(&mut self, _: &ActiveEventLoop, _: DeviceId, event: DeviceEvent) {
@@ -11854,7 +11855,7 @@ impl ApplicationHandler for Game<'_> {
         self.android_poll_keyboard();
         if self.pending_save.is_some() {
             match self.poll_closing_save() {
-                Ok(true) => event_loop.exit(),
+                Ok(true) => crate::game::exit_app(event_loop),
                 Ok(false) => {
                     if let Some(window) = &self.window {
                         window.request_redraw();
@@ -11866,14 +11867,14 @@ impl ApplicationHandler for Game<'_> {
                 }
                 Err(error) => {
                     self.error = Some(error);
-                    event_loop.exit();
+                    crate::game::exit_app(event_loop);
                 }
             }
             return;
         }
         if let Err(error) = self.resume_world_entry() {
             self.error = Some(error);
-            event_loop.exit();
+            crate::game::exit_app(event_loop);
             return;
         }
         self.tick_server_packs();
@@ -11884,7 +11885,7 @@ impl ApplicationHandler for Game<'_> {
         self.poll_pads(event_loop);
         if self.options.frames.is_some() && self.started.elapsed() > self.options.timeout {
             self.error = Some("frame-limited run timed out".into());
-            event_loop.exit();
+            crate::game::exit_app(event_loop);
             return;
         }
         if let Some(w) = &self.window {
@@ -13151,6 +13152,14 @@ fn write_report(game: &Game<'_>) -> Result<()> {
     Ok(())
 }
 
+fn exit_app(events: &ActiveEventLoop) {
+    #[cfg(target_os = "android")]
+    horizon_client::android_runtime::return_to_launcher();
+    #[cfg(not(target_os = "android"))]
+    events.exit();
+    #[cfg(target_os = "android")]
+    let _ = events;
+}
 fn run_event_loop(mut game: Game<'_>) -> Result<()> {
     new_event_loop()?.run_app(&mut game)?;
     horizon_client::discord_presence::stop();
@@ -13187,7 +13196,7 @@ impl Loading {
         if let Some(renderer) = &mut self.renderer {
             if let Err(error) = renderer.recreate_surface() {
                 self.error = Some(error);
-                event_loop.exit();
+                crate::game::exit_app(event_loop);
             } else if let Some(window) = &self.window {
                 let size = window.inner_size();
                 renderer.resize(size.width, size.height);
@@ -13221,7 +13230,7 @@ impl Loading {
             Ok(w) => Arc::new(w),
             Err(e) => {
                 self.error = Some(e.into());
-                event_loop.exit();
+                crate::game::exit_app(event_loop);
                 return;
             }
         };
@@ -13237,7 +13246,7 @@ impl Loading {
             Ok(r) => self.renderer = Some(r),
             Err(e) => {
                 self.error = Some(e);
-                event_loop.exit();
+                crate::game::exit_app(event_loop);
                 return;
             }
         }
@@ -13254,7 +13263,7 @@ impl Loading {
         }
         if let Err(error) = self.menu_event(event_loop, event) {
             self.error = Some(error);
-            event_loop.exit();
+            crate::game::exit_app(event_loop);
         }
     }
     /// The menu bundle arrived: rebuild the loading screen with the real atlas
@@ -13296,7 +13305,7 @@ impl Loading {
         self.menu_android_keyboard();
         if let Err(error) = self.poll_menu_resources() {
             self.error = Some(error);
-            event_loop.exit();
+            crate::game::exit_app(event_loop);
             return;
         }
         if let Some(w) = &self.window {
@@ -13473,7 +13482,7 @@ impl ApplicationHandler for App {
             App::Loading(loading) => {
                 loading.about_to_wait(event_loop);
                 if loading.error.is_some() {
-                    event_loop.exit();
+                    crate::game::exit_app(event_loop);
                     return;
                 }
                 match if loading.menu.reload_packs {
@@ -13494,12 +13503,12 @@ impl ApplicationHandler for App {
         match step {
             Step::Waiting => {}
             Step::Ready(game) => *self = App::Ready(game),
-            Step::Done => event_loop.exit(),
+            Step::Done => crate::game::exit_app(event_loop),
             Step::Failed(e) => {
                 if let App::Loading(loading) = self {
                     loading.error = Some(e);
                 }
-                event_loop.exit();
+                crate::game::exit_app(event_loop);
             }
         }
     }
@@ -13561,6 +13570,7 @@ fn loading_app(
 
 #[cfg(target_os = "android")]
 pub(crate) fn android_game() -> Result<Box<dyn ApplicationHandler>> {
+    horizon_client::auth::clear_current();
     let options = Options::read()?.ok_or("missing Android options")?;
     let settings = Settings::load(&std::env::current_dir()?.join("options.txt"));
     let root = options.resources.clone();

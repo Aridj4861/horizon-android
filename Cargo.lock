@@ -1280,6 +1280,7 @@ dependencies = [
  "bytemuck",
  "chrono",
  "flate2",
+ "getrandom 0.3.4",
  "glam",
  "horizon-assets",
  "horizon-bench",

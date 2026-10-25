@@ -8,12 +8,26 @@ mod launcher;
 // Share the desktop launcher's actual search, compatibility checks, downloads,
 // dependency resolution and Java content porting; GPUI itself is desktop-only.
 #[allow(dead_code)]
+#[path = "../../../launcher/src/account.rs"]
+mod account;
+#[allow(dead_code)]
 #[path = "../../../launcher/src/browser.rs"]
 mod browser;
 #[path = "android/catalog.rs"]
 mod catalog;
 #[path = "android/platform.rs"]
 mod platform;
+// The shared account protocol needs only the launcher's version and data path.
+mod backend {
+    pub const VERSION: &str = "0.6.0";
+    static HOME: std::sync::OnceLock<std::path::PathBuf> = std::sync::OnceLock::new();
+    pub fn initialize(home: std::path::PathBuf) {
+        let _ = HOME.set(home);
+    }
+    pub fn data_dir() -> std::path::PathBuf {
+        HOME.get().expect("android_main sets account home").clone()
+    }
+}
 
 use std::cell::RefCell;
 use winit::{
@@ -50,6 +64,12 @@ pub(crate) fn android_arguments() -> horizon_client::Result<Vec<String>> {
         "--control-socket".into(),
         home.join("control.json").to_string_lossy().into_owned(),
     ];
+    if let Some(session) = crate::launcher::session_argument() {
+        args.extend([
+            "--session-file".into(),
+            session.to_string_lossy().into_owned(),
+        ]);
+    }
     if !config.name.is_empty() {
         args.extend(["--name".into(), config.name.clone()]);
     }
@@ -78,6 +98,7 @@ fn android_main(app: AndroidApp) {
         log::error!("Android supplied no application data directory");
         return;
     };
+    backend::initialize(home.clone());
     let engine_data = app.asset_manager().open(c"engine-data.zip");
     APP.with(|slot| *slot.borrow_mut() = Some(app));
     horizon_client::android_runtime::install_clipboard(

@@ -214,3 +214,46 @@ the default server-thread mode.
 Use fresh AVDs and fresh game/launcher/XDG folders for agent tests, with
 `HORIZON_LAUNCHER_NO_SELF_UPDATE=1` and `HORIZON_NO_AUDIO=1`. Never test on existing
 player data. An emulator's host GPU is not evidence of physical phone performance.
+
+## Android 0.6 update
+
+The Android branch merges upstream through `6a065fa4` (286 incoming commits),
+including world-generation noise, mesh lookup/culling, chunk batching, networking,
+save handling, and resource-pack fixes. Upstream shader-pack and Discord presence
+features retain their upstream defaults; the Android compatibility Vulkan mode
+remains available. No forced render-distance, FPS or resolution limits are added.
+Phone performance still needs measurement on the physical GPU.
+
+Leaving the native game returns to the native launcher in the same app process.
+Predicted block destruction on the integrated-server/multiplayer client path now
+requests the same vibration as the in-frame path; enable controller vibration.
+Classic D-pad crouching uses a double tap, while fly/swim descent is held.
+The touch editor supports deselecting a control and applying size/opacity to all
+controls in the current mode. It uses original privately prepared Bedrock sprites;
+pixel-perfect positioning for every Bedrock version/device is not yet verified.
+
+The `.hmod` page imports native packages from a direct HTTPS URL and no longer
+searches Java mods. Fabric/Forge/JAR code does not execute in this Rust engine.
+Resource packs and the data-oriented modpack conversion are separate features.
+
+### Microsoft / Xbox account on Android
+
+Settings → Microsoft / Xbox account accepts the **public client ID of our own
+registered application**. Registration belongs to the repository owner: follow
+[Microsoft's device-code documentation](https://learn.microsoft.com/entra/identity-platform/v2-oauth2-device-code)
+and the upstream [Minecraft registration notes](microsoft-account.md), substituting
+`Vasysik/horizon-android` and our application's name for the upstream project.
+No application ID is bundled until that registration and Minecraft access exist.
+Do not use another launcher's ID or put a client secret in the APK.
+
+The panel shares the desktop launcher's device-code → Xbox Live → XSTS →
+Minecraft entitlement/profile checks, opens the verification page in Android's
+browser, and passes the game a private one-use session file. Session renewal runs
+in a worker so the launcher remains responsive. Tokens are currently memory-only
+on Android: closing the process requires signing in again. Account names/UUIDs
+persist without tokens. Use Sign out to return to an offline profile. Production
+online-mode login remains unverified until our approved client ID is configured.
+
+The comparison port `CornyBirdy/horizon4android` was reviewed as a separate WIP:
+its documentation marks physical-device runtime/input checks as outstanding.
+Its Java activity implementation was not imported into this native Rust launcher.

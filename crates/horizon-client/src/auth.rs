@@ -5,9 +5,12 @@
 //! process's memory: it is never logged, printed or written anywhere.
 use std::{
     path::Path,
-    sync::{Arc, Mutex, OnceLock},
+    sync::{Arc, Mutex},
     time::{Duration, SystemTime},
 };
+
+#[cfg(not(target_os = "android"))]
+use std::sync::OnceLock;
 
 /// MinecraftServicesEnvironment.PROD.
 pub const DEFAULT_DISCOVERY: &str = "https://discovery.minecraftservices.com/minecraft/client";
@@ -103,14 +106,35 @@ impl AuthSession {
     }
 }
 
+#[cfg(not(target_os = "android"))]
 static CURRENT: OnceLock<Arc<AuthSession>> = OnceLock::new();
+#[cfg(target_os = "android")]
+static CURRENT: std::sync::RwLock<Option<Arc<AuthSession>>> = std::sync::RwLock::new(None);
 
-/// The account this game was started with (set once at start).
+/// The account this game was started with. Android can launch another game in
+/// the same process, so it replaces the previous game's session.
 pub fn set_current(session: AuthSession) {
+    #[cfg(not(target_os = "android"))]
     let _ = CURRENT.set(Arc::new(session));
+    #[cfg(target_os = "android")]
+    {
+        *CURRENT.write().unwrap() = Some(Arc::new(session));
+    }
 }
 pub fn current() -> Option<Arc<AuthSession>> {
-    CURRENT.get().cloned()
+    #[cfg(not(target_os = "android"))]
+    {
+        CURRENT.get().cloned()
+    }
+    #[cfg(target_os = "android")]
+    {
+        CURRENT.read().unwrap().clone()
+    }
+}
+/// End the previous Android game's identity before parsing a new launch.
+#[cfg(target_os = "android")]
+pub fn clear_current() {
+    *CURRENT.write().unwrap() = None;
 }
 
 /// Why joining a server through the session service failed, like the

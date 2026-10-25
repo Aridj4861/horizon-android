@@ -25,8 +25,8 @@ Generated tables and Mojang downloads remain private in `.local/`.
 Upstream GitHub Actions are retained under `.github/upstream-workflows/` with
 `.disabled` extensions in the export. The only active exported workflow is a
 manual Android source check: read-only token, no self-hosted runner, no release,
-deployment or telemetry upload. Original files remain intact in the working
-directory; this transformation applies to the publication archive.
+deployment or telemetry upload. The fork also keeps these workflows inactive in its Git tree; upstream history
+preserves their original versions.
 
 ## Restore a real upstream relationship
 
@@ -65,3 +65,11 @@ The Android fork still shares upstream service URLs in parts of the desktop
 code. They are not replaced with invented fork services. Public branding,
 repository ownership, publisher identity and production endpoints must be real
 values chosen by the publisher.
+
+## Upstream integration on 25 October 2026
+
+Merge `6a63e5d8` integrates 286 commits through `6a065fa4`, retaining the Android
+entry point, native launcher, touch rays and compatibility rendering. The old
+working state is preserved locally at `backup/android-0.5.1`; no history was
+rewritten. The new mod-registry workflow is retained inactive like the other
+upstream workflows. The source manifest now records the merged upstream revision.

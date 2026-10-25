@@ -29,6 +29,7 @@ pub struct Config {
     pub profile: u32,
     pub name: String,
     pub server: String,
+    pub microsoft_client_id: String,
     pub pack: Option<String>,
     pub renderer: RendererMode,
 }
@@ -111,7 +112,7 @@ impl Page {
     pub fn name(self) -> &'static str {
         match self {
             Self::Play => "Play",
-            Self::Mods => "Mods",
+            Self::Mods => ".hmod",
             Self::Packs => "Packs",
             Self::Modpacks => "Modpacks",
             Self::Installed => "Installed",
@@ -126,7 +127,7 @@ impl Page {
         }
     }
     pub fn is_catalog(self) -> bool {
-        matches!(self, Self::Mods | Self::Packs | Self::Modpacks)
+        matches!(self, Self::Packs | Self::Modpacks)
     }
 }
 enum Reply {
@@ -240,8 +241,13 @@ impl Catalog {
         }
     }
     pub fn search(&mut self, home: &Path) {
-        if self.page == Page::Mods && self.query.starts_with("https://") {
-            self.import_native(home);
+        if self.page == Page::Mods {
+            self.results.clear();
+            if self.query.starts_with("https://") {
+                self.import_native(home);
+            } else {
+                self.status = "Enter a direct HTTPS URL to a native .hmod package.".into();
+            }
             return;
         }
         let mut query = Query::new(&self.query, self.page.kind());
@@ -394,6 +400,7 @@ impl Catalog {
         let field = match self.editing {
             Some("name") => &mut self.config.name,
             Some("server") => &mut self.config.server,
+            Some("client_id") => &mut self.config.microsoft_client_id,
             _ => &mut self.query,
         };
         match out {

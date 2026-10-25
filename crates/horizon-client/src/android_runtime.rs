@@ -26,3 +26,11 @@ pub fn clipboard_set(text: &str) {
         (h.set)(text);
     }
 }
+
+static RETURN_TO_LAUNCHER: AtomicBool = AtomicBool::new(false);
+pub fn return_to_launcher() {
+    RETURN_TO_LAUNCHER.store(true, Ordering::Release);
+}
+pub fn take_launcher_return() -> bool {
+    RETURN_TO_LAUNCHER.swap(false, Ordering::AcqRel)
+}

@@ -81,7 +81,7 @@ fn send(request: ureq::Request, body: Option<Body>, service: &str) -> Result<(u1
         Err(ureq::Error::Transport(_)) => {
             return Err(format!(
                 "Could not reach {service}. Check your internet connection."
-            ))
+            ));
         }
     };
     let status = response.status();
@@ -776,6 +776,9 @@ pub struct SignIn {
 
 impl SignIn {
     pub fn start() -> Self {
+        Self::start_with_client_id(client_id())
+    }
+    pub fn start_with_client_id(configured_id: Option<String>) -> Self {
         use std::sync::atomic::Ordering;
         let state = std::sync::Arc::new(Mutex::new(SignInState::Starting));
         let cancel = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
@@ -784,7 +787,7 @@ impl SignIn {
             let set = |s| *thread_state.lock().unwrap() = s;
             let result = (|| {
                 let ep = Endpoints::live();
-                let client_id = client_id().ok_or(NOT_CONFIGURED)?;
+                let client_id = configured_id.ok_or(NOT_CONFIGURED)?;
                 let code = device_code(&ep, &client_id)?;
                 set(SignInState::Code(code.clone()));
                 let ms = wait_for_sign_in(&ep, &client_id, &code, &|| {
@@ -825,4 +828,5 @@ pub fn attach_session(
 }
 
 #[cfg(test)]
+#[path = "account/tests.rs"]
 mod tests;

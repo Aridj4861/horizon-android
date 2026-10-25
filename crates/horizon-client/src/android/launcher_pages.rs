@@ -20,6 +20,11 @@ pub(super) enum Action {
     Previous,
     Profile,
     Logs,
+    Account,
+    SignIn,
+    SignOut,
+    LoginLink,
+    CloseLogin,
     Renderer,
     ChooseRenderer(crate::catalog::RendererMode),
     ChooseProfile(u32),
@@ -118,7 +123,7 @@ impl Launcher {
             w - 320.0,
             38.0,
             color::MUTED,
-            "26.3 / Rust / Vulkan",
+            "26.3 / Android 0.6",
         );
         for (i, page) in Page::ALL.iter().enumerate() {
             let x = 32.0 + i as f32 * ((w - 64.0) / 6.0);
@@ -160,7 +165,11 @@ impl Launcher {
                     self.total.load(Ordering::Relaxed) / 1048576
                 )
             } else if horizon_client::official_install::ready(&self.home) {
-                "Installed. Ready to play offline.".into()
+                if let Some(account) = crate::account::Accounts::load().selected() {
+                    format!("Installed. Minecraft profile: {}", account.name)
+                } else {
+                    "Installed. Ready to play offline.".into()
+                }
             } else {
                 "Download game resources and sound directly from Mojang (HTTPS).".into()
             };
@@ -171,7 +180,7 @@ impl Launcher {
                 32.0,
                 310.0,
                 color::MUTED,
-                "Install additions in Mods / Packs. Change player name and server in Settings.",
+                "Native .hmod add-ons and resource packs. Account and server in Settings.",
             );
             button(
                 &mut ui,
@@ -197,6 +206,47 @@ impl Launcher {
                 },
                 Action::Play,
                 true,
+            );
+        } else if page == Page::Mods {
+            ui.text(
+                Face::Medium,
+                24.0,
+                32.0,
+                160.0,
+                color::TEXT,
+                "Native Horizon mods (.hmod)",
+            );
+            ui.text(
+                Face::Regular,
+                16.0,
+                32.0,
+                205.0,
+                color::MUTED,
+                "Java / Fabric / Forge mods cannot run in this client.",
+            );
+            button(
+                &mut ui,
+                &mut self.targets,
+                [32.0, 250.0, w - 64.0, 46.0],
+                &format!("HTTPS .hmod URL: {}", self.catalog.query),
+                Action::Field("search"),
+                false,
+            );
+            button(
+                &mut ui,
+                &mut self.targets,
+                [32.0, 320.0, 240.0, 46.0],
+                "Import .hmod",
+                Action::Search,
+                true,
+            );
+            ui.text(
+                Face::Regular,
+                16.0,
+                32.0,
+                390.0,
+                color::MUTED,
+                "Enable installed native mods on the Installed page.",
             );
         } else if page.is_catalog() {
             button(
@@ -432,7 +482,15 @@ impl Launcher {
             button(
                 &mut ui,
                 &mut self.targets,
-                [32.0, h - 114.0, 270.0, 42.0],
+                [w * 0.5 + 6.0, h - 114.0, w * 0.5 - 38.0, 42.0],
+                "Microsoft / Xbox account",
+                Action::Account,
+                true,
+            );
+            button(
+                &mut ui,
+                &mut self.targets,
+                [32.0, h - 114.0, w * 0.5 - 38.0, 42.0],
                 "Startup diagnostics",
                 Action::Logs,
                 false,
@@ -455,6 +513,13 @@ impl Launcher {
                 &line.iter().collect::<String>(),
             );
         }
+        if self.login.visible {
+            self.login.draw(
+                &mut ui,
+                &mut self.targets,
+                &self.catalog.config.microsoft_client_id,
+            );
+        }
         if let Some(chooser) = &mut self.chooser {
             chooser.draw(&mut ui, &mut self.targets);
         }
@@ -464,6 +529,9 @@ impl Launcher {
         Ok(())
     }
     pub(super) fn activate(&mut self, events: &ActiveEventLoop) -> Result<()> {
+        if self.session_worker.is_some() {
+            return Ok(());
+        }
         let Some(r) = &self.renderer else {
             return Ok(());
         };
@@ -484,6 +552,17 @@ impl Launcher {
             return Ok(());
         }
         match action {
+            Some(Action::Account) => {
+                self.login.visible = true;
+            }
+            Some(Action::CloseLogin) => {
+                self.login.close();
+                crate::platform::hide();
+                self.catalog.editing = None;
+            }
+            Some(Action::SignIn) => self.login.start(&self.catalog.config.microsoft_client_id),
+            Some(Action::SignOut) => self.login.sign_out(),
+            Some(Action::LoginLink) => self.login.open_link(),
             Some(Action::ToggleNative(i)) => self.catalog.toggle_native(&self.home, i),
             Some(Action::PackProfile) => self.open_chooser(chooser::Kind::Pack),
             Some(Action::Page(page)) => {
@@ -510,6 +589,7 @@ impl Launcher {
                 let initial = match name {
                     "name" => &self.catalog.config.name,
                     "server" => &self.catalog.config.server,
+                    "client_id" => &self.catalog.config.microsoft_client_id,
                     _ => &self.catalog.query,
                 };
                 crate::platform::show(initial);
@@ -605,6 +685,12 @@ impl Launcher {
             || key.logical_key
                 == winit::keyboard::Key::Named(winit::keyboard::NamedKey::BrowserBack)
         {
+            if self.login.visible {
+                self.login.close();
+                crate::platform::hide();
+                self.catalog.editing = None;
+                return;
+            }
             if self.chooser.take().is_some() {
                 return;
             }

@@ -1,6 +1,12 @@
 //! A native Rust installer and version screen, sharing the game's Vulkan renderer.
 use crate::catalog::{Catalog, Page};
 use crate::game;
+#[path = "login.rs"]
+mod login;
+thread_local! {static SESSION:std::cell::RefCell<Option<PathBuf>>=const{std::cell::RefCell::new(None)};}
+pub(crate) fn session_argument() -> Option<PathBuf> {
+    SESSION.with(|s| s.borrow_mut().take())
+}
 #[path = "chooser.rs"]
 mod chooser;
 #[path = "launcher_pages.rs"]
@@ -42,6 +48,9 @@ pub(super) struct Launcher {
     targets: Vec<([f32; 4], pages::Action)>,
     drag: Option<(f64, f64, bool)>,
     chooser: Option<chooser::Chooser>,
+    login: login::Login,
+    session_worker: Option<mpsc::Receiver<std::result::Result<Option<PathBuf>, String>>>,
+    session_ready: bool,
 }
 
 impl Launcher {
@@ -62,9 +71,38 @@ impl Launcher {
             targets: vec![],
             drag: None,
             chooser: None,
+            login: login::Login::new(),
+            session_worker: None,
+            session_ready: false,
         }
     }
 
+    fn restore_launcher(&mut self, events: &ActiveEventLoop) {
+        if !horizon_client::android_runtime::take_launcher_return() {
+            return;
+        }
+        if let Some(mut game) = self.game.take() {
+            game.exiting(events);
+            drop(game);
+        }
+        crate::platform::hide();
+        horizon_client::auth::clear_current();
+        horizon_client::discord_presence::stop();
+        horizon_client::ui_theme::reset_atlas();
+        self.cursor = (0.0, 0.0);
+        self.drag = None;
+        self.chooser = None;
+        if let Err(error) = std::env::set_current_dir(&self.home) {
+            self.fail(error);
+            return;
+        }
+        self.catalog.refresh(&self.home);
+        self.catalog.page = Page::Play;
+        if let Err(error) = self.open(events) {
+            self.fail(error);
+            events.exit();
+        }
+    }
     fn fail(&mut self, error: impl std::fmt::Display) {
         log::error!("{error}");
         self.error = Some(error.to_string());
@@ -101,7 +139,7 @@ impl Launcher {
     }
 
     fn action(&mut self, events: &ActiveEventLoop) -> Result<()> {
-        if self.worker.is_some() {
+        if self.worker.is_some() || self.session_worker.is_some() {
             return Ok(());
         }
         if horizon_client::official_install::ready(&self.home) {
@@ -112,6 +150,28 @@ impl Launcher {
                 self.catalog.config.renderer == crate::catalog::RendererMode::Vulkan,
             );
             let game_home = self.catalog.config.game_home(&self.home);
+            if !self.session_ready && crate::account::Accounts::load().selected().is_some() {
+                let id = self.catalog.config.microsoft_client_id.clone();
+                let (sender, receiver) = mpsc::channel();
+                self.session_worker = Some(receiver);
+                self.catalog.status = "Preparing Microsoft session...".into();
+                std::thread::spawn(move || {
+                    let result = (|| {
+                        login::Login::session(&id)?
+                            .map(|(a, s)| {
+                                crate::account::write_session_file(
+                                    &game_home.join("sessions"),
+                                    &a,
+                                    &s,
+                                )
+                            })
+                            .transpose()
+                    })();
+                    let _ = sender.send(result);
+                });
+                return Ok(());
+            }
+            self.session_ready = false;
             std::fs::create_dir_all(&game_home)?;
             std::env::set_current_dir(game_home)?;
             let game = game::android_game()?;
@@ -168,7 +228,9 @@ impl ApplicationHandler for Launcher {
     }
     fn window_event(&mut self, events: &ActiveEventLoop, id: WindowId, event: WindowEvent) {
         if let Some(game) = &mut self.game {
-            return game.window_event(events, id, event);
+            game.window_event(events, id, event);
+            self.restore_launcher(events);
+            return;
         }
         let result = match event {
             WindowEvent::CloseRequested => {
@@ -214,7 +276,9 @@ impl ApplicationHandler for Launcher {
     }
     fn about_to_wait(&mut self, events: &ActiveEventLoop) {
         if let Some(game) = &mut self.game {
-            return game.about_to_wait(events);
+            game.about_to_wait(events);
+            self.restore_launcher(events);
+            return;
         }
         if let Some(result) = self.worker.as_ref().and_then(|w| w.try_recv().ok()) {
             self.worker = None;
@@ -229,6 +293,21 @@ impl ApplicationHandler for Launcher {
             self.catalog.edit(out, &self.home);
         }
         self.catalog.poll(&self.home);
+        self.login.poll();
+        if let Some(result) = self.session_worker.as_ref().and_then(|w| w.try_recv().ok()) {
+            self.session_worker = None;
+            match result {
+                Ok(file) => {
+                    SESSION.with(|s| *s.borrow_mut() = file);
+                    self.session_ready = true;
+                    if let Err(e) = self.action(events) {
+                        self.fail(e);
+                    }
+                }
+                Err(e) => self.fail(e),
+            }
+        }
+
         if let Some(window) = &self.window {
             window.request_redraw();
         }
