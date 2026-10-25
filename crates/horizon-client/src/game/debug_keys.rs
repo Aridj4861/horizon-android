@@ -276,11 +276,7 @@ impl Game<'_> {
         if !self.debug || (self.ui.hide_gui && !screen_open) {
             return;
         }
-        let framebuffer = [
-            (batch.width * batch.scale).round() as i32,
-            (batch.height * batch.scale).round() as i32,
-        ];
-        let _ = size;
+        let framebuffer = size.map(|v| v as i32);
         #[cfg(target_os = "android")]
         let scale_debug = debug_overlay::touch_scale;
         #[cfg(not(target_os = "android"))]

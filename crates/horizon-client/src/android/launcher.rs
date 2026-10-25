@@ -108,14 +108,6 @@ impl Launcher {
     }
 
     fn open(&mut self, events: &ActiveEventLoop) -> Result<()> {
-        let touch = horizon_client::touch::Settings::load_from(
-            &self
-                .catalog
-                .config
-                .profile_home(&self.home)
-                .join("horizon-touch.json"),
-        );
-        horizon_client::hud::set_gui_margins([touch.horizontal_margin, touch.vertical_margin]);
         if let Some(renderer) = &mut self.renderer {
             renderer.recreate_surface()?;
             let size = self.window.as_ref().unwrap().inner_size();

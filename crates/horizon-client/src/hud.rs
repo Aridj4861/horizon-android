@@ -557,21 +557,30 @@ pub struct HudVertex {
 }
 /// The GUI Scale option (0 = auto).
 pub static GUI_SCALE: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
-static GUI_MARGINS: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
-pub fn set_gui_margins(margins: [f32; 2]) {
-    let [x, y] = margins.map(|v| {
-        if v.is_finite() {
-            (v.clamp(0.0, 0.12) * 1000.0).round() as u32
+/// Layout only passive information inside a safe rectangle. The main HUD,
+/// touch controls, menu hit tests and world projection keep their full surface.
+pub fn inset_overlay(batch: &mut HudBatch, margins: [f32; 2], draw: impl FnOnce(&mut HudBatch)) {
+    let full = [batch.width, batch.height];
+    let padding: [f32; 2] = std::array::from_fn(|i| {
+        let margin = if margins[i].is_finite() {
+            margins[i].clamp(0.0, 0.12)
         } else {
-            0
-        }
+            0.0
+        };
+        (full[i] * batch.scale * margin).round() / batch.scale
     });
-    GUI_MARGINS.store(x | (y << 16), std::sync::atomic::Ordering::Relaxed);
+    let start = batch.vertices.len();
+    batch.width -= padding[0] * 2.0;
+    batch.height -= padding[1] * 2.0;
+    draw(batch);
+    for v in &mut batch.vertices[start..] {
+        v.pos[0] += padding[0];
+        v.pos[1] += padding[1];
+    }
+    [batch.width, batch.height] = full;
 }
 /// One frame of overlay geometry in GUI pixels.
 pub struct HudBatch {
-    /// Physical safe-area offset, in GUI units; applied once by the HUD shader.
-    pub origin: [f32; 2],
     pub vertices: Vec<HudVertex>,
     pub scale: f32,
     pub width: f32,
@@ -617,58 +626,24 @@ impl HudBatch {
     /// Window.calculateScale: the largest scale keeping >= 320x240 GUI pixels,
     /// capped by the GUI Scale option (0 = auto).
     pub fn new(window: [u32; 2]) -> Self {
-        #[cfg(target_os = "android")]
-        let margins = {
-            let v = GUI_MARGINS.load(std::sync::atomic::Ordering::Relaxed);
-            [(v & 65535) as f32 / 1000.0, (v >> 16) as f32 / 1000.0]
-        };
-        #[cfg(not(target_os = "android"))]
-        let margins = [0.0; 2];
-        Self::with_margins(window, margins)
-    }
-    pub fn with_margins(window: [u32; 2], margins: [f32; 2]) -> Self {
-        let padding: [u32; 2] = std::array::from_fn(|i| {
-            let margin = if margins[i].is_finite() {
-                margins[i].clamp(0.0, 0.12)
-            } else {
-                0.0
-            };
-            (window[i] as f32 * margin).round() as u32
-        });
-        let available: [u32; 2] = std::array::from_fn(|i| window[i].saturating_sub(padding[i] * 2));
         let limit = GUI_SCALE.load(std::sync::atomic::Ordering::Relaxed);
         let mut scale = 1;
         while (limit == 0 || scale < limit)
-            && available[0] / (scale + 1) >= 320
-            && available[1] / (scale + 1) >= 240
+            && window[0] / (scale + 1) >= 320
+            && window[1] / (scale + 1) >= 240
         {
             scale += 1;
         }
-        let origin = padding.map(|v| v as f32 / scale as f32);
         Self {
-            origin,
             vertices: Vec::new(),
             scale: scale as f32,
-            width: (window[0] as f32 / scale as f32).ceil() - origin[0] * 2.0,
-            height: (window[1] as f32 / scale as f32).ceil() - origin[1] * 2.0,
+            width: (window[0] as f32 / scale as f32).ceil(),
+            height: (window[1] as f32 / scale as f32).ceil(),
             patches: Vec::new(),
             blends: Vec::new(),
             end_portal: EndPortalFill::default(),
             blur_at: 0,
         }
-    }
-    pub fn pointer(&self, pixels: [f32; 2]) -> [f32; 2] {
-        std::array::from_fn(|i| pixels[i] / self.scale - self.origin[i])
-    }
-    pub fn normalized_pointer(&self, pixels: [f32; 2]) -> [f32; 2] {
-        let [x, y] = self.pointer(pixels);
-        [x / self.width, y / self.height]
-    }
-    pub fn screen_point(&self, point: [f32; 2], surface: [u32; 2]) -> [f32; 2] {
-        [
-            (point[0] * self.width + self.origin[0]) * self.scale / surface[0].max(1) as f32,
-            (point[1] * self.height + self.origin[1]) * self.scale / surface[1].max(1) as f32,
-        ]
     }
     /// Draw the vertices added since `start` with the inverting blend.
     pub fn invert_since(&mut self, start: usize) {
@@ -772,8 +747,7 @@ impl HudBatch {
         for v in vertices {
             v.depth = (max - v.depth) / (max - min).max(f32::EPSILON);
         }
-        let [x0, y0, x1, y1] =
-            std::array::from_fn(|i| ((clip[i] + self.origin[i % 2]) * self.scale).max(0.0) as u32);
+        let [x0, y0, x1, y1] = clip.map(|v| (v * self.scale).max(0.0) as u32);
         // Separate previews clear depth independently, even if their scissors match.
         self.blends.push((
             start as u32..self.vertices.len() as u32,
@@ -1059,15 +1033,13 @@ impl HudBatch {
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
 struct HudUniform {
     size: [f32; 4],
-    origin: [f32; 4],
     /// `EndPortalFill`: the two sprites, then the game time in x.
     end_portal: [[f32; 4]; 3],
 }
 impl HudUniform {
-    fn new(size: [f32; 4], fill: EndPortalFill, origin: [f32; 2]) -> Self {
+    fn new(size: [f32; 4], fill: EndPortalFill) -> Self {
         Self {
             size,
-            origin: [origin[0] * size[2], origin[1] * size[2], 0.0, 0.0],
             end_portal: [
                 fill.sprites[0],
                 fill.sprites[1],
@@ -1109,11 +1081,7 @@ impl HudRenderer {
         });
         let uniform = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("HUD size"),
-            contents: bytemuck::bytes_of(&HudUniform::new(
-                [1.0; 4],
-                EndPortalFill::default(),
-                [0.0; 2],
-            )),
+            contents: bytemuck::bytes_of(&HudUniform::new([1.0; 4], EndPortalFill::default())),
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
         let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -1387,7 +1355,6 @@ impl HudRenderer {
             bytemuck::bytes_of(&HudUniform::new(
                 [size[0] as f32, size[1] as f32, batch.scale, 0.0],
                 batch.end_portal,
-                batch.origin,
             )),
         );
     }
@@ -1490,31 +1457,25 @@ impl HudRenderer {
 mod tests {
     use super::*;
     #[test]
-    fn safe_area_preserves_touch_targets_and_camera_rays() {
-        for size in [[2560, 1182], [1280, 720], [1281, 721]] {
-            for margins in [[0.0, 0.0], [0.06, 0.04], [0.12, 0.12]] {
-                let batch = HudBatch::with_margins(size, margins);
-                for point in [[0.1, 0.2], [0.5, 0.5], [0.92, 0.78]] {
-                    let pixels = [point[0] * size[0] as f32, point[1] * size[1] as f32];
-                    let local = batch.normalized_pointer(pixels);
-                    let screen = batch.screen_point(local, size);
-                    for i in 0..2 {
-                        assert!((screen[i] - point[i]).abs() < 0.00001);
-                    }
-                    let uniform = HudUniform::new(
-                        [size[0] as f32, size[1] as f32, batch.scale, 0.0],
-                        EndPortalFill::default(),
-                        batch.origin,
-                    );
-                    let gui = batch.pointer(pixels);
-                    for i in 0..2 {
-                        assert!(
-                            (gui[i] * batch.scale + uniform.origin[i] - pixels[i]).abs() < 0.001
-                        );
-                    }
-                }
-            }
-        }
+    fn inset_only_moves_the_information_overlay_not_controls_or_viewport() {
+        let mut batch = HudBatch::new([1280, 720]);
+        let full = [batch.width, batch.height];
+        let quad = [[0.0, 0.0], [10.0, 0.0], [10.0, 10.0], [0.0, 10.0]];
+        batch.quad(quad, [[0.0; 2]; 4], u32::MAX);
+        let existing = batch.vertices[0].pos;
+        let padding = [
+            (full[0] * batch.scale * 0.1).round() / batch.scale,
+            (full[1] * batch.scale * 0.05).round() / batch.scale,
+        ];
+        inset_overlay(&mut batch, [0.1, 0.05], |b| {
+            assert!(b.width < full[0] && b.height < full[1]);
+            b.quad(quad, [[0.0; 2]; 4], u32::MAX);
+        });
+        assert_eq!([batch.width, batch.height], full);
+        assert_eq!(batch.vertices[0].pos, existing);
+        assert_eq!(batch.vertices[6].pos, padding);
+        batch.quad(quad, [[0.0; 2]; 4], u32::MAX);
+        assert_eq!(batch.vertices[12].pos, existing);
     }
 
     /// `count` images of `w x h`; layout reads only their sizes.
@@ -1856,7 +1817,6 @@ mod tests {
         // Odd scaled dimensions, odd image sizes and an oversized panel.
         for (width, height) in [(640, 360), (641, 361), (456, 256), (534, 300), (100, 100)] {
             let batch = HudBatch {
-                origin: [0.0; 2],
                 vertices: Vec::new(),
                 scale: 3.0,
                 width: width as f32,

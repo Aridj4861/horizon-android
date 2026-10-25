@@ -629,8 +629,8 @@ impl Launcher {
         let mut b = HudBatch::new([r.config.width, r.config.height]);
         let ui = Ui::new(&self.gui.as_ref().unwrap().atlas, &mut b, (0.0, 0.0));
         let p = [
-            (self.cursor.0 as f32 - ui.batch.origin[0] * ui.batch.scale) / ui.density,
-            (self.cursor.1 as f32 - ui.batch.origin[1] * ui.batch.scale) / ui.density,
+            self.cursor.0 as f32 / ui.density,
+            self.cursor.1 as f32 / ui.density,
         ];
         let action = self
             .targets
@@ -739,17 +739,6 @@ impl Launcher {
                 self.catalog.config.profile = profile;
                 self.catalog.config.save(&self.home)?;
                 self.catalog.refresh(&self.home);
-                let touch = horizon_client::touch::Settings::load_from(
-                    &self
-                        .catalog
-                        .config
-                        .profile_home(&self.home)
-                        .join("horizon-touch.json"),
-                );
-                horizon_client::hud::set_gui_margins([
-                    touch.horizontal_margin,
-                    touch.vertical_margin,
-                ]);
                 self.chooser = None;
             }
             Some(Action::Dismiss) => self.chooser = None,

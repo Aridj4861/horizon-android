@@ -147,6 +147,10 @@ pub(crate) enum Kind {
 pub(crate) const ACCESSIBILITY_OPTIONS: &[Opt] = &[
     Opt::Narrator,
     Opt::ShowSubtitles,
+    #[cfg(target_os = "android")]
+    Opt::TouchHorizontalMargin,
+    #[cfg(target_os = "android")]
+    Opt::TouchVerticalMargin,
     Opt::HighContrast,
     Opt::MenuBlur,
     Opt::TextBackgroundOpacity,
@@ -213,8 +217,8 @@ impl Opt {
             Opt::TouchMode => "Control scheme",
             Opt::TouchAnalog => "360-degree movement",
             Opt::TouchCircleSize => "Touch circle size",
-            Opt::TouchHorizontalMargin => "Screen margins: left / right",
-            Opt::TouchVerticalMargin => "Screen margins: top / bottom",
+            Opt::TouchHorizontalMargin => "HUD margins: left / right",
+            Opt::TouchVerticalMargin => "HUD margins: top / bottom",
             Opt::TouchSensitivity => "Touch sensitivity",
             Opt::TouchInteract => "Interact button",
             Opt::TouchLeftHand => "Left handed",
@@ -1571,8 +1575,6 @@ impl OptionsUi {
                 rows.extend(pairs(&[
                     Opt::TouchSensitivity,
                     Opt::TouchCircleSize,
-                    Opt::TouchHorizontalMargin,
-                    Opt::TouchVerticalMargin,
                     Opt::DebugGuiScale,
                     Opt::TouchAnalog,
                     Opt::TouchSprintButton,

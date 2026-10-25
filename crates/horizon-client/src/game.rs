@@ -1764,9 +1764,6 @@ impl Game<'_> {
             let fov = self.locator_camera.map_or(70.0, |c| c.3);
             let size = self.window.as_ref().map(|w| w.inner_size());
             let aspect = size.map_or(16.0 / 9.0, |s| s.width as f64 / s.height.max(1) as f64);
-            let point = size.map_or(point, |s| {
-                HudBatch::new([s.width, s.height]).screen_point(point, [s.width, s.height])
-            });
             return horizon_client::touch::screen_direction(
                 forward,
                 view_vector(self.yaw, self.pitch - 90.0),
@@ -4889,6 +4886,19 @@ impl Game<'_> {
         draws.push(hud_layout::GuiDraw::Pop);
         hud_layout::paint(batch, &self.gui.atlas, &draws);
     }
+    fn hud_safe_margins(&self) -> [f32; 2] {
+        #[cfg(target_os = "android")]
+        {
+            [
+                self.settings.touch.horizontal_margin,
+                self.settings.touch.vertical_margin,
+            ]
+        }
+        #[cfg(not(target_os = "android"))]
+        {
+            [0.0; 2]
+        }
+    }
     fn hud(&mut self, size: [u32; 2]) -> HudBatch {
         // The pack prompt replaces the connecting screen (setScreen), but
         // in game it opens over the world.
@@ -4900,13 +4910,21 @@ impl Game<'_> {
         self.draw_pack_prompt(&mut batch);
         // Gui.extractRenderState: the debug overlay comes after the screen
         // and the toasts, so it is over everything, menus included.
-        self.draw_debug_overlay(&mut batch, size);
-        self.frame_graph
-            .draw(self.settings.horizon.overlay, &mut batch, &self.gui.atlas);
+        let margins = self.hud_safe_margins();
+        horizon_client::hud::inset_overlay(&mut batch, margins, |b| {
+            let safe_size = [
+                (b.width * b.scale).round() as u32,
+                (b.height * b.scale).round() as u32,
+            ];
+            self.draw_debug_overlay(b, safe_size);
+            self.frame_graph
+                .draw(self.settings.horizon.overlay, b, &self.gui.atlas);
+        });
         self.draw_pad_cursor(&mut batch);
         batch
     }
     fn hud_layers(&mut self, size: [u32; 2]) -> HudBatch {
+        let margins = self.hud_safe_margins();
         let mut batch = HudBatch::new(size);
         let (w, h) = (batch.width, batch.height);
         if self.screen == Screen::Win {
@@ -4940,12 +4958,12 @@ impl Game<'_> {
         // The ToastManager draws over every screen: a server's packs
         // download while the connection screen shows.
         if self.remote_overlay(&mut batch) {
-            self.draw_pack_toasts(&mut batch);
+            horizon_client::hud::inset_overlay(&mut batch, margins, |b| self.draw_pack_toasts(b));
             return batch;
         }
         if let Some(reason) = self.loading_reason() {
             self.draw_level_loading(&mut batch, reason);
-            self.draw_pack_toasts(&mut batch);
+            horizon_client::hud::inset_overlay(&mut batch, margins, |b| self.draw_pack_toasts(b));
             return batch;
         }
         // Hud.extractRenderState: F1 (keyToggleGui) hides camera overlays, the
@@ -5001,10 +5019,10 @@ impl Game<'_> {
                     }
                 }
             }
-            self.draw_effect_icons(&mut batch);
+            horizon_client::hud::inset_overlay(&mut batch, margins, |b| self.draw_effect_icons(b));
             // Hud: the action bar and titles draw over the hotbar (nextStratum).
-            self.draw_boss_bars(&mut batch);
-            self.draw_extras(&mut batch);
+            horizon_client::hud::inset_overlay(&mut batch, margins, |b| self.draw_boss_bars(b));
+            horizon_client::hud::inset_overlay(&mut batch, margins, |b| self.draw_extras(b));
         }
         if show_hud {
             // Hud.nextContextualInfoState: the jump bar, the experience bar or
@@ -5115,9 +5133,11 @@ impl Game<'_> {
         let draws = hud_overlays::sleep_overlay(wi, hi, self.sleep_timer as i32);
         hud_layout::paint(&mut batch, &self.gui.atlas, &draws);
         if show_hud {
-            self.draw_titles(&mut batch);
-            self.draw_scoreboard(&mut batch);
-            self.draw_subtitles(&mut batch);
+            horizon_client::hud::inset_overlay(&mut batch, margins, |b| {
+                self.draw_titles(b);
+                self.draw_scoreboard(b);
+                self.draw_subtitles(b);
+            });
         }
         let atlas = &self.gui.atlas;
         if show_hud
@@ -5164,8 +5184,8 @@ impl Game<'_> {
             Screen::Mod => self.draw_mod_screen(&mut batch),
             Screen::Playing | Screen::Options | Screen::Win => {}
         }
-        self.draw_toasts(&mut batch);
-        self.draw_pack_toasts(&mut batch);
+        horizon_client::hud::inset_overlay(&mut batch, margins, |b| self.draw_toasts(b));
+        horizon_client::hud::inset_overlay(&mut batch, margins, |b| self.draw_pack_toasts(b));
         self.remote_hud(&mut batch);
         self.draw_sign_editor(&mut batch);
         self.draw_book(&mut batch);
@@ -9282,10 +9302,6 @@ impl Game<'_> {
         #[cfg(target_os = "android")]
         {
             self.pad.touch.settings = self.settings.touch.clone();
-            horizon_client::hud::set_gui_margins([
-                self.settings.touch.horizontal_margin,
-                self.settings.touch.vertical_margin,
-            ]);
         }
         if let Some(r) = &self.renderer {
             self.settings
@@ -11083,20 +11099,17 @@ impl ApplicationHandler for Game<'_> {
             use winit::event::TouchPhase;
             self.last_input = Instant::now();
             let size = self.window.as_ref().unwrap().inner_size();
-            let touch_batch = HudBatch::new([size.width, size.height]);
-            let touch_point =
-                touch_batch.normalized_pointer([touch.location.x as f32, touch.location.y as f32]);
-            self.pad.touch.viewport(
-                (touch_batch.width * touch_batch.scale) as u32,
-                (touch_batch.height * touch_batch.scale) as u32,
-            );
+            self.pad.touch.viewport(size.width, size.height);
             if self.pad.touch.editor.is_some() {
                 if touch.phase == TouchPhase::Cancelled {
                     self.pad.touch.cancel_editor();
                     self.pause = false;
                 } else if self.pad.touch.edit_touch(
                     touch.id,
-                    touch_point,
+                    [
+                        touch.location.x as f32 / size.width.max(1) as f32,
+                        touch.location.y as f32 / size.height.max(1) as f32,
+                    ],
                     touch.phase == TouchPhase::Started,
                     touch.phase == TouchPhase::Ended,
                 ) {
@@ -11127,7 +11140,10 @@ impl ApplicationHandler for Game<'_> {
                 let size = self.window.as_ref().unwrap().inner_size();
                 if touch.phase == TouchPhase::Started {
                     let batch = HudBatch::new([size.width, size.height]);
-                    let point = batch.pointer([touch.location.x as f32, touch.location.y as f32]);
+                    let point = [
+                        touch.location.x as f32 / batch.scale,
+                        touch.location.y as f32 / batch.scale,
+                    ];
                     if let Some(slot) =
                         horizon_client::touch::hotbar_slot(batch.width, batch.height, point)
                     {
@@ -11139,21 +11155,16 @@ impl ApplicationHandler for Game<'_> {
                 self.pad.touch.hold_uses_item = self.touch_item_held_use();
                 let delta = self.pad.touch.update(
                     touch.id,
-                    touch_point,
+                    [
+                        touch.location.x as f32 / size.width.max(1) as f32,
+                        touch.location.y as f32 / size.height.max(1) as f32,
+                    ],
                     touch.phase == TouchPhase::Started,
                     matches!(touch.phase, TouchPhase::Ended | TouchPhase::Cancelled),
                 );
                 let sensitivity = self.pad.touch.settings.sensitivity;
-                self.yaw += delta[0] * touch_batch.width * touch_batch.scale
-                    / size.width.max(1) as f32
-                    * 180.0
-                    * sensitivity;
-                self.pitch = (self.pitch
-                    + delta[1] * touch_batch.height * touch_batch.scale
-                        / size.height.max(1) as f32
-                        * 180.0
-                        * sensitivity)
-                    .clamp(-90.0, 90.0);
+                self.yaw += delta[0] * 180.0 * sensitivity;
+                self.pitch = (self.pitch + delta[1] * 180.0 * sensitivity).clamp(-90.0, 90.0);
                 if self.pad.touch.chat_requested {
                     self.audio.play_button_click();
                     self.pad.touch.clear();
@@ -11351,8 +11362,7 @@ impl ApplicationHandler for Game<'_> {
                 WindowEvent::CursorMoved { position, .. } => {
                     if let Some(r) = &self.renderer {
                         let b = HudBatch::new([r.config.width, r.config.height]);
-                        let [x, y] = b.pointer([position.x as f32, position.y as f32]);
-                        self.cursor = (x, y);
+                        self.cursor = (position.x as f32 / b.scale, position.y as f32 / b.scale);
                         if self.screen == Screen::Advancements {
                             self.advancements_drag();
                         }
