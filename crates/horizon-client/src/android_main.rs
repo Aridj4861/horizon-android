@@ -21,7 +21,7 @@ mod platform;
 mod secure_store;
 // The shared account protocol needs only the launcher's version and data path.
 mod backend {
-    pub const VERSION: &str = "0.6.9";
+    pub const VERSION: &str = "0.6.10";
     static HOME: std::sync::OnceLock<std::path::PathBuf> = std::sync::OnceLock::new();
     pub fn initialize(home: std::path::PathBuf) {
         let _ = HOME.set(home);
@@ -35,6 +35,17 @@ mod backend {
 }
 
 use std::cell::RefCell;
+pub(crate) const NATIVE_HOST: bool = cfg!(feature = "native-host");
+static TOUCH_VISIBLE: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(!NATIVE_HOST);
+pub(crate) fn touch_visible() -> bool {
+    TOUCH_VISIBLE.load(std::sync::atomic::Ordering::Relaxed)
+}
+pub(crate) fn touch_input(touch: bool) {
+    if NATIVE_HOST {
+        TOUCH_VISIBLE.store(touch, std::sync::atomic::Ordering::Relaxed);
+    }
+}
 pub(crate) const PUBLIC_BUILD: bool = match option_env!("HORIZON_ANDROID_PUBLIC") {
     Some(value) => value.len() == 1 && value.as_bytes()[0] == b'1',
     None => false,
@@ -101,6 +112,15 @@ pub(crate) fn android_arguments() -> horizon_client::Result<Vec<String>> {
 
 #[unsafe(no_mangle)]
 fn android_main(app: AndroidApp) {
+    use winit::platform::android::activity::input::Axis;
+    for axis in [
+        Axis::Vscroll,
+        Axis::Hscroll,
+        Axis::RelativeX,
+        Axis::RelativeY,
+    ] {
+        app.enable_motion_axis(axis);
+    }
     android_logger::init_once(
         android_logger::Config::default()
             .with_max_level(log::LevelFilter::Info)

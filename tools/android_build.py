@@ -15,7 +15,7 @@ import hashlib
 
 ROOT = Path(__file__).resolve().parents[1]
 TARGETS = {'x86_64': 'x86_64-linux-android', 'arm64-v8a': 'aarch64-linux-android',
-           'armeabi-v7a': 'armv7-linux-androideabi'}
+           'armeabi-v7a': 'armv7-linux-androideabi', 'x86': 'i686-linux-android'}
 
 
 def latest(directory):
@@ -77,6 +77,7 @@ def main():
     parser.add_argument('--sdk', type=Path, default=os.environ.get('ANDROID_HOME') or Path(os.environ.get('LOCALAPPDATA', str(Path.home()))) / 'Android/Sdk')
     parser.add_argument('--java-home', type=Path, default=os.environ.get('JAVA_HOME') or 'C:/Program Files/Android/Android Studio/jbr')
     parser.add_argument('--skip-rust', action='store_true')
+    parser.add_argument('--rust-only', action='store_true', help='Build both Rust hosts without touching shared APK staging')
     parser.add_argument('--release-candidate', action='store_true', help='Build a non-debuggable candidate and audit privacy; this does not authorize redistribution of bundled game resources')
     parser.add_argument('--public', action='store_true', help='Distribution APK: generated tables only; original resources download from Mojang')
     parser.add_argument('--profile', choices=['fast', 'dev'], default='fast', help='Optimized by default; dev is for debugging only')
@@ -98,11 +99,17 @@ def main():
     # NDK spells the ARMv7 compiler triple differently from Rust. Android 8.1
     # is the legacy build's floor; the modern builds keep their existing floor.
     compiler_target = 'armv7a-linux-androideabi' if args.abi == 'armeabi-v7a' else target
-    min_sdk = 27 if args.abi == 'armeabi-v7a' else 28
-    features = ['--no-default-features', '--features', 'audio'] if args.abi == 'armeabi-v7a' else []
+    legacy = args.abi in ('armeabi-v7a', 'x86')
+    min_sdk = 27 if legacy else 28
+    features = ['--no-default-features', '--features', 'audio'] if legacy else []
+    native_features = ['--no-default-features', '--features', 'audio,native-host'] if legacy else []
+    manifests = [(['-p', 'horizon-android'], features),
+                 (['--manifest-path', str(ROOT / 'packaging/android-native/Cargo.toml')], native_features)]
     environment = dict(os.environ)
     environment['PATH'] = os.pathsep.join([str(ndk / 'bin'), str(args.java_home / 'bin'), environment['PATH']])
     environment['JAVA_HOME'] = str(args.java_home)
+    target_dir = Path(environment.get('CARGO_TARGET_DIR', ROOT / 'target')).resolve()
+    environment['CARGO_TARGET_DIR'] = str(target_dir)
     triple = target.replace('-', '_')
     clang = ndk / 'bin' / (compiler_target + str(min_sdk) + '-clang' + ('.cmd' if os.name == 'nt' else ''))
     environment[f'CC_{triple}'] = str(clang)
@@ -118,24 +125,27 @@ def main():
                 flags.append(f'--remap-path-prefix={prefix}={replacement}')
         environment['CARGO_ENCODED_RUSTFLAGS'] = '\x1f'.join(flags)
     if args.check or args.clippy:
-        command = ['cargo', 'clippy' if args.clippy else 'check', '-p', 'horizon-android', '--target', target]
-        command += features
-        if args.clippy:
-            command += ['--no-deps']
-            command += ['--', '-D', 'warnings']
-        run(command, cwd=ROOT, env=environment)
+        for selection, host_features in manifests:
+            command = ['cargo', 'clippy' if args.clippy else 'check', *selection, '--target', target, *host_features]
+            if args.clippy:
+                command += ['--no-deps', '--', '-D', 'warnings']
+            run(command, cwd=ROOT, env=environment)
         return
     if not args.skip_rust:
-        run(['cargo', 'build', '-p', 'horizon-android', '--target', target, '--profile', args.profile, *features], cwd=ROOT, env=environment)
+        for selection, host_features in manifests:
+            run(['cargo', 'build', *selection, '--target', target, '--profile', args.profile, *host_features], cwd=ROOT, env=environment)
+    if args.rust_only:
+        return
     output = ROOT / '.local/android/apk' / args.abi
     output.mkdir(parents=True, exist_ok=True)
-    library = ROOT / 'target' / target / ('debug' if args.profile == 'dev' else args.profile) / 'libhorizon_android.so'
-    if not library.is_file():
-        raise FileNotFoundError(library)
     staging = ROOT / '.local/android/gradle-jni' / args.abi
     staging.mkdir(parents=True, exist_ok=True)
-    shutil.copyfile(library, staging / library.name)
-    run([ndk / 'bin' / ('llvm-strip' + suffix), '--strip-debug', staging / library.name])
+    for name in ('libhorizon_android.so', 'libhorizon_android_native.so'):
+        library = target_dir / target / ('debug' if args.profile == 'dev' else args.profile) / name
+        if not library.is_file():
+            raise FileNotFoundError(library)
+        shutil.copyfile(library, staging / name)
+        run([ndk / 'bin' / ('llvm-strip' + suffix), '--strip-debug', staging / name])
     assets = ROOT / '.local/android/gradle-assets'
     assets.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(ROOT / 'LICENSE', assets / 'LICENSE.txt')

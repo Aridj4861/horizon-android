@@ -10,6 +10,7 @@ pub(super) enum Kind {
     Renderer,
     Profile,
     Orientation,
+    InputHost,
 }
 pub(super) struct Chooser {
     title: &'static str,
@@ -34,6 +35,21 @@ impl Launcher {
         };
         let c = &self.catalog.config;
         let (title, help, choices) = match kind {
+            Kind::InputHost => (
+                "Input mode",
+                "Mouse mode uses a physical keyboard. Touch mode keeps the Android keyboard.",
+                crate::catalog::InputHost::ALL
+                    .into_iter()
+                    .map(|mode| {
+                        (
+                            mode.label().into(),
+                            String::new(),
+                            Action::ChooseInputHost(mode),
+                            c.input_host == mode,
+                        )
+                    })
+                    .collect(),
+            ),
             Kind::Orientation => (
                 "Screen orientation",
                 "Applies to the launcher and game. Does not change touch bindings.",

@@ -65,6 +65,8 @@ rustix = { version = "1", default-features = false, features = ["std", "time"] }
 
 [features]
 default = ["mods", "audio"]
+# Internal marker; the separate NativeActivity workspace chooses its backend.
+native-host = []
 audio = ["horizon-client/audio"]
 controllers = []
 mods = ["horizon-client/mods", "horizon-mods/runtime"]

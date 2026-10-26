@@ -31,6 +31,8 @@ pub(super) enum Action {
     Renderer,
     Orientation,
     Keypad,
+    InputHost,
+    ChooseInputHost(crate::catalog::InputHost),
     ChooseOrientation(crate::catalog::Orientation),
     ChooseRenderer(crate::catalog::RendererMode),
     ChooseProfile(u32),
@@ -345,6 +347,20 @@ impl Launcher {
                     Action::Play,
                     true,
                 );
+                if self.session_worker.is_none() && !self.login.pending() {
+                    button(
+                        &mut ui,
+                        &mut self.targets,
+                        if compact {
+                            [32.0, h - 156.0, w - 64.0, 44.0]
+                        } else {
+                            [372.0, h - 92.0, w - 404.0, 44.0]
+                        },
+                        self.catalog.config.input_host.label(),
+                        Action::InputHost,
+                        false,
+                    );
+                }
             }
         } else if page == Page::Mods {
             ui.text(
@@ -368,7 +384,7 @@ impl Launcher {
                 if cfg!(feature = "mods") {
                     "Use native .hmod files; Java loaders are unsupported."
                 } else {
-                    "This ARMv7 build runs without the native mod runtime."
+                    "This 32-bit build runs without the native mod runtime."
                 },
             );
             if cfg!(feature = "mods") {
@@ -813,6 +829,13 @@ impl Launcher {
             Some(Action::Profile) => self.open_chooser(chooser::Kind::Profile),
             Some(Action::Renderer) => self.open_chooser(chooser::Kind::Renderer),
             Some(Action::Orientation) => self.open_chooser(chooser::Kind::Orientation),
+            Some(Action::InputHost) => self.open_chooser(chooser::Kind::InputHost),
+            Some(Action::ChooseInputHost(mode)) => {
+                self.catalog.config.input_host = mode;
+                self.catalog.config.save(&self.home)?;
+                self.chooser = None;
+                // Host changes occur only when Play is pressed, never during a download/login.
+            }
             Some(Action::Keypad) => {
                 self.catalog.config.keypad_controls ^= true;
                 self.catalog.config.save(&self.home)?;

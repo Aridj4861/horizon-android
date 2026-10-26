@@ -290,7 +290,116 @@ pub fn active() -> bool {
     EDIT.with(|e| e.borrow().is_some())
 }
 
+/// The stock NativeActivity has no GameTextInput connection. Its fields use
+/// ordinary keyboard events; the original GameActivity still owns Android IME.
+pub fn keyboard_mouse_connected() -> bool {
+    with_context(|env, activity| {
+        let resources = env
+            .call_method(
+                activity,
+                "getResources",
+                "()Landroid/content/res/Resources;",
+                &[],
+            )?
+            .l()?;
+        let config = env
+            .call_method(
+                &resources,
+                "getConfiguration",
+                "()Landroid/content/res/Configuration;",
+                &[],
+            )?
+            .l()?;
+        if env.get_field(&config, "keyboard", "I")?.i()? != 2 {
+            return Ok(false);
+        }
+        let ids = env
+            .call_static_method("android/view/InputDevice", "getDeviceIds", "()[I", &[])?
+            .l()?;
+        let ids = jni::objects::JIntArray::from(ids);
+        let mut values = vec![0; env.get_array_length(&ids)? as usize];
+        env.get_int_array_region(&ids, 0, &mut values)?;
+        for id in values {
+            let device = env
+                .call_static_method(
+                    "android/view/InputDevice",
+                    "getDevice",
+                    "(I)Landroid/view/InputDevice;",
+                    &[JValue::Int(id)],
+                )?
+                .l()?;
+            if device.is_null() {
+                continue;
+            }
+            let sources = env.call_method(&device, "getSources", "()I", &[])?.i()?;
+            if sources & 0x2002 == 0x2002 {
+                return Ok(true);
+            }
+        }
+        Ok(false)
+    })
+    .unwrap_or(false)
+}
+
+pub fn switch_input_host(native: bool) -> bool {
+    with_context(|env, activity| {
+        let intent = env.new_object("android/content/Intent", "()V", &[])?;
+        let package = env
+            .call_method(activity, "getPackageName", "()Ljava/lang/String;", &[])?
+            .l()?;
+        let name = JObject::from(env.new_string(if native {
+            "android.app.NativeActivity"
+        } else {
+            "com.google.androidgamesdk.GameActivity"
+        })?);
+        env.call_method(
+            &intent,
+            "setClassName",
+            "(Ljava/lang/String;Ljava/lang/String;)Landroid/content/Intent;",
+            &[JValue::Object(&package), JValue::Object(&name)],
+        )?;
+        env.call_method(
+            activity,
+            "startActivity",
+            "(Landroid/content/Intent;)V",
+            &[JValue::Object(&intent)],
+        )?;
+        env.call_method(activity, "finish", "()V", &[])?;
+        Ok(())
+    })
+    .is_some()
+}
+
+pub fn capture_mouse(capture: bool) -> bool {
+    if !crate::NATIVE_HOST {
+        return false;
+    }
+    with_context(|env, activity| {
+        let window = env
+            .call_method(activity, "getWindow", "()Landroid/view/Window;", &[])?
+            .l()?;
+        let view = env
+            .call_method(&window, "getDecorView", "()Landroid/view/View;", &[])?
+            .l()?;
+        env.call_method(
+            &view,
+            if capture {
+                "requestPointerCapture"
+            } else {
+                "releasePointerCapture"
+            },
+            "()V",
+            &[],
+        )?;
+        Ok(())
+    })
+    .is_some()
+}
+
 pub fn show(text: &str) {
+    if crate::NATIVE_HOST {
+        return;
+    }
     EDIT.with(|e| *e.borrow_mut() = Some(text.into()));
     crate::APP.with(|slot| {
         let app = slot.borrow();

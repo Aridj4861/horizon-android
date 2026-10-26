@@ -4712,6 +4712,8 @@ impl Game<'_> {
         }
         if !capture {
             self.stop_mining();
+            #[cfg(target_os = "android")]
+            crate::platform::capture_mouse(false);
         }
         // The real pointer takes over from an agent's.
         self.agent_pointer = false;
@@ -4739,7 +4741,7 @@ impl Game<'_> {
                 .is_ok();
             #[cfg(target_os = "android")]
             {
-                self.captured = true;
+                self.captured = !crate::NATIVE_HOST || crate::platform::capture_mouse(true);
             }
             #[cfg(not(target_os = "macos"))]
             if self.captured && self.focused {
@@ -10238,7 +10240,7 @@ impl Game<'_> {
         let mut hud = horizon_client::spans::time("hud", || self.hud(size));
         #[cfg(target_os = "android")]
         if self.pad.touch.editor.is_some()
-            || (self.title.is_none() && self.screen == Screen::Playing)
+            || (crate::touch_visible() && self.title.is_none() && self.screen == Screen::Playing)
         {
             self.pad.touch.context_use =
                 self.pad.touch.settings.contextual_interact && self.touch_context_use();
@@ -10251,7 +10253,7 @@ impl Game<'_> {
         }
         #[cfg(target_os = "android")]
         {
-            if self.pad.touch.editor.is_none() {
+            if crate::touch_visible() && self.pad.touch.editor.is_none() {
                 self.pad
                     .touch_ui
                     .draw(&mut hud, &self.gui.atlas, self.pad_in_menu());
@@ -11087,6 +11089,14 @@ impl ApplicationHandler for Game<'_> {
     fn window_event(&mut self, event_loop: &ActiveEventLoop, id: WindowId, event: WindowEvent) {
         if self.window.as_ref().is_none_or(|w| w.id() != id) {
             return;
+        }
+        #[cfg(target_os = "android")]
+        match &event {
+            WindowEvent::Touch(_) => crate::touch_input(true),
+            WindowEvent::MouseInput { .. }
+            | WindowEvent::CursorMoved { .. }
+            | WindowEvent::KeyboardInput { .. } => crate::touch_input(false),
+            _ => {}
         }
         #[cfg(target_os = "android")]
         if let WindowEvent::KeyboardInput { event, .. } = &event

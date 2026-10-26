@@ -39,7 +39,31 @@ pub struct Config {
     pub microsoft_client_id: String,
     pub renderer: RendererMode,
     pub orientation: Orientation,
+    pub input_host: InputHost,
     pub keypad_controls: bool,
+}
+
+#[derive(Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum InputHost {
+    #[default]
+    Auto,
+    Touch,
+    KeyboardMouse,
+}
+impl InputHost {
+    pub const ALL: [Self; 3] = [Self::Auto, Self::Touch, Self::KeyboardMouse];
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Auto => "Automatic",
+            Self::Touch => "Touch & Android keyboard",
+            Self::KeyboardMouse => "Keyboard & mouse",
+        }
+    }
+    pub fn native(self) -> bool {
+        self == Self::KeyboardMouse
+            || (self == Self::Auto && crate::platform::keyboard_mouse_connected())
+    }
 }
 
 /// Android ActivityInfo orientations, independent of the device's natural axis.

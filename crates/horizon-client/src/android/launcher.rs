@@ -37,6 +37,7 @@ pub(super) struct Launcher {
     pub(super) audio: Option<horizon_client::audio::Audio>,
     game: Option<Box<dyn ApplicationHandler>>,
     cursor: (f64, f64),
+    mouse_down: bool,
     install: Arc<Mutex<horizon_client::official_install::InstallProgress>>,
     worker: Option<mpsc::Receiver<std::result::Result<(), String>>>,
     error: Option<String>,
@@ -61,6 +62,7 @@ impl Launcher {
             audio: None,
             game: None,
             cursor: (0.0, 0.0),
+            mouse_down: false,
             install: Arc::default(),
             worker: None,
             error: None,
@@ -142,6 +144,18 @@ impl Launcher {
 
     fn action(&mut self, events: &ActiveEventLoop) -> Result<()> {
         if self.worker.is_some() || self.session_worker.is_some() {
+            return Ok(());
+        }
+        if self.login.pending() {
+            return Ok(());
+        }
+        let native = self.catalog.config.input_host.native();
+        if native != crate::NATIVE_HOST {
+            self.catalog.config.save(&self.home)?;
+            if !crate::platform::switch_input_host(native) {
+                return Err("Could not switch the Android input activity".into());
+            }
+            events.exit();
             return Ok(());
         }
         if horizon_client::official_install::ready(&self.home) {
@@ -267,11 +281,37 @@ impl ApplicationHandler for Launcher {
                 Ok(())
             }
             WindowEvent::Touch(touch) => self.touch_event(events, touch),
+            WindowEvent::Focused(false) => {
+                self.mouse_down = false;
+                self.drag = None;
+                Ok(())
+            }
             WindowEvent::MouseInput {
-                state: ElementState::Released,
+                state,
                 button: MouseButton::Left,
                 ..
-            } => self.activate(events),
+            } => {
+                if state == ElementState::Pressed {
+                    self.mouse_down = true;
+                    Ok(())
+                } else if std::mem::take(&mut self.mouse_down) {
+                    self.activate(events)
+                } else {
+                    Ok(())
+                }
+            }
+            WindowEvent::MouseWheel { delta, .. } => {
+                let y = match delta {
+                    winit::event::MouseScrollDelta::LineDelta(_, y) => y * 42.0,
+                    winit::event::MouseScrollDelta::PixelDelta(p) => p.y as f32,
+                };
+                if let Some(chooser) = &mut self.chooser {
+                    chooser.scroll = (chooser.scroll - y).max(0.0);
+                } else {
+                    self.catalog.scroll = (self.catalog.scroll - y).max(0.0);
+                }
+                Ok(())
+            }
             WindowEvent::RedrawRequested => self.draw_pages(),
             WindowEvent::KeyboardInput { event, .. } if event.state == ElementState::Pressed => {
                 if self.navigate(&event) {
