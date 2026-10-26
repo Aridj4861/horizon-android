@@ -617,7 +617,8 @@ buttons.
 
 ### Experimental ARMv7
 
-Build with `python tools/android_build.py --abi armeabi-v7a --public`. This uses
+Install the Rust target with `rustup target add armv7-linux-androideabi`, then
+build with `python tools/android_build.py --abi armeabi-v7a --public`. This uses
 Rust `armv7-linux-androideabi`, NDK `armv7a-linux-androideabi`, Android API 27
 (Android 8.1) and audio. Modern ARM64/x86_64 builds retain API 28. The ARMv7 build
 omits the Wasmtime/Cranelift native mod runtime; it does not offer `.hmod` installs.
@@ -645,3 +646,13 @@ normalizes paths to POSIX form. The paletted-storage optimization is included;
 the automatic worker-count change is retained for desktop, while Android keeps
 its previous two-core headroom until physical-device profiling. Later upstream
 history was fetched but remains outside this build pending separate review.
+
+
+Validation for the final 0.6.9 source: optimized ARM64 and ARMv7 public APKs
+compiled, linked, signed and passed their payload/privacy audits. Both targets
+passed Clippy with warnings denied. APK metadata confirms versionCode 18,
+minSdk 28 / 27 respectively, correct ELF ABI and a TV launcher entry. Both signing
+certificates match the published 0.6.7 identity. Targeted tests passed: 26 touch,
+4 keypad, 1 hotbar-side, 6 graphics settings, 16 HUD/extras, 10 palette tests and
+15 Python audit/export/reach tests. No phone or TV gameplay session was run for
+this update; physical F-03L GPU compatibility and memory use remain unverified.
