@@ -112,9 +112,13 @@ impl TouchControls {
                     if self.settings.left_handed {
                         center[0] = 1.0 - center[0];
                     }
+                    // Match the displayed size on narrow portrait surfaces.
+                    // A stored button may be wider than the screen; its raw
+                    // size would otherwise produce inverted clamp bounds.
+                    let size = place.size.min(aspect).min(1.0);
                     place.center = [
-                        center[0].clamp(place.size / aspect / 2.0, 1.0 - place.size / aspect / 2.0),
-                        center[1].clamp(place.size / 2.0, 1.0 - place.size / 2.0),
+                        center[0].clamp(size / aspect / 2.0, 1.0 - size / aspect / 2.0),
+                        center[1].clamp(size / 2.0, 1.0 - size / 2.0),
                     ];
                 }
                 Drag::Slider(index) => {

@@ -774,6 +774,23 @@ fn line(
 #[cfg(test)]
 mod tests {
     #[test]
+    fn oversized_controls_can_be_dragged_on_narrow_portrait_surfaces() {
+        let mut touch = TouchControls {
+            aspect: 0.4,
+            loaded: true,
+            ..Default::default()
+        };
+        touch.settings.layouts[0][Control::Move as usize].size = 0.45;
+        touch.open_editor();
+        let center = touch.placement(Control::Move).center;
+        touch.edit_touch(77, center, true, false);
+        assert_eq!(touch.editor.as_ref().unwrap().selected, Some(Control::Move));
+        touch.edit_touch(77, [0.95, 0.95], false, false);
+        let [x, y, w, h] = touch.placement(Control::Move).rect(touch.aspect());
+        assert!(x >= 0.0 && y >= 0.0 && x + w <= 1.0001 && y + h <= 1.0001);
+        touch.cancel_editor();
+    }
+    #[test]
     fn portrait_factory_shortcuts_do_not_overlap_and_margins_do_not_move_controls() {
         let mut touch = TouchControls::default();
         touch.viewport(480, 854);
