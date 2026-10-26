@@ -773,6 +773,37 @@ fn line(
 }
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn portrait_factory_shortcuts_do_not_overlap_and_margins_do_not_move_controls() {
+        let mut touch = TouchControls::default();
+        touch.viewport(480, 854);
+        let controls = [
+            Control::Debug,
+            Control::Chat,
+            Control::Pause,
+            Control::Settings,
+            Control::Perspective,
+        ];
+        let rects: Vec<_> = controls
+            .iter()
+            .map(|c| touch.placement(*c).rect(touch.aspect()))
+            .collect();
+        for pair in rects.windows(2) {
+            assert!(pair[0][0] + pair[0][2] < pair[1][0]);
+        }
+        touch.settings.horizontal_margin = 0.12;
+        touch.settings.vertical_margin = 0.12;
+        assert_eq!(
+            rects,
+            controls
+                .iter()
+                .map(|c| touch.placement(*c).rect(touch.aspect()))
+                .collect::<Vec<_>>()
+        );
+        touch.settings.layouts[0][Control::Chat as usize].center = [0.25, 0.2];
+        assert_eq!(touch.placement(Control::Chat).center, [0.25, 0.2]);
+    }
+
     use super::*;
     #[test]
     fn attack_gauge_survives_tap_modes_and_respects_off() {

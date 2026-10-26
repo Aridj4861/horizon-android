@@ -279,6 +279,7 @@ impl ApplicationHandler for Launcher {
                 if self.navigate(&event) {
                     Ok(())
                 } else if self.catalog.editing.is_none()
+                    && !event.repeat
                     && matches!(
                         event.logical_key,
                         winit::keyboard::Key::Named(winit::keyboard::NamedKey::Enter)

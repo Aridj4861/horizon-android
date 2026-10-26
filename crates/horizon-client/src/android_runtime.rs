@@ -18,7 +18,7 @@ pub fn clear_keypad() {
     KEYPAD.lock().unwrap().clear();
 }
 pub fn keypad_state() -> crate::gamepad::PadState {
-    KEYPAD.lock().unwrap().state()
+    KEYPAD.lock().unwrap().poll()
 }
 static OPEN_GL: AtomicBool = AtomicBool::new(cfg!(target_pointer_width = "32"));
 pub fn configure_graphics(open_gl: bool) {

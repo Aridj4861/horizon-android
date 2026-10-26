@@ -3,13 +3,14 @@ use crate::gamepad::{Button, PadState};
 use winit::keyboard::KeyCode;
 
 #[derive(Default)]
-pub struct Keypad(u32);
+pub struct Keypad(u32, u32);
 impl Keypad {
     pub const fn empty() -> Self {
-        Self(0)
+        Self(0, 0)
     }
     pub fn clear(&mut self) {
         self.0 = 0;
+        self.1 = 0;
     }
     pub fn key(&mut self, key: KeyCode, down: bool) -> bool {
         let bit = match key {
@@ -31,13 +32,20 @@ impl Keypad {
         };
         if down {
             self.0 |= 1 << bit;
+            self.1 |= 1 << bit;
         } else {
             self.0 &= !(1 << bit);
         }
         true
     }
     pub fn state(&self) -> PadState {
-        let held = |i: u32| -> bool { self.0 & (1u32 << i) != 0u32 };
+        Self::state_for(self.0)
+    }
+    pub fn poll(&mut self) -> PadState {
+        Self::state_for(self.0 | std::mem::take(&mut self.1))
+    }
+    fn state_for(bits: u32) -> PadState {
+        let held = |i: u32| -> bool { bits & (1u32 << i) != 0u32 };
         let axis = |positive, negative| {
             f32::from(u8::from(held(positive))) - f32::from(u8::from(held(negative)))
         };
@@ -65,6 +73,17 @@ impl Keypad {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn short_taps_survive_one_poll_and_clear_discards_them() {
+        let mut keypad = Keypad::default();
+        keypad.key(KeyCode::Digit1, true);
+        keypad.key(KeyCode::Digit1, false);
+        assert_eq!(keypad.poll().triggers, [0.0, 1.0]);
+        assert_eq!(keypad.poll(), PadState::default());
+        keypad.key(KeyCode::Digit5, true);
+        keypad.clear();
+        assert_eq!(keypad.poll(), PadState::default());
+    }
     #[test]
     fn diagonal_release_and_camera_are_independent() {
         let mut keypad = Keypad::default();

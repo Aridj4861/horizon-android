@@ -635,3 +635,11 @@ No phone FPS figure or playable-on-F-03L claim is made for this build.
 Sources: [DOCOMO developer specifications](https://www.docomo.ne.jp/binary/pdf/service/developer/smart_phone/spec/technical_info_spmode/F-03L.pdf),
 [DOCOMO product specifications](https://www.docomo.ne.jp/support/product/f03l/spec.html),
 [wgpu supported graphics APIs](https://github.com/gfx-rs/wgpu#supported-platforms).
+
+
+Upstream integration for this update stops at `29c09b4b`: six commits across the
+first three new merge batches. The changed test selector's Windows fixture now
+normalizes paths to POSIX form. The paletted-storage optimization is included;
+the automatic worker-count change is retained for desktop, while Android keeps
+its previous two-core headroom until physical-device profiling. Later upstream
+history was fetched but remains outside this build pending separate review.

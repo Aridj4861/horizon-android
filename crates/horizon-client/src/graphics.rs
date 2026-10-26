@@ -396,7 +396,8 @@ impl Graphics {
         // laptop while a world loaded: a teleport there took ~15% longer.
         let auto = std::thread::available_parallelism()
             .map_or(2, |n| n.get())
-            .saturating_sub(1)
+            // Preserve the Android fork's render/server headroom until phone profiling.
+            .saturating_sub(if cfg!(target_os = "android") { 2 } else { 1 })
             .max(1);
         if self.battery { auto.div_ceil(2) } else { auto }
     }
@@ -563,7 +564,12 @@ mod tests {
         let g = Graphics::default();
         assert_eq!(g.workers, 0);
         let cores = std::thread::available_parallelism().map_or(2, |n| n.get());
-        assert_eq!(g.worker_threads(), cores.saturating_sub(1).max(1));
+        assert_eq!(
+            g.worker_threads(),
+            cores
+                .saturating_sub(if cfg!(target_os = "android") { 2 } else { 1 })
+                .max(1)
+        );
         // A manual count is the player's own choice, kept as asked.
         let manual = Graphics { workers: 3, ..g };
         assert_eq!(manual.worker_threads(), 3);
