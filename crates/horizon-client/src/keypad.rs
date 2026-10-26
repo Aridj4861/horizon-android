@@ -1,6 +1,15 @@
 //! Optional physical-keypad preset, using the existing controller motion path.
 use crate::gamepad::{Button, PadState};
-use winit::keyboard::KeyCode;
+use winit::keyboard::{Key, KeyCode, NamedKey, PhysicalKey};
+
+/// Android DPAD_CENTER has a logical Enter but no physical PC key in winit.
+pub fn resolve_key(physical: PhysicalKey, logical: &Key) -> Option<KeyCode> {
+    match (physical, logical) {
+        (PhysicalKey::Code(code), _) => Some(code),
+        (_, Key::Named(NamedKey::Enter)) => Some(KeyCode::Enter),
+        _ => None,
+    }
+}
 
 #[derive(Default)]
 pub struct Keypad(u32, u32);
@@ -24,7 +33,7 @@ impl Keypad {
             KeyCode::Digit6 | KeyCode::Numpad6 => 7,
             KeyCode::Digit1 | KeyCode::Numpad1 => 8,
             KeyCode::Digit3 | KeyCode::Numpad3 => 9,
-            KeyCode::Digit5 | KeyCode::Numpad5 | KeyCode::Enter => 10,
+            KeyCode::Digit5 | KeyCode::Numpad5 | KeyCode::Enter | KeyCode::NumpadEnter => 10,
             KeyCode::Digit0 | KeyCode::Numpad0 => 11,
             KeyCode::Digit7 | KeyCode::Numpad7 => 12,
             KeyCode::Digit9 | KeyCode::Numpad9 => 13,
@@ -73,6 +82,20 @@ impl Keypad {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn android_dpad_centre_and_numpad_enter_jump() {
+        let code = resolve_key(
+            PhysicalKey::Unidentified(winit::keyboard::NativeKeyCode::Android(23)),
+            &Key::Named(NamedKey::Enter),
+        )
+        .unwrap();
+        let mut keypad = Keypad::default();
+        keypad.key(code, true);
+        assert!(keypad.poll().held(Button::South));
+        keypad.clear();
+        keypad.key(KeyCode::NumpadEnter, true);
+        assert!(keypad.poll().held(Button::South));
+    }
     #[test]
     fn short_taps_survive_one_poll_and_clear_discards_them() {
         let mut keypad = Keypad::default();

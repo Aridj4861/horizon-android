@@ -585,7 +585,9 @@ shorter tab labels. Short landscape surfaces scale the launcher down to keep its
 settings reachable. Arrow keys move a visible focus border; Enter activates the
 focused item. This also provides initial TV remote navigation. Android TV gets a
 Leanback launcher entry and an original vector banner. TV support is experimental;
-analog gamepad axes and full remote-only gameplay have not been validated.
+analog gamepad axes are not wired into the Android backend yet. Use a physical
+keyboard with the keypad preset for gameplay. Full remote-only gameplay has
+not been validated.
 
 `Launch settings > Physical keypad` enables the optional feature-phone preset:
 

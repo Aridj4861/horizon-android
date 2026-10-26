@@ -11070,7 +11070,8 @@ impl ApplicationHandler for Game<'_> {
         }
         #[cfg(target_os = "android")]
         if let WindowEvent::KeyboardInput { event, .. } = &event
-            && let PhysicalKey::Code(key) = event.physical_key
+            && let Some(key) =
+                horizon_client::keypad::resolve_key(event.physical_key, &event.logical_key)
             && (!self.pad_in_menu() || event.state == ElementState::Released)
             && horizon_client::android_runtime::keypad_key(
                 key,
