@@ -656,3 +656,10 @@ certificates match the published 0.6.7 identity. Targeted tests passed: 26 touch
 4 keypad, 1 hotbar-side, 6 graphics settings, 16 HUD/extras, 10 palette tests and
 15 Python audit/export/reach tests. No phone or TV gameplay session was run for
 this update; physical F-03L GPU compatibility and memory use remain unverified.
+
+
+Renderer recovery: the launcher uses Auto (Vulkan then GLES) independently of
+the selected game renderer. An unsupported game API therefore does not persist
+as the launcher's API on the next application start. The saved game selection
+is applied only to the game renderer and its loading screens, so players retain
+access to launch settings without deleting profile data.

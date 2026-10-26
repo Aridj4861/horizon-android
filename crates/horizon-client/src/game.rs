@@ -9299,7 +9299,7 @@ impl Game<'_> {
             gui,
             self.renderer.as_ref(),
             None,
-            self.settings.horizon.api,
+            rendering_api(&self.settings),
         )
     }
     fn apply_settings(&mut self) {
@@ -13070,6 +13070,21 @@ fn prepare_renderer_textures(pack: &PackResources) -> horizon_client::gfx::Prepa
     )
 }
 
+/// Game API selection stays separate from the installer's recovery UI.
+fn rendering_api(
+    settings: &horizon_client::settings::Settings,
+) -> horizon_client::graphics::GraphicsApi {
+    #[cfg(target_os = "android")]
+    {
+        let _ = settings;
+        horizon_client::android_runtime::graphics_api()
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        settings.horizon.api
+    }
+}
+
 /// Upload pack textures and create the renderer on the window's device.
 fn build_renderer(
     window: Arc<Window>,
@@ -13456,7 +13471,7 @@ impl Loading {
             offscreen,
             self.gui.as_ref(),
             None,
-            self.settings.horizon.api,
+            rendering_api(&self.settings),
         ) {
             Ok(r) => self.renderer = Some(r),
             Err(e) => {
@@ -13504,7 +13519,7 @@ impl Loading {
             offscreen,
             self.gui.as_ref(),
             self.renderer.as_ref(),
-            self.settings.horizon.api,
+            rendering_api(&self.settings),
         ) {
             Ok(r) => {
                 self.settings
@@ -13585,7 +13600,7 @@ impl Loading {
             &gui,
             self.renderer.as_ref(),
             loaded.renderer_cpu,
-            self.settings.horizon.api,
+            rendering_api(&self.settings),
         )?;
         log::info!(
             "Horizon: world renderer ready after {} ms",

@@ -111,9 +111,7 @@ impl Launcher {
 
     fn open(&mut self, events: &ActiveEventLoop) -> Result<()> {
         crate::platform::set_orientation(self.catalog.config.orientation);
-        horizon_client::android_runtime::configure_graphics(
-            self.catalog.config.renderer == crate::catalog::RendererMode::OpenGl,
-        );
+        horizon_client::android_runtime::configure_gpu(false);
         if let Some(renderer) = &mut self.renderer {
             renderer.recreate_surface()?;
             let size = self.window.as_ref().unwrap().inner_size();
@@ -135,7 +133,7 @@ impl Launcher {
             false,
             Some(&gui),
             None,
-            horizon_client::graphics::GraphicsApi::Vulkan,
+            horizon_client::graphics::GraphicsApi::Auto,
         )?);
         self.window = Some(window);
         self.gui = Some(gui);
