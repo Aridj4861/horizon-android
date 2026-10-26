@@ -1,72 +1,45 @@
-# Android client direction
+# Android architecture and compatibility
 
-This is an Android fork of Horizon, not a Java mod loader. The Rust world,
-simulation, renderer, protocol and most menus come from Horizon. Our work adds
-the Android launcher, packaging, resource installation, touch input, system IME,
-audio integration and a small set of shared-client fixes and optimizations.
-The Android branch now preserves upstream Git history from the best matching
-base recorded in [android-upstream.json](android-upstream.json). Use Git diffs
-against that commit to review our changes separately from the original engine.
+Horizon Android adds native packaging, installation, touch input and Android
+platform integration to [Horizon's Rust engine](https://github.com/ludovic111/horizon).
+World simulation, the renderer, Java protocol and shared menus remain upstream
+components. [Integration records](android-upstream.json) identify reviewed merges.
 
-## Compatibility today
+## Compatibility
 
-| Content | Current Android behavior |
-|---|---|
-| Native `.hmod` | Wasmtime components work on Android; the coordinates HUD has been exercised in both single-player paths |
-| Native mod API | Version 0.1 exposes player/clock reads, HUD, chat, commands, storage and lifecycle hooks; it is not a full gameplay-mod API |
+| Content | Support |
+| --- | --- |
+| Minecraft versions | Java 26.3 / protocol 777; other JAR versions are not launch targets |
+| Vanilla-compatible Java servers | Multiplayer client implemented; compatibility depends on server, proxy and anticheat |
+| Authenticated servers | Xbox/XSTS and Minecraft session handoff implemented; project-owned production app approval remains pending |
+| Native `.hmod` | Wasmtime components on 64-bit builds, subject to the versioned SDK and declared capabilities |
 | Resource packs | Supported within the renderer's implemented formats |
-| Java mod assets/data | Some content can be carried through the porting pipeline; unsupported behavior must be reported |
-| Fabric/Forge/NeoForge code and Mixins | Do not run as ordinary JARs; need native ports or a separate Java execution architecture |
-| Vanilla-compatible Java servers | The engine has a Minecraft 26.3 / protocol 777 client; individual server/proxy/anti-cheat compatibility still needs testing |
-| Authenticated servers | The engine implements the encrypted login/session join, but the Android launcher has no Microsoft sign-in flow yet |
-| Modded servers | Arbitrary custom handshakes, payloads and registry synchronization are not supplied by importing mod assets |
+| Fabric/Forge/NeoForge and Mixins | Java code does not execute; native ports are required |
+| Java modpacks | Not exposed by the Android launcher |
+| Custom modded server protocols | Require explicit protocol and gameplay implementations |
 
-See [mods](mods.md), [Java mod compatibility](research/java-mod-compat.md),
-[account sign-in](microsoft-account.md) and [hosting](hosting.md).
+See [the feature matrix](android-features.md), [mod SDK](mods.md),
+[account integration](microsoft-account.md) and [Android build guide](android.md).
 
-## Recommended scope
+## Platform boundaries
 
-Keep a native Android fork with a clear upstream relationship. The measured
-phone performance makes the Rust path worth preserving. A separate brand does
-not solve mod compatibility: that needs APIs, native implementations and tests.
-The repository's [MIT license](../LICENSE) includes the original copyright and
-notice requirement. Retain that attribution and follow the repository's rule
-against committing Minecraft JARs, assets or generated tables.
+Player-facing game and launcher code is Rust. Android APIs use JNI/NDK calls;
+GameActivity supplies the system text-input connection, while a stock
+NativeActivity host supplies the mouse input queue. No project Java/Kotlin host
+is included. Development preparation and test drivers remain under `tools/`.
 
-Prioritize the following work:
+Android graphics choices select system-driver Vulkan or GLES paths. Game
+resolution, draw distance, quality and FPS controls remain game options.
+Performance changes should use comparable frame-time measurements with the
+same device, settings, world and camera path.
 
-1. Recover the source baseline and track Android patches so upstream fixes can
-   be reviewed and integrated reliably.
-2. Make vanilla-server compatibility and Android account sign-in a dedicated
-   track: approved application ID, legitimate Microsoft device-code flow,
-   protected token storage and session handoff. Account registration/approval
-   requires the publisher; it cannot be replaced with a fabricated client ID.
-3. Extend the versioned mod SDK around specific native ports: item/recipe and
-   inventory reads, UI/input hooks, then explicit gameplay/network capabilities.
-   Keep existing `.hmod` compatibility and capability checks.
-4. Publish an honest compatibility matrix for tested mods and servers. Separate
-   running native code, carried content and unsupported Java behavior.
-5. Keep optimization work measurable and independent of graphics limits:
-   frame-time percentiles, allocation counts and streaming stalls at the same
-   resolution, settings, world and camera path.
+## Remaining platform work
 
-If unchanged Java JAR compatibility is the primary requirement, a Java/JVM
-launcher is a different product direction from this Rust-only codebase.
-Reimplementing Mixins and the entire Java mod ecosystem inside Horizon is not a
-small compatibility layer.
+- Android Storage Access Framework world import/export and log sharing.
+- Production account registration and broader authenticated-server validation.
+- Hardware gamepad axes, controller rumble and complete TV navigation.
+- Low-memory and legacy GPU testing, lifecycle recovery and thermal profiling.
+- Native mod ports backed by explicit SDK capabilities and compatibility tests.
 
-## Optimization update 0.4.1
-
-- Pack transparent-quad distance and stable tie order into integer keys. Use
-  in-place sorting for small lists and a retained stable radix-sort buffer for
-  larger lists, with ordered/reversed fast paths. Match JOML's arithmetic order
-  for nearly equal distances.
-- Decode occlusion readback words directly from potentially unaligned mapped
-  memory, without allocating and copying a temporary result vector.
-- Iterate retained mod HUD lines directly instead of collecting a vector for
-  each panel on each frame.
-
-These changes do not lower resolution, distance, FPS limits or visual quality.
-Synthetic CPU measurements are not a prediction of FPS on a phone. The
-translucency parity gate includes large meshes around the sorting threshold;
-unit tests cover ties, non-finite values, ordered runs and unaligned readbacks.
+A different brand does not change Java-mod compatibility. Running unchanged
+Java mods requires a Java execution architecture beyond this native client.

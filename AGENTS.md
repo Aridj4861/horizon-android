@@ -186,3 +186,8 @@ reviewed stable history into `android`; resolve Android module paths and platfor
 bridges explicitly, keep upstream deployment workflows inactive, and update
 `docs/android-upstream.json`. Run Android checks before pushing. Do not merge
 experimental upstream branches automatically or claim emulator FPS as phone FPS.
+
+Public Android documentation covers installation, supported features, architecture
+and contribution workflows. Keep promotion drafts, video scripts and personal
+planning notes outside version control; use ignored local notes when needed.
+Use neutral technical language and keep compatibility claims tied to verification.

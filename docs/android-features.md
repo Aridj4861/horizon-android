@@ -1,8 +1,8 @@
-# Android feature audit (0.6.8)
+# Android feature audit (0.6.10)
 
-This is an implementation audit, not a claim that every Horizon menu has been
-tested on every phone. Physical-device performance has not been independently measured for 0.6.8.
-Emulator frame counters must not be advertised as phone performance.
+Support varies by device and build architecture. The table lists implemented
+integrations and remaining platform work; device-specific validation is described
+in the [Android guide](android.md#check).
 
 | Horizon feature | Android integration / remaining work |
 |---|---|
@@ -10,11 +10,13 @@ Emulator frame counters must not be advertised as phone performance.
 | Touch layouts | Four explicit schemes, normal Options > Controls settings, 16–64 px circle, optional 360-degree movement, sprint visibility, editable layouts, scale/opacity sliders, handedness and direct F3/F5 buttons; passive HUD safe-area margins are in Accessibility |
 | Contextual touch | Use action for held items/entities; movement actions serve flight/swimming. Not all Bedrock contextual icons/gestures are implemented |
 | Controller vibration settings | Phone `Vibrator` now wired to existing game events and the existing vibration switch; no adaptive triggers or external-pad vibration backend |
-| Unicode keyboard | GameActivity IME and composition; system keyboard remains responsible for its own clipboard suggestions |
+| Physical keyboard / mouse | Separate stock NativeActivity host selected before Play; normal keyboard, modifiers, cursor/buttons/wheel and relative pointer-capture path in Rust. Physical gameplay and vendor firmware still need testing; its text fields require a hardware keyboard |
+| ABI / TV | ARM64 and x86_64; experimental ARMv7 and x86 without Wasmtime. Android TV launcher entry, D-pad/Enter navigation, optional keypad preset and portrait orientations; full analog gamepad backend remains unfinished |
+| Unicode keyboard | Touch host: GameActivity IME and composition; system keyboard remains responsible for its own clipboard suggestions |
 | Horizon clipboard actions | Newly connected to Android ClipboardManager for explicit text copy/paste; no background clipboard polling or file-URI reads |
 | Sound and subtitles | AAudio mixer and downloaded sound assets; existing category volumes, subtitles and accessibility settings remain available |
 | Graphics / streaming | Existing game resolution, distance, FPS, quality and worker controls. Launcher selects real Vulkan draw paths and does not override them |
-| Native mods | Wasmtime `.hmod` runtime; existing capabilities and errors appear in the game mod menu. Direct HTTPS import; no Java-mod search or Java/Mixin execution |
+| Native mods | 64-bit builds: Wasmtime `.hmod` runtime; 32-bit omits this runtime; existing capabilities and errors appear in the game mod menu. Direct HTTPS import; no Java-mod search or Java/Mixin execution |
 | Resource packs | Checksum-verified resource-pack search/install; modpack browsing, importing, selection and automatic launch hooks are removed on Android |
 | APK distribution | Dedicated `--public` build: 32 generated tables, original resources downloaded from official sources on the phone, no automatic agent socket; no player PC preparation |
 | Single player | Default integrated server and optional in-frame path. Editor pauses unpublished single player through the engine pause decision |
@@ -27,5 +29,5 @@ Emulator frame counters must not be advertised as phone performance.
 | Desktop updates / telemetry services | Desktop deployment/auto-update infrastructure is not an Android updater; fork exports keep original workflows inactive |
 
 Priorities after this change: world import/export, Minecraft Services approval and production account validation,
-hardware input devices, then measured lifecycle and thermal behavior. Preserve
+hardware gamepads, then measured lifecycle and thermal behavior. Preserve
 the current engine performance baseline while adding these platform bridges.

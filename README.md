@@ -43,6 +43,9 @@ pull request against `android`. Touch input, accessibility, hardware controllers
 Android lifecycle and real-phone profiling are useful areas to help.
 [Start here](CONTRIBUTING_ANDROID.md).
 
+If the port is useful to you, **star the repository** so other players and
+contributors can find it.
+
 ## Builds and source
 
 [Build instructions](docs/android.md#build-developers-only) explain the SDK/NDK

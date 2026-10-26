@@ -1,124 +1,84 @@
-# Preparing an Android fork for publication
+# Android release packaging
 
-The Android work derives from [ludovic111/horizon](https://github.com/ludovic111/horizon).
-Keep the original MIT license/copyright, third-party notices, vendor licenses and
-contribution attribution. The Android README identifies this fork and does not
-claim upstream parity results certify Android. The remote fork is [Vasysik/horizon-android](https://github.com/Vasysik/horizon-android).
-The local `android` branch preserves upstream history; `origin` is the fork
-and `upstream` is the original repository.
+Horizon Android preserves the upstream Git history, MIT copyright and license,
+third-party notices and dependency licenses. See [upstream integration](android-upstream.json).
+The `android` branch is maintained separately from upstream deployment workflows.
 
-## Reviewable source snapshot
+## Build distribution APKs
 
-```sh
-python -m unittest discover -s tests -p test_android_source_export.py
-python tools/export_android_source.py
-```
-
-The ZIP and adjacent SHA-256 report are written under `.local/android/public/`.
-`SOURCE-MANIFEST.json` records every exported file and its hash. The exporter
-selects source directories, excludes caches, saves, build products, game inputs,
-APKs and signing material, and blocks recognized credential patterns. This is
-a bounded credential scan, not a guarantee against every possible secret format.
-It rejects symbolic links and unexpected large files instead of following them.
-Generated tables and Mojang downloads remain private in `.local/`.
-
-Upstream GitHub Actions are retained under `.github/upstream-workflows/` with
-`.disabled` extensions in the export. The only active exported workflow is a
-manual Android source check: read-only token, no self-hosted runner, no release,
-deployment or telemetry upload. The fork also keeps these workflows inactive in its Git tree; upstream history
-preserves their original versions.
-
-## Restore a real upstream relationship
-
-The original source directory lacked `.git`. Its files were compared by Git
-blob hashes against 309 first-parent upstream revisions. The selected base,
-`d65282fb0f0fd7ba57876aef87dc4c6c2b5fa04b`, matched 3106 of 3147 shared source
-files; the 41 differing existing files correspond to port work and fixes.
-The actual upstream commit graph was restored, not recreated with invented
-original authors. Evidence is recorded in [android-upstream.json](android-upstream.json).
-
-Develop on `android` and push to `origin`. Fetch upstream separately and review
-merges; do not replace a working Android engine with newer upstream files by
-copying a snapshot. The fork's original `main` is preserved. Before publishing,
-run `python tools/check_public_tree.py --history`; `.githooks` supplies the
-commit guard. Agent commits carry their own Co-Authored-By trailer.
-
-The inactive upstream workflows and the sole manual Android check now also
-apply to the Android Git branch, rather than only to ZIP exports. Original
-Bedrock textures are supplied through `tools/android_bedrock_controls.py` to
-private `.local/android/bedrock-controls.zip`, with pinned Git blob checks and
-the original Mojang LICENSE.md. The PNGs and generated ZIP never enter Git.
-
-## Publishing the Android application
-
-The Android application can have public APK releases, just as upstream publishes
-its desktop application. Upstream's `xtask/src/main.rs` explicitly excludes
-Minecraft files from its packages and ships `horizon-prepare`; the launcher then
-prepares the user's resources separately. See the
-[upstream packager](https://github.com/ludovic111/horizon/blob/74768d2eeb2218c81f42680f51ac3a8ec92f9c57/xtask/src/main.rs)
-and [resource preparation](https://github.com/ludovic111/horizon/blob/74768d2eeb2218c81f42680f51ac3a8ec92f9c57/launcher/src/backend.rs).
-Publishing this fork does not require permission from upstream under its MIT
-license; retain its copyright and license notices.
-
-The Android distribution now has a dedicated build mode:
+Build each required architecture with the optimized public mode:
 
 ```sh
 python tools/android_build.py --abi arm64-v8a --public
+python tools/android_build.py --abi armeabi-v7a --public
+python tools/android_build.py --abi x86 --public
+python tools/android_build.py --abi x86_64 --public
 ```
 
-The current update is **0.6.8**, Android versionCode 17. It upgrades the
-published 0.6.7 (versionCode 16) in place. The APK contains the Rust engine, licensed application
-fonts/frameworks and generated Horizon tables. The distribution table allowlist
-excludes original structure templates, copied worldgen JSON bundles and raw
-block/damage tag resources. Original JARs, class files, PNGs, sounds, accounts,
-saves and private signing material are not bundled.
+Outputs are `.local/android/apk/<abi>/horizon-android-public.apk`.
+The build signs and audits each APK. Default development APKs are not release
+artifacts: they may contain private resource bundles and enable debugging.
 
-On the phone, the existing installer downloads the pinned Minecraft client
-and asset objects from Mojang, checks their official hashes, then reconstructs
-worldgen maps/tags and structure files from that private client download. Touch
-textures and their original license download from Mojang/bedrock-samples at a
-pinned revision, with individual SHA-256/size checks. The repository contains
-only their download manifest, not the images. No resource import or PC is
-required for a player. Build-time generation of the engine tables still uses
-the developer's privately prepared game inputs.
+### Payload
 
-Public builds omit the automatic agent-control socket and ignore the local
-`android-launch.json` development override. They remain optimized and
-non-debuggable, preserve the existing private signing identity for updates,
-and remap compiler paths. The public payload audit rejects original resource
-archives/paths, known credentials and packaged player data. This is a technical
-packaging audit, not a legal certification or an exhaustive secret scanner.
+The public APK includes the Rust engine, licensed application dependencies and
+allowlisted generated Horizon tables. Original Minecraft resource files, JARs,
+textures and sounds are not packaged as game resources. The installer downloads
+them from Mojang, checks pinned hashes and reconstructs required world data on
+the device. Touch textures and their license come from a pinned revision of
+Mojang's official sample repository.
 
-The current account configuration remains a development integration. Do not
-claim Mojang/Microsoft approval or universal server/anticheat compatibility.
+Public builds are non-debuggable, remap personal compiler paths, omit automatic
+agent-control sockets and ignore `android-launch.json` development overrides.
+The payload audit checks packaged paths, original-resource allowlists, recognized
+credential patterns and the Android debuggable flag. Its scope is technical
+packaging validation, not an exhaustive credential or licensing review.
 
-The README shows the owner's POCO M8 Pro captures at 16 chunks and Fancy
-graphics, with separate captions for the snowy biome and Hypixel Arcade.
+### Signing and updates
 
-The Android fork still shares upstream service URLs in parts of the desktop
-code. They are not replaced with invented fork services. Public branding,
-repository ownership, publisher identity and production endpoints must be real
-values chosen by the publisher.
+Preserve the private signing key outside Git and release attachments. Android
+requires a matching signing certificate and higher `versionCode` for an in-place
+update. `versionName` is the visible application version. Update those values in
+`packaging/android/build.gradle` and the launcher version together.
 
-## Upstream integration on 25 October 2026
+Public releases should attach:
 
-Merge `6a63e5d8` integrates 286 commits through `6a065fa4`, retaining the Android
-entry point, native launcher, touch rays and compatibility rendering. The old
-working state is preserved locally at `backup/android-0.5.1`; no history was
-rewritten. The new mod-registry workflow is retained inactive like the other
-upstream workflows. The source manifest now records the merged upstream revision.
+- One clearly named APK per supported ABI.
+- `SHA256SUMS.txt` covering the exact attached APKs.
+- `LICENSE.txt` and `THIRD_PARTY_NOTICES.md`.
+- Release notes describing changes, requirements and known compatibility limits.
 
+Include only APKs that passed their final payload/manifest audit. Confirm version,
+minimum SDK, ELF architecture, signing certificate and the exact source commit.
+Compilation results and device gameplay results should be reported separately.
+Account integration remains a development configuration pending project-owned
+Microsoft/Mojang registration; do not describe it as an approved integration.
 
-Merge `dc6d3126` integrates 138 more commits through `7fd1f311`, including sprint
-state, transfers/cookies, remote potion contents and container fixes. Android
-0.6.6 also fixes player-profile team resolution and session effects, and provides
-standard touch settings with circle size and optional analog movement.
+## Source checks
 
-Merge `4a2840e1` integrates 59 more commits through `74768d2e` on 26 October,
-including wire item components, localized UI, furnace XP fixes and the desktop
-OpenGL fallback. Android continues selecting its existing Vulkan modes. The
-upstream mod UI remains experimental and requires a mod to opt in explicitly.
+```sh
+python -m unittest discover -s tests -p 'test_android*.py'
+python tools/check_public_tree.py --history
+```
 
-Merge `1f5b9af6` integrates 27 more upstream commits through `d58d26c7`:
-firework ownership/flight/boosts, mob poses, lore tooltips, lava cauldrons and
-server-thread command completion. No experimental branch was merged.
+`.githooks` guards public commits and pushes. Never publish `.local/`, prepared
+resources, player data, signing keys or account/session files. Agent-authored
+commits retain the attribution required by [AGENTS.md](../AGENTS.md).
+
+An optional source export is available without publishing build inputs:
+
+```sh
+python tools/export_android_source.py
+```
+
+It writes a ZIP and hash manifest under `.local/android/public/`, excluding game
+inputs, caches, saves, build products and signing material. Upstream workflows
+remain under `.github/upstream-workflows/*.disabled`; the Android source workflow
+is manual and uses read-only permissions.
+
+## Upstream maintenance
+
+Fetch and review `upstream/main` before a release. Merge reviewed stable history,
+resolve Android module paths and bridges, update `docs/android-upstream.json`,
+and run Android checks before pushing. Keep experimental feature clusters and
+upstream deployment changes separate from routine Android fixes.
