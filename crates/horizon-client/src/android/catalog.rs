@@ -15,6 +15,7 @@ pub const MICROSOFT_CLIENT_ID: &str = "00000000441cc96b";
 #[serde(rename_all = "kebab-case")]
 pub enum RendererMode {
     Vulkan,
+    OpenGl,
     #[default]
     VulkanCompatibility,
 }
@@ -22,6 +23,7 @@ impl RendererMode {
     pub fn label(self) -> &'static str {
         match self {
             Self::Vulkan => "Vulkan / GPU batching",
+            Self::OpenGl => "OpenGL ES / experimental",
             Self::VulkanCompatibility => "Vulkan / compatibility",
         }
     }
@@ -36,6 +38,47 @@ pub struct Config {
     #[serde(skip)]
     pub microsoft_client_id: String,
     pub renderer: RendererMode,
+    pub orientation: Orientation,
+    pub keypad_controls: bool,
+}
+
+/// Android ActivityInfo orientations, independent of the device's natural axis.
+#[derive(Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum Orientation {
+    #[default]
+    Landscape,
+    Portrait,
+    ReverseLandscape,
+    ReversePortrait,
+    Auto,
+}
+impl Orientation {
+    pub const ALL: [Self; 5] = [
+        Self::Landscape,
+        Self::Portrait,
+        Self::ReverseLandscape,
+        Self::ReversePortrait,
+        Self::Auto,
+    ];
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Landscape => "Landscape (sensor)",
+            Self::Portrait => "Portrait (sensor)",
+            Self::ReverseLandscape => "Landscape (reversed)",
+            Self::ReversePortrait => "Portrait (reversed)",
+            Self::Auto => "Automatic rotation",
+        }
+    }
+    pub fn android_value(self) -> i32 {
+        match self {
+            Self::Landscape => 6,
+            Self::Portrait => 7,
+            Self::ReverseLandscape => 8,
+            Self::ReversePortrait => 9,
+            Self::Auto => 10,
+        }
+    }
 }
 impl Config {
     pub fn load(home: &Path) -> Self {
@@ -44,6 +87,9 @@ impl Config {
             .and_then(|b| serde_json::from_slice(&b).ok())
             .unwrap_or_default();
         let mut config: Self = serde_json::from_value(value.clone()).unwrap_or_default();
+        if cfg!(target_pointer_width = "32") && value.get("renderer").is_none() {
+            config.renderer = RendererMode::OpenGl;
+        }
         // Ignore saved app registrations while this dev build uses the fixed ID.
         config.microsoft_client_id = MICROSOFT_CLIENT_ID.into();
         if value.get("renderer").is_none() && value["gpu_batching"].as_bool() == Some(true) {
@@ -178,6 +224,9 @@ impl Catalog {
                 (m.id, m.name, enabled)
             })
             .collect();
+        if !cfg!(feature = "mods") {
+            self.native.clear();
+        }
     }
     pub fn busy(&self) -> bool {
         self.worker.is_some()

@@ -9,6 +9,7 @@ use horizon_client::ui_theme::{Face, Ui, color};
 pub(super) enum Kind {
     Renderer,
     Profile,
+    Orientation,
 }
 pub(super) struct Chooser {
     title: &'static str,
@@ -33,10 +34,31 @@ impl Launcher {
         };
         let c = &self.catalog.config;
         let (title, help, choices) = match kind {
+            Kind::Orientation => (
+                "Screen orientation",
+                "Applies to the launcher and game. Does not change touch bindings.",
+                crate::catalog::Orientation::ALL
+                    .into_iter()
+                    .map(|mode| {
+                        (
+                            mode.label().into(),
+                            String::new(),
+                            Action::ChooseOrientation(mode),
+                            c.orientation == mode,
+                        )
+                    })
+                    .collect(),
+            ),
             Kind::Renderer => (
                 "Rendering mode",
-                "API: Vulkan. Uses the system GPU driver. Applies next launch.",
+                "Uses the system GPU driver. Applies on the next game launch.",
                 vec![
+                    (
+                        "OpenGL ES / experimental".into(),
+                        "For older GPUs. Requires ES 3.0+ and sufficient driver limits.".into(),
+                        Action::ChooseRenderer(RendererMode::OpenGl),
+                        c.renderer == RendererMode::OpenGl,
+                    ),
                     (
                         "Vulkan / GPU batching".into(),
                         "Groups terrain draws and enables supported GPU culling.".into(),

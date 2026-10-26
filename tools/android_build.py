@@ -14,7 +14,8 @@ import json
 import hashlib
 
 ROOT = Path(__file__).resolve().parents[1]
-TARGETS = {'x86_64': 'x86_64-linux-android', 'arm64-v8a': 'aarch64-linux-android'}
+TARGETS = {'x86_64': 'x86_64-linux-android', 'arm64-v8a': 'aarch64-linux-android',
+           'armeabi-v7a': 'armv7-linux-androideabi'}
 
 
 def latest(directory):
@@ -94,13 +95,18 @@ def main():
     tools = latest(args.sdk / 'build-tools')
     ndk = latest(args.sdk / 'ndk') / 'toolchains/llvm/prebuilt' / ('windows-x86_64' if os.name == 'nt' else 'linux-x86_64')
     target = TARGETS[args.abi]
+    # NDK spells the ARMv7 compiler triple differently from Rust. Android 8.1
+    # is the legacy build's floor; the modern builds keep their existing floor.
+    compiler_target = 'armv7a-linux-androideabi' if args.abi == 'armeabi-v7a' else target
+    min_sdk = 27 if args.abi == 'armeabi-v7a' else 28
+    features = ['--no-default-features', '--features', 'audio'] if args.abi == 'armeabi-v7a' else []
     environment = dict(os.environ)
     environment['PATH'] = os.pathsep.join([str(ndk / 'bin'), str(args.java_home / 'bin'), environment['PATH']])
     environment['JAVA_HOME'] = str(args.java_home)
     triple = target.replace('-', '_')
-    clang = ndk / 'bin' / (target + '28-clang' + ('.cmd' if os.name == 'nt' else ''))
+    clang = ndk / 'bin' / (compiler_target + str(min_sdk) + '-clang' + ('.cmd' if os.name == 'nt' else ''))
     environment[f'CC_{triple}'] = str(clang)
-    environment[f'CXX_{triple}'] = str(ndk / 'bin' / (target + '28-clang++' + ('.cmd' if os.name == 'nt' else '')))
+    environment[f'CXX_{triple}'] = str(ndk / 'bin' / (compiler_target + str(min_sdk) + '-clang++' + ('.cmd' if os.name == 'nt' else '')))
     environment[f'AR_{triple}'] = str(ndk / 'bin' / ('llvm-ar' + suffix))
     environment[f'CARGO_TARGET_{triple.upper()}_LINKER'] = str(clang)
     environment['CARGO_PROFILE_DEV_DEBUG'] = '0'
@@ -113,13 +119,14 @@ def main():
         environment['CARGO_ENCODED_RUSTFLAGS'] = '\x1f'.join(flags)
     if args.check or args.clippy:
         command = ['cargo', 'clippy' if args.clippy else 'check', '-p', 'horizon-android', '--target', target]
+        command += features
         if args.clippy:
             command += ['--no-deps']
             command += ['--', '-D', 'warnings']
         run(command, cwd=ROOT, env=environment)
         return
     if not args.skip_rust:
-        run(['cargo', 'build', '-p', 'horizon-android', '--target', target, '--profile', args.profile], cwd=ROOT, env=environment)
+        run(['cargo', 'build', '-p', 'horizon-android', '--target', target, '--profile', args.profile, *features], cwd=ROOT, env=environment)
     output = ROOT / '.local/android/apk' / args.abi
     output.mkdir(parents=True, exist_ok=True)
     library = ROOT / 'target' / target / ('debug' if args.profile == 'dev' else args.profile) / 'libhorizon_android.so'
@@ -153,7 +160,7 @@ def main():
         gradle = candidates[0]
     environment['ANDROID_HOME'] = str(args.sdk)
     variant = 'release' if args.release_candidate else 'debug'
-    run([gradle, '--no-daemon', '-p', ROOT / 'packaging/android', '-Pabi=' + args.abi, 'assemble' + variant.title()], cwd=ROOT, env=environment)
+    run([gradle, '--no-daemon', '-p', ROOT / 'packaging/android', '-Pabi=' + args.abi, '-PminSdk=' + str(min_sdk), 'assemble' + variant.title()], cwd=ROOT, env=environment)
     apk = output / ('horizon-android-public.apk' if args.public else 'horizon-android-release.apk' if args.release_candidate else 'horizon-android.apk')
     shutil.copyfile(ROOT / f'.local/android/gradle-build/outputs/apk/{variant}/HorizonAndroid-{variant}.apk', apk)
     # Invoke the signing JAR directly so Windows does not need a batch-file shell.

@@ -161,7 +161,7 @@ fn with_context<R>(
             Ok(value) => Some(value),
             Err(error) => {
                 let _ = env.exception_clear();
-                log::warn!("Android clipboard: {error}");
+                log::warn!("Android platform: {error}");
                 None
             }
         }
@@ -211,6 +211,18 @@ pub fn clipboard_get() -> Option<String> {
         let value = env.get_string(&text)?.into();
         Ok(value)
     })
+}
+
+pub fn set_orientation(orientation: crate::catalog::Orientation) {
+    with_context(|env, activity| {
+        env.call_method(
+            activity,
+            "setRequestedOrientation",
+            "(I)V",
+            &[JValue::Int(orientation.android_value())],
+        )?;
+        Ok(())
+    });
 }
 pub fn clipboard_set(text: &str) {
     let _ = clipboard_write(text, false);

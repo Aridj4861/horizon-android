@@ -310,6 +310,45 @@ impl<'a> Ui<'a> {
             batch,
         }
     }
+    /// Native launcher density on tall phone screens; game HUD scale is untouched.
+    pub fn mobile(atlas: &'a HudAtlas, batch: &'a mut HudBatch, cursor: (f32, f32)) -> Self {
+        let mut ui = Self::new(atlas, batch, cursor);
+        let pw = ui.batch.width * ui.scale;
+        let ph = ui.batch.height * ui.scale;
+        if ph > pw {
+            ui.density = (pw / 480.0).clamp(1.0, 4.0);
+            ui.w = pw / ui.density;
+            ui.h = ph / ui.density;
+            ui.cursor = (
+                cursor.0 * ui.scale / ui.density,
+                cursor.1 * ui.scale / ui.density,
+            );
+        } else if ph < 700.0 {
+            ui.density = (pw / 1040.0).min(ph / 700.0).clamp(0.5, 4.0);
+            ui.w = pw / ui.density;
+            ui.h = ph / ui.density;
+            ui.cursor = (
+                cursor.0 * ui.scale / ui.density,
+                cursor.1 * ui.scale / ui.density,
+            );
+        }
+        ui
+    }
+
+    pub fn fit_text(&self, face: Face, size: f32, text: &str, width: f32) -> String {
+        if self.measure(face, size, text) <= width {
+            return text.into();
+        }
+        let mut value = text.to_owned();
+        while !value.is_empty() {
+            value.pop();
+            let shortened = format!("{value}...");
+            if self.measure(face, size, &shortened) <= width {
+                return shortened;
+            }
+        }
+        String::new()
+    }
     /// Move rasterized glyphs into the batch's atlas uploads (real frames only).
     pub fn finish(self) {
         let pending = with_cache(self.atlas, |c| std::mem::take(&mut c.pending));
@@ -393,7 +432,7 @@ impl<'a> Ui<'a> {
         self.corners(x0, y0, x1, y1, r, false, color);
     }
     /// A 1px rounded border.
-    pub(crate) fn border(&mut self, x: f32, y: f32, w: f32, h: f32, radius: f32, color: u32) {
+    pub fn border(&mut self, x: f32, y: f32, w: f32, h: f32, radius: f32, color: u32) {
         if color >> 24 == 0 {
             return;
         }

@@ -47,6 +47,7 @@ pub(super) struct Launcher {
     login: login::Login,
     session_worker: Option<mpsc::Receiver<std::result::Result<Option<PathBuf>, String>>>,
     session_ready: bool,
+    focus: Option<usize>,
 }
 
 impl Launcher {
@@ -70,6 +71,7 @@ impl Launcher {
             login: login::Login::new(),
             session_worker: None,
             session_ready: false,
+            focus: None,
         }
     }
 
@@ -108,6 +110,10 @@ impl Launcher {
     }
 
     fn open(&mut self, events: &ActiveEventLoop) -> Result<()> {
+        crate::platform::set_orientation(self.catalog.config.orientation);
+        horizon_client::android_runtime::configure_graphics(
+            self.catalog.config.renderer == crate::catalog::RendererMode::OpenGl,
+        );
         if let Some(renderer) = &mut self.renderer {
             renderer.recreate_surface()?;
             let size = self.window.as_ref().unwrap().inner_size();
@@ -144,9 +150,13 @@ impl Launcher {
             crate::platform::install_bedrock_controls(&self.home)?;
             crate::platform::hide();
             self.catalog.config.save(&self.home)?;
+            horizon_client::android_runtime::configure_graphics(
+                self.catalog.config.renderer == crate::catalog::RendererMode::OpenGl,
+            );
             horizon_client::android_runtime::configure_gpu(
                 self.catalog.config.renderer == crate::catalog::RendererMode::Vulkan,
             );
+            horizon_client::android_runtime::configure_keypad(self.catalog.config.keypad_controls);
             let game_home = self.catalog.config.game_home(&self.home);
             if !self.session_ready && crate::account::Accounts::load().selected().is_some() {
                 let id = self.catalog.config.microsoft_client_id.clone();
@@ -254,6 +264,7 @@ impl ApplicationHandler for Launcher {
                 Ok(())
             }
             WindowEvent::CursorMoved { position, .. } => {
+                self.focus = None;
                 self.cursor = (position.x, position.y);
                 Ok(())
             }
@@ -265,8 +276,19 @@ impl ApplicationHandler for Launcher {
             } => self.activate(events),
             WindowEvent::RedrawRequested => self.draw_pages(),
             WindowEvent::KeyboardInput { event, .. } if event.state == ElementState::Pressed => {
-                self.type_key(event);
-                Ok(())
+                if self.navigate(&event) {
+                    Ok(())
+                } else if self.catalog.editing.is_none()
+                    && matches!(
+                        event.logical_key,
+                        winit::keyboard::Key::Named(winit::keyboard::NamedKey::Enter)
+                    )
+                {
+                    self.activate(events)
+                } else {
+                    self.type_key(event);
+                    Ok(())
+                }
             }
             WindowEvent::Ime(winit::event::Ime::Commit(text)) => {
                 self.catalog

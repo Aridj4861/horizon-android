@@ -571,3 +571,67 @@ window/touch handler, controller input adapter and full-screen HUD shader are
 unchanged from the published baseline. The APK is 0.6.8, versionCode 17. This
 update was not launched in an emulator or on the physical phone; no new FPS
 or full-gameplay result is claimed.
+
+
+## Android 0.6.9: keypad, portrait and experimental legacy builds
+
+Launch settings now offer Landscape, Portrait, reversed Landscape/Portrait and
+sensor rotation. The choice is saved for the launcher and game. It does not
+change the HUD safe-margin contract: those margins only inset passive information
+such as F3. They do not resize the world, inventory or touch hit targets.
+
+The native launcher's portrait layout uses phone density, stacked settings and
+shorter tab labels. Short landscape surfaces scale the launcher down to keep its
+settings reachable. Arrow keys move a visible focus border; Enter activates the
+focused item. This also provides initial TV remote navigation. Android TV gets a
+Leanback launcher entry and an original vector banner. TV support is experimental;
+analog gamepad axes and full remote-only gameplay have not been validated.
+
+`Launch settings > Physical keypad` enables the optional feature-phone preset:
+
+| Physical key | Action |
+| --- | --- |
+| D-pad arrows | Walk (diagonal input normalized) |
+| 2 / 8 / 4 / 6 | Look up / down / left / right |
+| 1 / 3 | Attack / use |
+| 5 or Enter / D-pad centre | Jump |
+| 0 | Sneak |
+| 7 | Inventory |
+| 9 | Next hotbar slot |
+
+This uses the existing controller movement and action pipeline. Release events,
+opening a menu and losing focus clear held keys. The preset is off by default,
+so ordinary keyboards retain their normal Minecraft bindings. Platform key-code
+behaviour still needs a test on the physical F-03L.
+
+In `Options > Controls > Touch Controls`, the attack indicator can sit left or
+right of the hotbar. It uses actual Java attack strength and the game's sprites;
+it moves farther out if an offhand item occupies that side. The normal Attack
+Indicator option still controls Off/Crosshair/Hotbar. The touch layout editor has
+an **Add buttons...** palette for the twelve available controls and **Remove
+button** for the selection. Visibility is saved; Cancel restores it with the rest
+of the layout. This palette does not yet create arbitrary key macros or duplicate
+buttons.
+
+### Experimental ARMv7
+
+Build with `python tools/android_build.py --abi armeabi-v7a --public`. This uses
+Rust `armv7-linux-androideabi`, NDK `armv7a-linux-androideabi`, Android API 27
+(Android 8.1) and audio. Modern ARM64/x86_64 builds retain API 28. The ARMv7 build
+omits the Wasmtime/Cranelift native mod runtime; it does not offer `.hmod` installs.
+
+OpenGL ES is an explicit experimental renderer selection. ARMv7 defaults to it;
+existing ARM64 renderer choices remain unchanged. It uses wgpu's GLES backend,
+not Vulkan emulation. It needs ES 3.0 or later **and** the texture/shader limits
+required by the engine. Vulkan is optional in the APK manifest; a GPU still needs
+a suitable supported API. Compiling an ARMv7 APK alone does not establish that a
+particular GPU can render the game.
+
+Target device: Fujitsu arrows F-03L. DOCOMO lists Android 8.1.0, a 480x854 display,
+Snapdragon 210 and 1 GB RAM. The OS/ABI bridge is only part of compatibility;
+GPU limits, available memory and sustained frame pacing need physical testing.
+No phone FPS figure or playable-on-F-03L claim is made for this build.
+
+Sources: [DOCOMO developer specifications](https://www.docomo.ne.jp/binary/pdf/service/developer/smart_phone/spec/technical_info_spmode/F-03L.pdf),
+[DOCOMO product specifications](https://www.docomo.ne.jp/support/product/f03l/spec.html),
+[wgpu supported graphics APIs](https://github.com/gfx-rs/wgpu#supported-platforms).

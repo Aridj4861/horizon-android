@@ -5,10 +5,10 @@ android {
     compileSdk 35
     defaultConfig {
         applicationId 'dev.horizon.android'
-        minSdk 28
+        minSdk providers.gradleProperty('minSdk').getOrElse('28').toInteger()
         targetSdk 35
-        versionCode 17
-        versionName '0.6.8'
+        versionCode 18
+        versionName '0.6.9'
         ndk { abiFilters providers.gradleProperty('abi').get() }
     }
     signingConfigs {
