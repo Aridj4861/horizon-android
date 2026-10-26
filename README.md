@@ -13,7 +13,7 @@ Rust engine for Minecraft Java 26.3. Unofficial and in active development.
 - Four touch schemes: joystick or D-pad, each with tap or crosshair aiming.
 - Editable button positions, sizes and opacity; handedness, circle size, optional
   360-degree movement, Auto Sprint and Sprint-button visibility.
-- Java multiplayer; the repository owner reports working Hypixel access.
+- Java multiplayer, including the Hypixel Arcade lobby shown below.
 - Native launcher, verified resource downloads, resource packs and `.hmod` import.
 - Vulkan rendering modes and resolution scaling; Android keyboard, clipboard,
   AAudio sound and phone vibration through the existing game settings.
@@ -43,9 +43,6 @@ pull request against `android`. Touch input, accessibility, hardware controllers
 Android lifecycle and real-phone profiling are useful areas to help.
 [Start here](CONTRIBUTING_ANDROID.md).
 
-If the port is useful to you, **star the repository** so other players and
-contributors can find it.
-
 ## Builds and source
 
 [Build instructions](docs/android.md#build-developers-only) explain the SDK/NDK
@@ -55,11 +52,8 @@ sound from Mojang and the touch textures from Mojang's official sample repositor
 No PC resource preparation is needed to install and play on the phone.
 [Publication notes](docs/android-publication.md).
 
-This branch preserves upstream authorship and history, merged through
-[`d58d26c7`](https://github.com/ludovic111/horizon/commit/d58d26c793bf87c0961589c027a45613273d5ad4).
-[Provenance](docs/android-upstream.json) records the base and merges. Android
-0.6.7 includes direct F3/F5 buttons, adjustable F3 text, official resource
-downloads and 27 more reviewed upstream commits. Upstream deployment workflows stay inactive here.
+This branch preserves upstream authorship and history. [Upstream integration](docs/android-upstream.json)
+records reviewed merges. Original deployment workflows remain disabled in this fork.
 
 Original copyright and third-party notices are retained in [LICENSE](LICENSE)
 and [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). Mojang textures are not
