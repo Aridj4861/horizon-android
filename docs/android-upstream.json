@@ -7,10 +7,10 @@
   "compared_source_files": 3147,
   "modified_existing_files": 41,
   "branch": "android",
-  "merged_upstream_commit": "29c09b4bf221e8c519ce94979f44dbc0f50f019d",
-  "merged_upstream_commits": 518,
+  "merged_upstream_commit": "5ba4793d35ae477264dfe21cdc1faac6b1b4b7d6",
+  "merged_upstream_commits": 587,
   "last_reviewed_date": "2026-10-26",
-  "last_update_commits": 6,
-  "latest_fetched_commit": "7674ef77ccbf60fc67ca591877c6ec72d31637f0",
-  "deferred_review": "Subsequent upstream history remains unmerged; reviewed first three merge batches only. Android keeps two-core worker headroom."
+  "last_update_commits": 69,
+  "latest_fetched_commit": "cb43e32787a9db18c3b0f30ab69d649119dd718f",
+  "deferred_review": "Reviewed 25 additional stable merge batches through 5ba4793d; later shader-pack and server-mods history remains deferred. Android keeps two-core worker headroom; upstream deployment workflows remain disabled."
 }

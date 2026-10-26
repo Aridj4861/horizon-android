@@ -99,6 +99,7 @@ mod maps;
 mod minecarts;
 mod mob_blocks;
 mod mob_gear;
+mod mod_render;
 mod mods;
 mod mount_menu;
 mod mounts;
@@ -366,7 +367,7 @@ impl Options {
             match arg.as_str() {
                 "--help" | "-h" => {
                     println!(
-                        "Horizon â€” Minecraft Java Edition {} in Rust\n\n  --resources PATH        Prepared resources (horizon-prepare)\n  --render-distance N     Chunks, 2..64 (default 12)\n  --world NAME            World folder under saves/ (default \"New World\")\n  --seed N                World seed for new worlds (default 0)\n  --width N, --height N   Window size (default 1280 x 720)\n  --creative              Creative mode (default survival)\n  --test-terrain          Simple test terrain instead of vanilla generation\n  --frames N              Exit after N frames (testing)\n  --world-frames N        Exit after N frames drawn in the world (testing)\n  --smoke-report PATH     Write a JSON report on exit\n  --benchmark SCENARIO    Run a benchmark (standard, village, forest, ocean, mountain), write its report to benchmarks/ and quit\n  --control               Accept horizon-ctl commands on a local socket\n  --control-socket PATH   Control socket path (default $XDG_RUNTIME_DIR/horizon-control.sock)\n  --server HOST[:PORT]    Join a multiplayer server (offline mode) at start\n  --name NAME             Player name for multiplayer (default: generated once, kept in horizon-player.txt)\n  --session-file PATH     Signed-in account from the launcher (read once, then deleted)\n  --dev-mod PATH          A Horizon mod (.hmod or folder) to develop: always on, reloaded when rebuilt\n  --in-frame              Run single player's world in the frame, not on its server thread\n\nControls: mouse look, WASD move, Space jump, Left Shift sneak, Left Ctrl sprint,\nleft click break, right click place/use, 1-9/scroll hotbar, E inventory,\nQ drop, F3 debug, Esc pause.",
+                        "Horizon — Minecraft Java Edition {} in Rust\n\n  --resources PATH        Prepared resources (horizon-prepare)\n  --render-distance N     Chunks, 2..64 (default 12)\n  --world NAME            World folder under saves/ (default \"New World\")\n  --seed N                World seed for new worlds (default 0)\n  --width N, --height N   Window size (default 1280 x 720)\n  --creative              Creative mode (default survival)\n  --test-terrain          Simple test terrain instead of vanilla generation\n  --frames N              Exit after N frames (testing)\n  --world-frames N        Exit after N frames drawn in the world (testing)\n  --smoke-report PATH     Write a JSON report on exit\n  --benchmark SCENARIO    Run a benchmark (standard, village, forest, ocean, mountain), write its report to benchmarks/ and quit\n  --control               Accept horizon-ctl commands on a local socket\n  --control-socket PATH   Control socket path (default $XDG_RUNTIME_DIR/horizon-control.sock)\n  --server HOST[:PORT]    Join a multiplayer server (offline mode) at start\n  --name NAME             Player name for multiplayer (default: generated once, kept in horizon-player.txt)\n  --session-file PATH     Signed-in account from the launcher (read once, then deleted)\n  --dev-mod PATH          A Horizon mod (.hmod or folder) to develop: always on, reloaded when rebuilt\n  --in-frame              Run single player's world in the frame, not on its server thread\n  --pregen                Add Horizon's /pregen command (docs/pregeneration.md)\n\nControls: mouse look, WASD move, Space jump, Left Shift sneak, Left Ctrl sprint,\nleft click break, right click place/use, 1-9/scroll hotbar, E inventory,\nQ drop, F3 debug, Esc pause.",
                         horizon_core::VANILLA_VERSION
                     );
                     return Ok(None);
@@ -383,6 +384,8 @@ impl Options {
                 "--control" => o.control = Some(horizon_client::control::default_path()),
                 "--server-thread" => o.server_thread = true,
                 "--in-frame" | "--no-server-thread" => o.server_thread = false,
+                // Horizon's own commands (/pregen), off by default as on vanilla.
+                "--pregen" => horizon_client::command::vanilla::set_horizon_commands(true),
                 _ => {
                     let value = args
                         .next()
@@ -1557,6 +1560,8 @@ struct Game<'a> {
     /// position) for the guests.
     lan_block_events: Vec<([i32; 3], i32, i32, u32)>,
     lan_entity_events: Vec<(i32, i8, [f64; 3])>,
+    /// Global level events for every guest (`ServerLevel.globalLevelEvent`).
+    lan_global_events: Vec<(i32, [i32; 3], i32)>,
     /// `ContainerOpenersCounter`: how many players (the host and the guests)
     /// have each chest open.
     lid_openers: HashMap<(i32, i32, i32), i32>,
@@ -2821,7 +2826,13 @@ impl Game<'_> {
                             }
                             _ => 1.0,
                         };
-                        self.audio.play(name, c, volume, pitch);
+                        if matches!(id, 1029 | 1030) {
+                            // Clients play the anvil sound from its level event;
+                            // capturing it also sends a duplicate sound packet.
+                            self.audio.play_unshared(name, c, volume, pitch);
+                        } else {
+                            self.audio.play(name, c, volume, pitch);
+                        }
                     }
                 }
                 LevelEvent::Sound {
@@ -5027,6 +5038,7 @@ impl Game<'_> {
             // Hud: the action bar and titles draw over the hotbar (nextStratum).
             horizon_client::hud::inset_overlay(&mut batch, margins, |b| self.draw_boss_bars(b));
             horizon_client::hud::inset_overlay(&mut batch, margins, |b| self.draw_extras(b));
+            self.draw_mod_shapes(&mut batch);
         }
         if show_hud {
             // Hud.nextContextualInfoState: the jump bar, the experience bar or
@@ -8508,6 +8520,8 @@ impl Game<'_> {
             1.0,
             1.0,
         );
+        // ItemStack.useOn: a use that acted counts as one of the item.
+        self.stats.add("used", &stack.item, 1);
         self.damage_held(damage);
         self.post_block_game_event("minecraft:block_change", pos, self.sculk_actor(), Some(new));
         Ok(true)
@@ -8712,6 +8726,14 @@ impl Game<'_> {
                     1.0,
                     1.0,
                 );
+                // HoneycombItem.useOn's game event, and ItemStack.useOn's used statistic.
+                self.post_block_game_event(
+                    "minecraft:block_change",
+                    hit.pos,
+                    self.sculk_actor(),
+                    Some(state),
+                );
+                self.stats.add("used", &stack.item, 1);
                 if !self.creative {
                     self.consume_held();
                 }
@@ -9306,10 +9328,6 @@ impl Game<'_> {
         #[cfg(target_os = "android")]
         {
             self.pad.touch.settings = self.settings.touch.clone();
-        }
-        if let Some(r) = &self.renderer {
-            self.settings
-                .clamp_gui_scale([r.config.width as i32, r.config.height as i32]);
         }
         self.streaming.radius = self.settings.render_distance;
         // Options.biomeBlendRadius, ambientOcclusion and cutoutLeaves:
@@ -10078,6 +10096,7 @@ impl Game<'_> {
                 self.pitch,
             ),
         };
+        let (view_yaw, view_pitch) = self.shaken_view(view_yaw, view_pitch);
         self.audio
             .set_listener([camera.x, camera.y, camera.z], view_yaw, view_pitch);
         let block = [
@@ -10840,6 +10859,7 @@ impl Game<'_> {
         // The loading screen's chunk map fills ring by ring, as vanilla's.
         self.streaming.loading =
             self.options.execution_role.is_client() && self.loading_reason().is_some();
+        self.tick_pregen();
         let (uploads, unloaded) =
             horizon_client::spans::time("streaming", || self.streaming.update(&mut self.world));
         if let Some(lod) = &mut self.lod {
@@ -12454,6 +12474,7 @@ impl<'a> Game<'a> {
             lan_events: Vec::new(),
             lan_block_events: Vec::new(),
             lan_entity_events: Vec::new(),
+            lan_global_events: Vec::new(),
             lid_openers: HashMap::new(),
             lan_acting: None,
             guest_packets: Vec::new(),
@@ -13480,10 +13501,6 @@ impl Loading {
                 return;
             }
         }
-        if let Some(r) = &self.renderer {
-            self.settings
-                .clamp_gui_scale([r.config.width as i32, r.config.height as i32]);
-        }
         horizon_client::hud::GUI_SCALE.store(self.settings.gui_scale, Ordering::Relaxed);
         self.window = Some(window);
     }
@@ -13522,8 +13539,6 @@ impl Loading {
             rendering_api(&self.settings),
         ) {
             Ok(r) => {
-                self.settings
-                    .clamp_gui_scale([r.config.width as i32, r.config.height as i32]);
                 horizon_client::hud::GUI_SCALE.store(self.settings.gui_scale, Ordering::Relaxed);
                 self.renderer = Some(r);
             }

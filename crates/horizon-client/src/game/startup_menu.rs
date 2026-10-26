@@ -302,8 +302,6 @@ impl Loading {
             self.menu.controls.settings = self.settings.touch.clone();
         }
         if let Some(renderer) = &mut self.renderer {
-            self.settings
-                .clamp_gui_scale([renderer.config.width as i32, renderer.config.height as i32]);
             renderer.gamma = self.settings.gamma;
             renderer.set_present_mode(self.settings.vsync, self.settings.horizon.present_mode);
         }
