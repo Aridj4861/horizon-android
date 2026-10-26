@@ -18,3 +18,9 @@ by The Pixelify Sans Project Authors, licensed under the SIL Open Font License 1
 `crates/horizon-theme/icons/pixel/*.svg` are icons from
 [Pixelarticons](https://github.com/halfmage/pixelarticons) by Gerrit Halfmann, under the MIT
 license (`crates/horizon-theme/icons/pixel/LICENSE-pixelarticons.txt`).
+
+## winit
+
+`third_party/winit` is [winit](https://github.com/rust-windowing/winit) 0.30.13,
+licensed under Apache-2.0 (see `third_party/winit/LICENSE`). The Android backend
+has local mouse and modifier-event fixes described in `third_party/winit/PATCHES.md`.
