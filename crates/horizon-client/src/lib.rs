@@ -106,6 +106,7 @@ pub mod java_text;
 pub mod key_names;
 pub mod keybinds;
 pub mod keymapping;
+pub mod keypad;
 pub mod lan;
 pub mod landing;
 pub mod lang;

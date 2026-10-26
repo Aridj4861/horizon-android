@@ -5004,7 +5004,11 @@ impl Game<'_> {
                     offhand_pop: 0.0,
                     attack: (indicator == 2).then_some(strength),
                 };
-                let draws = hud_layout::hotbar(wi, hi, &inputs);
+                #[cfg(target_os = "android")]
+                let attack_left = Some(self.settings.touch.attack_indicator_left);
+                #[cfg(not(target_os = "android"))]
+                let attack_left = None;
+                let draws = hud_layout::hotbar_with_attack_side(wi, hi, &inputs, attack_left);
                 hud_layout::paint(&mut batch, &self.gui.atlas, &draws);
                 for d in &draws {
                     if let hud_layout::GuiDraw::Item { slot, x, y, .. } = *d {
@@ -11062,6 +11066,17 @@ impl ApplicationHandler for Game<'_> {
     }
     fn window_event(&mut self, event_loop: &ActiveEventLoop, id: WindowId, event: WindowEvent) {
         if self.window.as_ref().is_none_or(|w| w.id() != id) {
+            return;
+        }
+        #[cfg(target_os = "android")]
+        if let WindowEvent::KeyboardInput { event, .. } = &event
+            && let PhysicalKey::Code(key) = event.physical_key
+            && (!self.pad_in_menu() || event.state == ElementState::Released)
+            && horizon_client::android_runtime::keypad_key(
+                key,
+                event.state == ElementState::Pressed,
+            )
+        {
             return;
         }
         #[cfg(target_os = "android")]

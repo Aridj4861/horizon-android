@@ -108,7 +108,8 @@ impl TouchControls {
     }
     fn visible(&self, c: Control) -> bool {
         self.settings.visible(c)
-            || (c == Control::Use
+            || (self.settings.button_visibility[c as usize] != 2
+                && c == Control::Use
                 && self.settings.contextual_interact
                 && (self.context_use
                     || self
@@ -118,6 +119,33 @@ impl TouchControls {
     }
     fn placement(&self, c: Control) -> layout::Placement {
         let mut p = self.settings.placement(c);
+        // Keep factory top buttons separate on tall surfaces. Custom positions
+        // and every landscape layout remain exactly as the player saved them.
+        if self.aspect() < 1.0 && p.center[1] == 0.055 && p.size == 0.075 {
+            let top = match c {
+                Control::Debug => Some((0.42, 0.18)),
+                Control::Chat => Some((0.46, 0.34)),
+                Control::Pause => Some((0.50, 0.50)),
+                Control::Settings => Some((0.54, 0.66)),
+                Control::Perspective => Some((0.58, 0.82)),
+                _ => None,
+            };
+            if let Some((old, new)) = top {
+                let old = if self.settings.left_handed {
+                    1.0 - old
+                } else {
+                    old
+                };
+                if (p.center[0] - old).abs() < 0.0001 {
+                    p.center[0] = if self.settings.left_handed {
+                        1.0 - new
+                    } else {
+                        new
+                    };
+                    p.size = p.size.min(self.aspect() * 0.12);
+                }
+            }
+        }
         p.size = p.size.min(self.aspect()).min(1.0);
         let half = [p.size / self.aspect() / 2.0, p.size / 2.0];
         for (i, half) in half.into_iter().enumerate() {

@@ -134,6 +134,8 @@ pub struct Settings {
     pub circle_size: f32,
     pub analog_movement: bool,
     pub sprint_button: bool,
+    pub attack_indicator_left: bool,
+    pub button_visibility: [u8; 12],
     pub horizontal_margin: f32,
     pub vertical_margin: f32,
     #[serde(deserialize_with = "deserialize_layouts")]
@@ -185,6 +187,8 @@ impl Default for Settings {
             circle_size: 32.0,
             analog_movement: false,
             sprint_button: true,
+            attack_indicator_left: true,
+            button_visibility: [0; 12],
             horizontal_margin: 0.0,
             vertical_margin: 0.0,
             layouts,
@@ -257,6 +261,11 @@ impl Settings {
         self.mode == Mode::Crosshair || (self.mode == Mode::Dpad && self.split_controls)
     }
     pub fn visible(&self, c: Control) -> bool {
+        match self.button_visibility[c as usize] {
+            1 => return true,
+            2 => return false,
+            _ => {}
+        }
         match c {
             Control::Attack | Control::Use => self.crosshair(),
             Control::Sprint => {
@@ -291,6 +300,23 @@ pub fn contains([x, y, w, h]: [f32; 4], p: [f32; 2]) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn added_buttons_override_scheme_and_removed_buttons_stay_hidden() {
+        let mut settings = Settings {
+            mode: Mode::Tap,
+            ..Settings::default()
+        };
+        assert!(!settings.visible(Control::Attack));
+        settings.button_visibility[Control::Attack as usize] = 1;
+        assert!(settings.visible(Control::Attack));
+        settings.button_visibility[Control::Chat as usize] = 2;
+        assert!(!settings.visible(Control::Chat));
+        let restored: Settings =
+            serde_json::from_slice(&serde_json::to_vec(&settings).unwrap()).unwrap();
+        assert!(restored.visible(Control::Attack));
+        assert!(!restored.visible(Control::Chat));
+    }
 
     #[test]
     fn old_layout_preserves_custom_buttons_when_shortcuts_are_added() {

@@ -73,6 +73,9 @@ mod hardware {
 
     impl Pads {
         pub(super) fn read(&mut self) -> PadState {
+            #[cfg(target_os = "android")]
+            return horizon_client::android_runtime::keypad_state();
+            #[cfg(not(target_os = "android"))]
             PadState::default()
         }
     }
@@ -123,6 +126,7 @@ impl Game<'_> {
         #[cfg(target_os = "android")]
         if self.pad_in_menu() || !self.focused {
             self.pad.touch.clear();
+            horizon_client::android_runtime::clear_keypad();
         }
         let settings = &self.settings.controller;
         if !settings.enabled && !cfg!(target_os = "android") {

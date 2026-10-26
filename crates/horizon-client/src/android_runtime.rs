@@ -1,6 +1,36 @@
 //! Explicit Android renderer policy. Both modes render through Vulkan on the GPU.
 use std::sync::atomic::{AtomicBool, Ordering};
 static GPU_BATCHING: AtomicBool = AtomicBool::new(false);
+static KEYPAD_ENABLED: AtomicBool = AtomicBool::new(false);
+static KEYPAD: std::sync::Mutex<crate::keypad::Keypad> =
+    std::sync::Mutex::new(crate::keypad::Keypad::empty());
+pub fn configure_keypad(enabled: bool) {
+    KEYPAD_ENABLED.store(enabled, Ordering::Relaxed);
+    clear_keypad();
+}
+pub fn keypad_enabled() -> bool {
+    KEYPAD_ENABLED.load(Ordering::Relaxed)
+}
+pub fn keypad_key(key: winit::keyboard::KeyCode, down: bool) -> bool {
+    keypad_enabled() && KEYPAD.lock().unwrap().key(key, down)
+}
+pub fn clear_keypad() {
+    KEYPAD.lock().unwrap().clear();
+}
+pub fn keypad_state() -> crate::gamepad::PadState {
+    KEYPAD.lock().unwrap().state()
+}
+static OPEN_GL: AtomicBool = AtomicBool::new(cfg!(target_pointer_width = "32"));
+pub fn configure_graphics(open_gl: bool) {
+    OPEN_GL.store(open_gl, Ordering::Relaxed);
+}
+pub fn graphics_api() -> crate::graphics::GraphicsApi {
+    if OPEN_GL.load(Ordering::Relaxed) {
+        crate::graphics::GraphicsApi::OpenGl
+    } else {
+        crate::graphics::GraphicsApi::Vulkan
+    }
+}
 pub fn configure_gpu(batching: bool) {
     GPU_BATCHING.store(batching, Ordering::Relaxed);
 }

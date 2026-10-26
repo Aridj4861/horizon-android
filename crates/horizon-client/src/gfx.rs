@@ -972,6 +972,11 @@ impl Renderer {
         previous: Option<&Self>,
         api: GraphicsApi,
     ) -> Result<Self> {
+        #[cfg(target_os = "android")]
+        let api = {
+            let _ = api;
+            crate::android_runtime::graphics_api()
+        };
         let split = sprite_split();
         if layers > split * SPRITE_ARRAYS {
             return Err(format!(

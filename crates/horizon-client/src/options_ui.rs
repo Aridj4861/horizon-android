@@ -91,6 +91,7 @@ pub enum Opt {
     TouchMode,
     TouchAnalog,
     TouchCircleSize,
+    TouchAttackSide,
     TouchHorizontalMargin,
     TouchVerticalMargin,
     TouchSensitivity,
@@ -217,6 +218,7 @@ impl Opt {
             Opt::TouchMode => "Control scheme",
             Opt::TouchAnalog => "360-degree movement",
             Opt::TouchCircleSize => "Touch circle size",
+            Opt::TouchAttackSide => "Attack indicator side",
             Opt::TouchHorizontalMargin => "HUD margins: left / right",
             Opt::TouchVerticalMargin => "HUD margins: top / bottom",
             Opt::TouchSensitivity => "Touch sensitivity",
@@ -404,6 +406,14 @@ impl Opt {
                     .to_owned(),
             ),
             Opt::TouchCircleSize => Some(format!("{} px", s.touch.circle_size.round())),
+            Opt::TouchAttackSide => Some(
+                if s.touch.attack_indicator_left {
+                    "Left"
+                } else {
+                    "Right"
+                }
+                .into(),
+            ),
             Opt::TouchHorizontalMargin => {
                 Some(format!("{:.1}%", s.touch.horizontal_margin * 100.0))
             }
@@ -802,6 +812,7 @@ impl Opt {
             Opt::TouchInteract => s.touch.contextual_interact ^= true,
             Opt::TouchLeftHand => s.touch.left_handed ^= true,
             Opt::TouchSprintButton => s.touch.sprint_button ^= true,
+            Opt::TouchAttackSide => s.touch.attack_indicator_left ^= true,
             Opt::TouchSwapJumpSneak => s.touch.swap_jump_sneak ^= true,
             Opt::TouchAutoSprint => s.touch.sprint_with_joystick ^= true,
             Opt::GuiScale => {
@@ -1575,6 +1586,7 @@ impl OptionsUi {
                 rows.extend(pairs(&[
                     Opt::TouchSensitivity,
                     Opt::TouchCircleSize,
+                    Opt::TouchAttackSide,
                     Opt::DebugGuiScale,
                     Opt::TouchAnalog,
                     Opt::TouchSprintButton,

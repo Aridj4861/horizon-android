@@ -7,6 +7,7 @@ pub struct Editor {
     original: Settings,
     drag: Option<(u64, Drag)>,
     error: Option<String>,
+    palette: bool,
 }
 
 enum Drag {
@@ -24,6 +25,7 @@ impl TouchControls {
             original: self.settings.clone(),
             drag: None,
             error: None,
+            palette: false,
         });
     }
     pub fn cancel_editor(&mut self) {
@@ -55,6 +57,22 @@ impl TouchControls {
             } else if layout::contains([0.25, 0.04, 0.105, 0.075], p) {
                 self.settings.layouts[self.settings.mode.index()] =
                     Settings::default().layouts[self.settings.mode.index()];
+                self.settings.button_visibility = [0; 12];
+            } else if layout::contains([0.37, 0.04, 0.19, 0.075], p) {
+                e.palette = !e.palette;
+                e.selected = None;
+                e.drag = None;
+            } else if e.palette {
+                for (index, control) in Control::ALL.into_iter().enumerate() {
+                    if layout::contains(palette_rect(index), p) {
+                        let show = !self.visible(control);
+                        self.settings.button_visibility[index] = if show { 1 } else { 2 };
+                    }
+                }
+            } else if layout::contains([0.32, 0.88, 0.36, 0.07], p) && e.selected.is_some() {
+                self.settings.button_visibility[e.selected.unwrap() as usize] = 2;
+                e.selected = None;
+                e.drag = None;
             } else if layout::contains([0.32, 0.61, 0.36, 0.06], p)
                 && e.selected.is_some()
                 && e.option.is_some()
@@ -128,6 +146,7 @@ impl TouchControls {
         let (w, h) = (b.width, b.height);
         let text = rgba(245, 245, 245, 255);
         if let Some(selected) = e.selected {
+            plate(b, a, [0.32, 0.88, 0.36, 0.07], "Remove button", false);
             let p = self.placement(selected);
             plate(
                 b,
@@ -197,8 +216,29 @@ impl TouchControls {
             ([0.02, 0.04, 0.105, 0.075], "Done"),
             ([0.135, 0.04, 0.105, 0.075], "Cancel"),
             ([0.25, 0.04, 0.105, 0.075], "Reset"),
+            ([0.37, 0.04, 0.19, 0.075], "Add buttons..."),
         ] {
             plate(b, a, rect, label, false);
+        }
+        if e.palette {
+            b.fill(
+                a,
+                w * 0.2,
+                h * 0.14,
+                w * 0.6,
+                h * 0.72,
+                rgba(15, 15, 15, 245),
+            );
+            for (index, control) in Control::ALL.into_iter().enumerate() {
+                let shown = self.visible(control);
+                plate(
+                    b,
+                    a,
+                    palette_rect(index),
+                    &format!("{} {}", if shown { "[-]" } else { "[+]" }, control.name()),
+                    shown,
+                );
+            }
         }
         if e.error.is_some() {
             b.text(
@@ -211,6 +251,14 @@ impl TouchControls {
             );
         }
     }
+}
+fn palette_rect(index: usize) -> [f32; 4] {
+    [
+        0.22 + (index % 2) as f32 * 0.29,
+        0.17 + (index / 2) as f32 * 0.11,
+        0.27,
+        0.09,
+    ]
 }
 fn plate(b: &mut HudBatch, a: &HudAtlas, [x, y, w, h]: [f32; 4], label: &str, on: bool) {
     let (bw, bh) = (b.width, b.height);
