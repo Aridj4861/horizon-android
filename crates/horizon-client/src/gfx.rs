@@ -28,6 +28,20 @@ const TERRAIN_ATTRIBUTES: [wgpu::VertexAttribute; 5] =
     wgpu::vertex_attr_array![0=>Float32x3,1=>Uint16x2,2=>Uint16,4=>Uint8x2,3=>Unorm8x4];
 
 /// entity.wgsl after the OverlayTexture constants it reads.
+fn terrain_shader(gl: bool) -> std::borrow::Cow<'static, str> {
+    let source = include_str!("terrain.wgsl");
+    if !gl {
+        return std::borrow::Cow::Borrowed(source);
+    }
+    let start = source.find("fn sprite(").expect("terrain sprite function");
+    let end = start + source[start..].find("\n}\n").expect("terrain sprite end") + 3;
+    let mut output = String::with_capacity(source.len() + 200);
+    output.push_str(&source[..start]);
+    output.push_str(include_str!("gfx/terrain_gles.wgsl"));
+    output.push_str(&source[end..]);
+    std::borrow::Cow::Owned(output)
+}
+
 fn entity_shader() -> String {
     crate::overlay::wgsl_constants() + include_str!("entity.wgsl")
 }
@@ -1137,7 +1151,9 @@ impl Renderer {
         let gpu_timer = timing::GpuTimer::new(&device, &queue);
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Horizon terrain"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("terrain.wgsl").into()),
+            source: wgpu::ShaderSource::Wgsl(terrain_shader(
+                adapter.get_info().backend == wgpu::Backend::Gl,
+            )),
         });
         let entry = |binding, visibility, ty| wgpu::BindGroupLayoutEntry {
             binding,
@@ -5186,6 +5202,27 @@ fn frustum(m: Mat4) -> [Vec4; 6] {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn legacy_gles_sprite_selection_keeps_vulkan_source_and_validates_all_entrypoints() {
+        assert!(matches!(
+            super::terrain_shader(false),
+            std::borrow::Cow::Borrowed(_)
+        ));
+        assert_eq!(super::terrain_shader(false), include_str!("terrain.wgsl"));
+        let source = super::terrain_shader(true);
+        assert!(!source.contains("switch layer / SPRITE_SPLIT"));
+        for index in 0..7 {
+            assert!(source.contains(&format!("array_index == {index}u")));
+        }
+        let module = naga::front::wgsl::parse_str(&source).unwrap();
+        naga::valid::Validator::new(
+            naga::valid::ValidationFlags::all(),
+            naga::valid::Capabilities::all(),
+        )
+        .validate(&module)
+        .unwrap();
+    }
+
     #[test]
     fn surface_is_8_bit_and_not_srgb() {
         use super::surface_format;
