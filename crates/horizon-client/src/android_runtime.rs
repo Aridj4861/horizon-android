@@ -2,8 +2,12 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 static GPU_BATCHING: AtomicBool = AtomicBool::new(false);
 static KEYPAD_ENABLED: AtomicBool = AtomicBool::new(false);
-static KEYPAD: std::sync::Mutex<crate::keypad::Keypad> =
-    std::sync::Mutex::new(crate::keypad::Keypad::empty());
+static KEYPAD: std::sync::LazyLock<std::sync::Mutex<crate::keypad::Keypad>> =
+    std::sync::LazyLock::new(|| std::sync::Mutex::new(crate::keypad::Keypad::default()));
+pub fn configure_keypad_settings(settings: &crate::keypad::Settings) {
+    KEYPAD.lock().unwrap().configure(settings);
+    KEYPAD_ENABLED.store(settings.enabled, Ordering::Relaxed);
+}
 pub fn configure_keypad(enabled: bool) {
     KEYPAD_ENABLED.store(enabled, Ordering::Relaxed);
     clear_keypad();

@@ -1,69 +1,202 @@
-//! Optional physical-keypad preset, using the existing controller motion path.
+//! Editable keypad profile, using the existing controller motion path.
 use crate::gamepad::{Button, PadState};
+use serde::{Deserialize, Serialize};
+use std::collections::{BTreeMap, BTreeSet};
 use winit::keyboard::{Key, KeyCode, NamedKey, PhysicalKey};
-
-/// Android DPAD_CENTER has a logical Enter but no physical PC key in winit.
+/// Action IDs are stable persistence keys, not physical device key codes.
+pub const ACTIONS: &[(&str, &str, &[&str])] = &[
+    (
+        "key.keypad.forward",
+        "Forward",
+        &["key.keyboard.up", "key.keyboard.keypad.8"],
+    ),
+    (
+        "key.keypad.back",
+        "Backward",
+        &["key.keyboard.down", "key.keyboard.keypad.2"],
+    ),
+    (
+        "key.keypad.left",
+        "Left",
+        &["key.keyboard.left", "key.keyboard.keypad.4"],
+    ),
+    (
+        "key.keypad.right",
+        "Right",
+        &["key.keyboard.right", "key.keyboard.keypad.6"],
+    ),
+    ("key.keypad.look_up", "Look up", &["key.keyboard.2"]),
+    ("key.keypad.look_down", "Look down", &["key.keyboard.8"]),
+    ("key.keypad.look_left", "Look left", &["key.keyboard.4"]),
+    ("key.keypad.look_right", "Look right", &["key.keyboard.6"]),
+    ("key.keypad.attack", "Attack", &["key.keyboard.1"]),
+    ("key.keypad.use", "Use", &["key.keyboard.3"]),
+    (
+        "key.keypad.jump",
+        "Jump",
+        &[
+            "key.keyboard.5",
+            "key.keyboard.keypad.5",
+            "key.keyboard.enter",
+            "key.keyboard.keypad.enter",
+        ],
+    ),
+    (
+        "key.keypad.sneak",
+        "Sneak",
+        &["key.keyboard.0", "key.keyboard.keypad.0"],
+    ),
+    ("key.keypad.inventory", "Inventory", &["key.keyboard.7"]),
+    (
+        "key.keypad.next_slot",
+        "Next hotbar slot",
+        &["key.keyboard.9"],
+    ),
+    (
+        "key.keypad.forward_left",
+        "Forward + left",
+        &["key.keyboard.keypad.7"],
+    ),
+    (
+        "key.keypad.forward_right",
+        "Forward + right",
+        &["key.keyboard.keypad.9"],
+    ),
+    (
+        "key.keypad.back_left",
+        "Backward + left",
+        &["key.keyboard.keypad.1"],
+    ),
+    (
+        "key.keypad.back_right",
+        "Backward + right",
+        &["key.keyboard.keypad.3"],
+    ),
+];
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Settings {
+    pub enabled: bool,
+    pub bindings: BTreeMap<String, Vec<String>>,
+}
+impl Settings {
+    pub fn keys(&self, name: &str) -> Vec<String> {
+        self.bindings.get(name).cloned().unwrap_or_else(|| {
+            ACTIONS
+                .iter()
+                .find(|a| a.0 == name)
+                .map_or_else(Vec::new, |a| a.2.iter().map(|s| (*s).into()).collect())
+        })
+    }
+    pub fn set(&mut self, name: &str, value: String) {
+        self.bindings.insert(name.into(), vec![value]);
+    }
+    pub fn load(path: &std::path::Path) -> Self {
+        std::fs::read(path)
+            .ok()
+            .and_then(|b| serde_json::from_slice(&b).ok())
+            .unwrap_or_default()
+    }
+    pub fn save(&self, path: &std::path::Path) -> std::io::Result<()> {
+        if !self.enabled && self.bindings.is_empty() && !path.exists() {
+            return Ok(());
+        }
+        let temp = path.with_extension("json.tmp");
+        std::fs::write(&temp, serde_json::to_vec_pretty(self)?)?;
+        std::fs::rename(temp, path)
+    }
+}
+/// DPAD_CENTER and eight-way Android D-pad codes lack PC physical codes in winit.
 pub fn resolve_key(physical: PhysicalKey, logical: &Key) -> Option<KeyCode> {
+    use winit::keyboard::NativeKeyCode;
     match (physical, logical) {
         (PhysicalKey::Code(code), _) => Some(code),
+        (PhysicalKey::Unidentified(NativeKeyCode::Android(code)), _) => match code {
+            23 => Some(KeyCode::Enter),
+            268 => Some(KeyCode::Numpad7),
+            269 => Some(KeyCode::Numpad1),
+            270 => Some(KeyCode::Numpad9),
+            271 => Some(KeyCode::Numpad3),
+            _ => None,
+        },
         (_, Key::Named(NamedKey::Enter)) => Some(KeyCode::Enter),
         _ => None,
     }
 }
-
 #[derive(Default)]
-pub struct Keypad(u32, u32);
+pub struct Keypad {
+    settings: Settings,
+    held: BTreeSet<KeyCode>,
+    bits: u32,
+    pending: u32,
+}
 impl Keypad {
-    pub const fn empty() -> Self {
-        Self(0, 0)
+    pub fn configure(&mut self, settings: &Settings) {
+        if self.settings != *settings {
+            self.clear();
+            self.settings = settings.clone();
+        }
     }
     pub fn clear(&mut self) {
-        self.0 = 0;
-        self.1 = 0;
+        self.held.clear();
+        self.bits = 0;
+        self.pending = 0;
     }
     pub fn key(&mut self, key: KeyCode, down: bool) -> bool {
-        let bit = match key {
-            KeyCode::ArrowUp => 0,
-            KeyCode::ArrowDown => 1,
-            KeyCode::ArrowLeft => 2,
-            KeyCode::ArrowRight => 3,
-            KeyCode::Digit2 | KeyCode::Numpad2 => 4,
-            KeyCode::Digit8 | KeyCode::Numpad8 => 5,
-            KeyCode::Digit4 | KeyCode::Numpad4 => 6,
-            KeyCode::Digit6 | KeyCode::Numpad6 => 7,
-            KeyCode::Digit1 | KeyCode::Numpad1 => 8,
-            KeyCode::Digit3 | KeyCode::Numpad3 => 9,
-            KeyCode::Digit5 | KeyCode::Numpad5 | KeyCode::Enter | KeyCode::NumpadEnter => 10,
-            KeyCode::Digit0 | KeyCode::Numpad0 => 11,
-            KeyCode::Digit7 | KeyCode::Numpad7 => 12,
-            KeyCode::Digit9 | KeyCode::Numpad9 => 13,
-            _ => return false,
+        let Some(name) = crate::keybinds::key_name(key) else {
+            return false;
         };
-        if down {
-            self.0 |= 1 << bit;
-            self.1 |= 1 << bit;
-        } else {
-            self.0 &= !(1 << bit);
+        if !ACTIONS
+            .iter()
+            .any(|a| self.settings.keys(a.0).iter().any(|k| k == name))
+        {
+            return false;
         }
+        if down {
+            self.held.insert(key);
+        } else {
+            self.held.remove(&key);
+        }
+        let mut bits = 0;
+        for (i, a) in ACTIONS.iter().enumerate() {
+            if self
+                .settings
+                .keys(a.0)
+                .iter()
+                .filter_map(|k| crate::keybinds::key_code(k))
+                .any(|k| self.held.contains(&k))
+            {
+                bits |= 1 << i;
+            }
+        }
+        self.pending |= bits & !self.bits;
+        self.bits = bits;
         true
     }
     pub fn state(&self) -> PadState {
-        Self::state_for(self.0)
+        Self::state_for(self.bits)
     }
     pub fn poll(&mut self) -> PadState {
-        Self::state_for(self.0 | std::mem::take(&mut self.1))
+        Self::state_for(self.bits | std::mem::take(&mut self.pending))
     }
     fn state_for(bits: u32) -> PadState {
-        let held = |i: u32| -> bool { bits & (1u32 << i) != 0u32 };
-        let axis = |positive, negative| {
-            f32::from(u8::from(held(positive))) - f32::from(u8::from(held(negative)))
-        };
-        let mut left = [axis(3, 2), axis(0, 1)];
-        let length = (left[0] * left[0] + left[1] * left[1]).sqrt().max(1.0);
-        left = left.map(|v| v / length);
+        let held = |i: u32| bits & (1 << i) != 0;
+        let axis = |p, n| f32::from(u8::from(p)) - f32::from(u8::from(n));
+        let mut left = [
+            axis(
+                held(3) || held(15) || held(17),
+                held(2) || held(14) || held(16),
+            ),
+            axis(
+                held(0) || held(14) || held(15),
+                held(1) || held(16) || held(17),
+            ),
+        ];
+        let len = left[0].hypot(left[1]).max(1.0);
+        left = left.map(|v| v / len);
         let mut state = PadState {
             left,
-            right: [axis(7, 6), axis(4, 5)],
+            right: [axis(held(7), held(6)), axis(held(4), held(5))],
             triggers: [f32::from(u8::from(held(9))), f32::from(u8::from(held(8)))],
             ..Default::default()
         };
@@ -78,10 +211,57 @@ impl Keypad {
         state
     }
 }
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn rebinding_and_overlapping_aliases_keep_normalized_eight_way_motion() {
+        let mut k = Keypad::default();
+        let mut settings = Settings::default();
+        settings.set("key.keypad.forward", "key.keyboard.z".into());
+        k.configure(&settings);
+        assert!(!k.key(KeyCode::ArrowUp, true));
+        k.key(KeyCode::KeyZ, true);
+        k.key(KeyCode::Numpad9, true);
+        let state = k.poll();
+        assert!((state.left[0].hypot(state.left[1]) - 1.0).abs() < 1e-6);
+        k.key(KeyCode::Numpad9, false);
+        assert_eq!(k.poll().left, [0.0, 1.0]);
+        k.key(KeyCode::Digit5, true);
+        k.key(KeyCode::Enter, true);
+        k.poll();
+        k.key(KeyCode::Digit5, false);
+        assert!(k.poll().held(Button::South));
+        k.key(KeyCode::Enter, false);
+        assert!(!k.poll().held(Button::South));
+        let saved = serde_json::to_vec(&settings).unwrap();
+        assert_eq!(
+            serde_json::from_slice::<Settings>(&saved).unwrap(),
+            settings
+        );
+    }
+    #[test]
+    fn all_default_profile_keys_resolve_and_diagonals_are_bindable() {
+        for action in ACTIONS {
+            for key in action.2 {
+                assert!(crate::keybinds::key_code(key).is_some(), "{key}");
+            }
+        }
+        for (code, key) in [
+            (268, KeyCode::Numpad7),
+            (269, KeyCode::Numpad1),
+            (270, KeyCode::Numpad9),
+            (271, KeyCode::Numpad3),
+        ] {
+            assert_eq!(
+                resolve_key(
+                    PhysicalKey::Unidentified(winit::keyboard::NativeKeyCode::Android(code)),
+                    &Key::Unidentified(winit::keyboard::NativeKey::Android(code))
+                ),
+                Some(key)
+            );
+        }
+    }
     #[test]
     fn android_dpad_centre_and_numpad_enter_jump() {
         let code = resolve_key(

@@ -179,6 +179,7 @@ pub struct Settings {
     /// Controller settings (`horizon-controller.txt`, Horizon's own).
     pub controller: crate::gamepad::PadSettings,
     pub touch: crate::touch::Settings,
+    pub keypad: crate::keypad::Settings,
     /// Horizon's optional extras (`horizon-extras.txt`), all off by default.
     pub extras: crate::extras::Extras,
     /// The Horizon mods turned on (`horizon-mods.txt`), all off by default.
@@ -258,6 +259,7 @@ impl Default for Settings {
             horizon: Default::default(),
             controller: Default::default(),
             touch: Default::default(),
+            keypad: Default::default(),
             extras: Default::default(),
             mods: Default::default(),
             shader_packs: Vec::new(),
@@ -307,12 +309,14 @@ impl Settings {
             .parent()
             .map(crate::mod_list::ModList::load)
             .unwrap_or_default();
+        let keypad = crate::keypad::Settings::load(&path.with_file_name("horizon-keypad.json"));
         let touch = crate::touch::Settings::load_from(&path.with_file_name("horizon-touch.json"));
         let settings = match fs::read(path) {
             Ok(bytes) => Self {
                 horizon,
                 controller,
                 touch,
+                keypad,
                 extras,
                 mods,
                 ..Self::parse(&String::from_utf8_lossy(&bytes))
@@ -321,6 +325,7 @@ impl Settings {
                 horizon,
                 controller,
                 touch,
+                keypad,
                 extras,
                 mods,
                 ..Self::default()
@@ -423,6 +428,7 @@ impl Settings {
             horizon: Default::default(),
             controller: Default::default(),
             touch: Default::default(),
+            keypad: Default::default(),
             extras: Default::default(),
             mods: Default::default(),
             shader_packs: Vec::new(),
@@ -557,6 +563,7 @@ impl Settings {
         let mut file = self.to_file();
         file.set_text(key, value)?;
         Ok(Self {
+            keypad: self.keypad.clone(),
             horizon: self.horizon.clone(),
             #[cfg(target_os = "android")]
             touch: self.touch.clone(),
@@ -576,6 +583,7 @@ impl Settings {
         if let Some(dir) = path.parent() {
             self.horizon.save(dir);
             self.controller.save(dir);
+            let _ = self.keypad.save(&dir.join("horizon-keypad.json"));
             #[cfg(target_os = "android")]
             let _ = self.touch.save_to(&dir.join("horizon-touch.json"));
             self.extras.save(dir);

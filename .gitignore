@@ -49,3 +49,6 @@
 
 # Release-only compiled original exporter bundle.
 /exporters/
+
+/horizon-keypad.json
+/horizon-keypad.json.tmp
