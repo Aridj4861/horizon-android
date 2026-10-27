@@ -159,7 +159,6 @@ impl Launcher {
             return Ok(());
         }
         if horizon_client::official_install::ready(&self.home) {
-            crate::platform::install_bedrock_controls(&self.home)?;
             crate::platform::hide();
             self.catalog.config.save(&self.home)?;
             horizon_client::android_runtime::configure_graphics(

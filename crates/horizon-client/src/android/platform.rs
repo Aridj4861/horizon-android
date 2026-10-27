@@ -9,51 +9,6 @@ use winit::platform::android::activity::input::{
     ImeOptions, InputType, TextInputAction, TextInputState, TextSpan,
 };
 
-/// The originals remain outside the source tree and are supplied by this APK's
-/// private asset bundle. Install after resource updates, before building the HUD.
-pub fn install_bedrock_controls(home: &std::path::Path) -> horizon_client::Result<()> {
-    if crate::PUBLIC_BUILD {
-        return Ok(());
-    }
-    use std::io::Read;
-    let bytes = crate::APP.with(|slot| -> horizon_client::Result<Vec<u8>> {
-        let app = slot.borrow();
-        let app = app.as_ref().ok_or("Android activity unavailable")?;
-        let mut asset = app
-            .asset_manager()
-            .open(c"bedrock-controls.zip")
-            .ok_or("Original Bedrock controls missing from APK")?;
-        let mut bytes = Vec::new();
-        asset.read_to_end(&mut bytes)?;
-        Ok(bytes)
-    })?;
-    let mut zip = zip::ZipArchive::new(std::io::Cursor::new(bytes))?;
-    let target = home
-        .join(".local/horizon-client")
-        .join(horizon_core::VANILLA_VERSION)
-        .join("assets/minecraft/textures/gui/bedrock");
-    for index in 0..zip.len() {
-        let mut entry = zip.by_index(index)?;
-        let path = entry
-            .enclosed_name()
-            .ok_or("Invalid control texture path")?;
-        if entry.is_dir() || path.extension().is_none_or(|x| x != "png") {
-            continue;
-        }
-        if entry.size() > 1024 * 1024 {
-            return Err("Control texture exceeds size limit".into());
-        }
-        let file = target.join(path);
-        std::fs::create_dir_all(file.parent().unwrap())?;
-        let temporary = file.with_extension("partial");
-        let mut out = std::fs::File::create(&temporary)?;
-        std::io::copy(&mut entry, &mut out)?;
-        drop(out);
-        std::fs::rename(temporary, file)?;
-    }
-    Ok(())
-}
-
 thread_local! {
     static EDIT: RefCell<Option<String>> = const { RefCell::new(None) };
     static VIBRATOR: RefCell<Option<Option<GlobalRef>>> = const { RefCell::new(None) };
