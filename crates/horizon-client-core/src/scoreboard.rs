@@ -2,9 +2,9 @@
 //! `ObjectiveCriteria`, `NumberFormat`) and its saved data
 //! (`data/minecraft/scoreboard.dat`, `ScoreboardSaveData.Packed`).
 use crate::{
-    command::Registries,
     component,
     fastutil_order::{HashSetOrder, OpenOrder},
+    registries::Registries,
     text::{self, Style, Text},
 };
 use horizon_world::nbt::Tag;
@@ -994,7 +994,7 @@ impl Scoreboard {
         if let Some(name) = profile_name {
             return self.players_team(name);
         }
-        self.players_team(&crate::save::uuid_text(uuid?))
+        self.players_team(&crate::uuid::uuid_text(uuid?))
     }
     pub fn players_team(&self, player: &str) -> Option<&Team> {
         self.team(self.team_of.get(player)?)
@@ -1273,7 +1273,7 @@ fn entity_uuids(tag: &mut Tag) {
                             })
                             .collect::<Option<Vec<i32>>>(),
                         Tag::String(s) => {
-                            crate::save::uuid_from_text(&s.to_string_lossy()).map(Vec::from)
+                            crate::uuid::uuid_from_text(&s.to_string_lossy()).map(Vec::from)
                         }
                         _ => None,
                     };
@@ -1568,7 +1568,7 @@ mod player_collision_tests {
         board.add_team("no_collision").collision_rule = CollisionRule::Never;
         board.add_to_team("HiddenNPC", "no_collision");
         board.add_team("uuid_team");
-        board.add_to_team(&crate::save::uuid_text([0, 0, 0, 7]), "uuid_team");
+        board.add_to_team(&crate::uuid::uuid_text([0, 0, 0, 7]), "uuid_team");
         let npc = board.entity_team(Some("HiddenNPC"), Some([0, 0, 0, 7]));
         assert!(!pushable_by(npc, None, true));
         let mob = board.entity_team(None, Some([0, 0, 0, 7]));

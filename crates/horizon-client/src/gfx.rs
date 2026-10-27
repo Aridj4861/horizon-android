@@ -5229,6 +5229,7 @@ fn frustum(m: Mat4) -> [Vec4; 6] {
 mod tests {
     #[test]
     fn instance_buffers_omit_storage_when_the_device_has_no_storage_bindings() {
+        use super::instance_buffer_usage;
         let legacy = instance_buffer_usage(&wgpu::Limits::downlevel_webgl2_defaults());
         assert!(legacy.contains(wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST));
         assert!(!legacy.contains(wgpu::BufferUsages::STORAGE));

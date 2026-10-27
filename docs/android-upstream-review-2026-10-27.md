@@ -25,3 +25,17 @@ Reviewed integration areas:
 Prepared-resource output version remains 1. Upstream deployment workflows remain
 inactive. Compilation and targeted checks validate integration; device performance
 and newly added upstream features require their own runtime validation.
+
+## Follow-up through fde2dfff
+
+Reviewed and integrated 38 further main-branch commits. The command parser and
+shared data/text types move into `horizon-command` and `horizon-client-core`;
+old `horizon_client` import paths remain re-exports. Android's Cargo member,
+NativeActivity workspace exclusion and patched winit are retained. Desktop
+launcher instances and quick-play arguments remain separate from Android's
+existing profile UI. Aquatic mob rules and parity-tool changes are included.
+Upstream deployment workflow edits stay under the inactive workflow directory.
+
+Android integration checks caught and fixed the fork scoreboard UUID helper
+reference after its move into client-core. Both ARMv7 Activity hosts type-check
+with the new crate split.

@@ -7,10 +7,10 @@
   "compared_source_files": 3147,
   "modified_existing_files": 41,
   "branch": "android",
-  "merged_upstream_commit": "840d11a3b2237c00b9b862c914f00e77e6125129",
-  "merged_upstream_commits": 1436,
+  "merged_upstream_commit": "fde2dfffefe4bb557f24eb886a4ee9867e2e56cd",
+  "merged_upstream_commits": 1474,
   "last_reviewed_date": "2026-10-27",
-  "last_update_commits": 849,
-  "latest_fetched_commit": "840d11a3b2237c00b9b862c914f00e77e6125129",
-  "deferred_review": "All fetched upstream/main history through 840d11a3 integrated. Experimental branches were not merged. Android keeps its platform input, UI and rendering adaptations."
+  "last_update_commits": 38,
+  "latest_fetched_commit": "fde2dfffefe4bb557f24eb886a4ee9867e2e56cd",
+  "deferred_review": "All fetched upstream/main history through fde2dfff integrated, including the client-core/command crate split. Experimental branches were not merged."
 }
