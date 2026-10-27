@@ -64,6 +64,28 @@ pub(super) struct Panorama {
     pipeline: wgpu::RenderPipeline,
     group: wgpu::BindGroup,
     uniform: wgpu::Buffer,
+    vertices: wgpu::Buffer,
+}
+
+// The same cube as CubeMap's procedural vertex indices. Passing positions
+// explicitly avoids a driver link failure on nested constant-array indexing
+// observed on GLES 3.0 Adreno 304.
+fn cube_vertices() -> [[f32; 3]; 36] {
+    let corners = [
+        [-1.0, -1.0, -1.0],
+        [1.0, -1.0, -1.0],
+        [1.0, 1.0, -1.0],
+        [-1.0, 1.0, -1.0],
+        [-1.0, -1.0, 1.0],
+        [1.0, -1.0, 1.0],
+        [1.0, 1.0, 1.0],
+        [-1.0, 1.0, 1.0],
+    ];
+    [
+        4, 7, 6, 4, 6, 5, 5, 6, 2, 5, 2, 1, 1, 2, 3, 1, 3, 0, 0, 3, 7, 0, 7, 4, 7, 3, 2, 7, 2, 6,
+        0, 4, 5, 0, 5, 1,
+    ]
+    .map(|i| corners[i])
 }
 
 impl Panorama {
@@ -167,6 +189,11 @@ impl Panorama {
             bind_group_layouts: &[Some(&layout)],
             ..Default::default()
         });
+        let vertices = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Title panorama vertices"),
+            contents: bytemuck::cast_slice(&cube_vertices()),
+            usage: wgpu::BufferUsages::VERTEX,
+        });
         let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("Title panorama"),
             layout: Some(&pipeline_layout),
@@ -174,7 +201,11 @@ impl Panorama {
                 module: &shader,
                 entry_point: Some("vs_panorama"),
                 compilation_options: Default::default(),
-                buffers: &[],
+                buffers: &[Some(wgpu::VertexBufferLayout {
+                    array_stride: 12,
+                    step_mode: wgpu::VertexStepMode::Vertex,
+                    attributes: &wgpu::vertex_attr_array![0 => Float32x3],
+                })],
             },
             primitive: wgpu::PrimitiveState {
                 cull_mode: None,
@@ -205,6 +236,7 @@ impl Panorama {
             pipeline,
             group,
             uniform,
+            vertices,
         }
     }
 
@@ -226,6 +258,7 @@ impl Panorama {
     pub(super) fn draw(&self, pass: &mut wgpu::RenderPass<'_>) {
         pass.set_pipeline(&self.pipeline);
         pass.set_bind_group(0, &self.group, &[]);
+        pass.set_vertex_buffer(0, self.vertices.slice(..));
         pass.draw(0..36, 0..1);
     }
 }
@@ -297,6 +330,19 @@ mod tests {
         }
     }
 
+    #[test]
+    fn cube_vertices_form_twelve_inward_facing_triangles() {
+        let mut faces = [0; 6];
+        for triangle in cube_vertices().chunks_exact(3) {
+            let [a, b, c] = [triangle[0], triangle[1], triangle[2]].map(glam::Vec3::from_array);
+            let normal = (b - a).cross(c - a);
+            assert_eq!(normal.length_squared(), 16.0);
+            assert!(normal.dot(a) < 0.0);
+            let axis = (0..3).find(|&i| normal[i] != 0.0).unwrap();
+            faces[axis * 2 + usize::from(normal[axis] > 0.0)] += 1;
+        }
+        assert_eq!(faces, [2; 6]);
+    }
     #[test]
     fn rotation_speed_changes_preserve_position() {
         let mut rotation = Rotation::default();
