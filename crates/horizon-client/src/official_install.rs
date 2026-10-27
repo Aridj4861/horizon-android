@@ -225,13 +225,9 @@ pub fn install_with_progress(home: &Path, progress: impl Fn(InstallProgress) + S
     let checksum = entry["sha1"]
         .as_str()
         .ok_or("Missing version metadata hash")?;
-    if pins["manifest_sha1"] != checksum
-        && !pins["accepted_manifest_sha1"]
-            .as_array()
-            .is_some_and(|v| v.iter().any(|x| x == checksum))
-    {
-        return Err("Mojang changed this version; engine update required".into());
-    }
+    // Mojang may reissue metadata while Minecraft 26.3's game jars are unchanged.
+    // The downloaded JSON is still verified against the catalogue's SHA-1,
+    // and the actual client/server jar hashes remain engine-pinned.
     let cache = home.join(".local/downloads").join(version);
     fs::create_dir_all(&cache)?;
     let manifest_url = entry["url"]
@@ -249,8 +245,11 @@ pub fn install_with_progress(home: &Path, progress: impl Fn(InstallProgress) + S
         return Err("Version metadata checksum mismatch".into());
     }
     let manifest: Value = serde_json::from_slice(&bytes)?;
-    if manifest["id"] != version || manifest["downloads"]["client"]["sha1"] != pins["client_sha1"] {
-        return Err("Minecraft client differs from this engine's pin".into());
+    if manifest["id"] != version
+        || manifest["downloads"]["client"]["sha1"] != pins["client_sha1"]
+        || manifest["downloads"]["server"]["sha1"] != pins["server_sha1"]
+    {
+        return Err("Minecraft game files differ from this engine's pinned version".into());
     }
     let index = Download::from(&manifest["assetIndex"], cache.join("asset-index.json"))?;
     index.get()?;
