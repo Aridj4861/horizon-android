@@ -12,5 +12,5 @@
   "last_reviewed_date": "2026-10-27",
   "last_update_commits": 610,
   "latest_fetched_commit": "94290b01eed2ce52bde7e5177b5d914299dd227a",
-  "deferred_review": "All fetched upstream/main history through 94290b01 integrated. Android input, HUD margins, GLES compatibility and inactive upstream workflows retained. Both ARM64 Activity hosts pass cargo check after shared skin/account integration; final APK checks remain pending."
+  "deferred_review": "All fetched upstream/main history through 94290b01 integrated. Android input, HUD margins, GLES compatibility and inactive upstream workflows retained. The unified Rust NativeActivity host passes ARM64 Clippy with warnings denied. Replacement APK runtime checks remain pending; the previous dual-host candidate is withdrawn."
 }
