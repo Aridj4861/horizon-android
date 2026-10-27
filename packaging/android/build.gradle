@@ -7,7 +7,7 @@ android {
         applicationId providers.gradleProperty('appId').getOrElse('dev.horizon.android')
         minSdk providers.gradleProperty('minSdk').getOrElse('28').toInteger()
         targetSdk 35
-        versionCode 20
+        versionCode 21
         versionName '0.7.0'
         ndk { abiFilters providers.gradleProperty('abi').get() }
     }
@@ -41,11 +41,5 @@ android {
         res.srcDirs = ['res']
     }
     packaging { jniLibs { useLegacyPackaging = true; keepDebugSymbols += '**/*.so' } }
-}
-dependencies {
-    implementation platform('org.jetbrains.kotlin:kotlin-bom:1.8.22')
-    implementation 'androidx.games:games-activity:4.4.0'
-    implementation 'androidx.appcompat:appcompat:1.7.1'
-    implementation 'androidx.core:core:1.16.0'
 }
 layout.buildDirectory = file('../../.local/android/gradle-build')

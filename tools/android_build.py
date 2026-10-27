@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build an optimized Rust APK with Android's standard GameActivity adapter.
+"""Build an optimized Rust APK with Android's stock NativeActivity and Rust system-IME adapter.
 
 Requires Android SDK, NDK, Rust Android target, and a JDK (for APK signing).
 Generated APKs and the throwaway signing key stay in .local/android.
@@ -74,11 +74,10 @@ def engine_data(public=False):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--abi', choices=TARGETS, default='arm64-v8a')
-    parser.add_argument('--host', choices=['both', 'game', 'native'], default='both', help='Development-only Activity host selection; public builds require both')
     parser.add_argument('--sdk', type=Path, default=os.environ.get('ANDROID_HOME') or Path(os.environ.get('LOCALAPPDATA', str(Path.home()))) / 'Android/Sdk')
     parser.add_argument('--java-home', type=Path, default=os.environ.get('JAVA_HOME') or 'C:/Program Files/Android/Android Studio/jbr')
     parser.add_argument('--skip-rust', action='store_true')
-    parser.add_argument('--rust-only', action='store_true', help='Build both Rust hosts without touching shared APK staging')
+    parser.add_argument('--rust-only', action='store_true', help='Build the Rust host without touching shared APK staging')
     parser.add_argument('--release-candidate', action='store_true', help='Build a non-debuggable candidate and audit privacy; this does not authorize redistribution of bundled game resources')
     parser.add_argument('--public', action='store_true', help='Distribution APK: generated tables only; original resources download from Mojang')
     parser.add_argument('--profile', choices=['fast', 'dev'], default='fast', help='Optimized by default; dev is for debugging only')
@@ -87,11 +86,7 @@ def main():
     parser.add_argument('--clippy', action='store_true', help='Run Android Clippy with warnings denied')
     parser.add_argument('--bootstrap', type=Path, help=argparse.SUPPRESS)  # Old scripts: no longer used.
     args = parser.parse_args()
-    if args.host != 'both' and not (args.rust_only or args.check or args.clippy):
-        parser.error('--host selection is only for --rust-only, --check or --clippy; APKs require both hosts')
     if args.public:
-        if args.host != 'both':
-            parser.error('--public requires both Activity hosts')
         args.release_candidate = True
         if args.skip_rust:
             parser.error('--public cannot reuse a native library from a different build mode')
@@ -107,11 +102,7 @@ def main():
     legacy = args.abi in ('armeabi-v7a', 'x86')
     min_sdk = 27 if legacy else 28
     features = ['--no-default-features', '--features', 'audio'] if legacy else []
-    native_features = ['--no-default-features', '--features', 'audio,native-host'] if legacy else []
-    manifests = [(['-p', 'horizon-android'], features),
-                 (['--manifest-path', str(ROOT / 'packaging/android-native/Cargo.toml')], native_features)]
-    if args.host != 'both':
-        manifests = [manifests[0 if args.host == 'game' else 1]]
+    manifests = [(['-p', 'horizon-android'], features)]
     environment = dict(os.environ)
     environment['PATH'] = os.pathsep.join([str(ndk / 'bin'), str(args.java_home / 'bin'), environment['PATH']])
     environment['JAVA_HOME'] = str(args.java_home)
@@ -147,12 +138,13 @@ def main():
     output.mkdir(parents=True, exist_ok=True)
     staging = ROOT / '.local/android/gradle-jni' / args.abi
     staging.mkdir(parents=True, exist_ok=True)
-    for name in ('libhorizon_android.so', 'libhorizon_android_native.so'):
+    (staging / 'libhorizon_android_native.so').unlink(missing_ok=True)
+    for name in ('libhorizon_android.so',):
         library = target_dir / target / ('debug' if args.profile == 'dev' else args.profile) / name
         if not library.is_file():
             raise FileNotFoundError(library)
         shutil.copyfile(library, staging / name)
-        run([ndk / 'bin' / ('llvm-strip' + suffix), '--strip-debug', staging / name])
+        run([ndk / 'bin' / ('llvm-strip' + suffix), '--strip-unneeded', staging / name])
     assets = ROOT / '.local/android/gradle-assets'
     assets.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(ROOT / 'LICENSE', assets / 'LICENSE.txt')

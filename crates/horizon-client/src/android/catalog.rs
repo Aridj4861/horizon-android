@@ -61,7 +61,7 @@ impl InputHost {
             Self::KeyboardMouse => "Keyboard & mouse",
         }
     }
-    pub fn native(self) -> bool {
+    pub fn keyboard_mouse(self) -> bool {
         self == Self::KeyboardMouse
             || (self == Self::Auto && crate::platform::keyboard_mouse_connected())
     }

@@ -153,7 +153,7 @@ impl Project {
 
     /// The project as a data pack, for a search of data packs or an install into a world;
     /// its page is Modrinth's data pack page.
-    pub fn as_datapack(self) -> Project {
+    pub fn into_datapack(self) -> Project {
         Project {
             page: match self.source {
                 SourceId::Modrinth => format!("https://modrinth.com/datapack/{}", self.slug),

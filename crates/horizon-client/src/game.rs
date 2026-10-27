@@ -1987,7 +1987,7 @@ impl Game<'_> {
     fn interaction_crosshair(&self) -> bool {
         #[cfg(target_os = "android")]
         {
-            crate::NATIVE_HOST
+            crate::keyboard_mouse_input()
                 || self.settings.keypad.enabled
                 || self.pad.touch.settings.crosshair()
         }
@@ -5444,7 +5444,8 @@ impl Game<'_> {
                 .is_ok();
             #[cfg(target_os = "android")]
             {
-                self.captured = !crate::NATIVE_HOST || crate::platform::capture_mouse(true);
+                self.captured =
+                    !crate::keyboard_mouse_input() || crate::platform::capture_mouse(true);
             }
             #[cfg(not(target_os = "macos"))]
             if self.captured && self.focused {
@@ -10422,7 +10423,8 @@ impl Game<'_> {
         #[cfg(target_os = "android")]
         {
             self.pad.touch.settings = self.settings.touch.clone();
-            self.pad.touch.force_crosshair = crate::NATIVE_HOST || self.settings.keypad.enabled;
+            self.pad.touch.force_crosshair =
+                crate::keyboard_mouse_input() || self.settings.keypad.enabled;
             let changed =
                 horizon_client::android_runtime::keypad_enabled() != self.settings.keypad.enabled;
             horizon_client::android_runtime::configure_keypad_settings(&self.settings.keypad);

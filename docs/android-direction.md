@@ -24,9 +24,9 @@ See [the feature matrix](android-features.md), [mod SDK](mods.md),
 ## Platform boundaries
 
 Player-facing game and launcher code is Rust. Android APIs use JNI/NDK calls;
-GameActivity supplies the system text-input connection, while a stock
-NativeActivity host supplies the mouse input queue. No project Java/Kotlin host
-is included. Development preparation and test drivers remain under `tools/`.
+A single stock NativeActivity supplies the native input queue. Rust/JNI uses the
+system text editor and IME on Android's UI thread; no project Java/Kotlin host or
+second engine library is packaged.
 
 Android graphics choices select system-driver Vulkan or GLES paths. Game
 resolution, draw distance, quality and FPS controls remain game options.

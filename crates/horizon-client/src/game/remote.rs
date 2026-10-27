@@ -4579,7 +4579,7 @@ impl Game<'_> {
         // of an item with no use time, and the server's
         // ClientboundCooldownPacket confirms it; one held in use starts it at
         // finishUsingItem (remote_complete_using).
-        if !info.consumable.as_ref().is_some_and(|c| c.ticks() > 0) {
+        if info.consumable.as_ref().is_none_or(|c| c.ticks() <= 0) {
             self.apply_use_cooldown(&held);
         }
         if self.with_hand(hand, |g| g.remote_use_book(&held)) {

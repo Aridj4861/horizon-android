@@ -1,14 +1,10 @@
-//! GameActivity's Unicode text buffer is independent of winit's key events.
+//! Android system input and platform services, called from the Rust client.
 use horizon_client::osk::Output;
 use jni::{
     JNIEnv, JavaVM,
     objects::{GlobalRef, JObject, JValue},
 };
 use std::cell::RefCell;
-use winit::platform::android::activity::input::{
-    ImeOptions, InputType, TextInputAction, TextInputState, TextSpan,
-};
-
 thread_local! {
     static EDIT: RefCell<Option<String>> = const { RefCell::new(None) };
     static VIBRATOR: RefCell<Option<Option<GlobalRef>>> = const { RefCell::new(None) };
@@ -296,38 +292,16 @@ pub fn keyboard_mouse_connected() -> bool {
     .unwrap_or(false)
 }
 
-pub fn switch_input_host(native: bool) -> bool {
+pub fn finish() {
     with_context(|env, activity| {
-        let intent = env.new_object("android/content/Intent", "()V", &[])?;
-        let package = env
-            .call_method(activity, "getPackageName", "()Ljava/lang/String;", &[])?
-            .l()?;
-        let name = JObject::from(env.new_string(if native {
-            "android.app.NativeActivity"
-        } else {
-            "com.google.androidgamesdk.GameActivity"
-        })?);
-        env.call_method(
-            &intent,
-            "setClassName",
-            "(Ljava/lang/String;Ljava/lang/String;)Landroid/content/Intent;",
-            &[JValue::Object(&package), JValue::Object(&name)],
-        )?;
-        env.call_method(
-            activity,
-            "startActivity",
-            "(Landroid/content/Intent;)V",
-            &[JValue::Object(&intent)],
-        )?;
         env.call_method(activity, "finish", "()V", &[])?;
         Ok(())
-    })
-    .is_some()
+    });
 }
 
 pub fn capture_mouse(capture: bool) -> bool {
-    if !crate::NATIVE_HOST {
-        return false;
+    if crate::native_ime::capture_mouse(capture) {
+        return true;
     }
     with_context(|env, activity| {
         let window = env
@@ -352,38 +326,15 @@ pub fn capture_mouse(capture: bool) -> bool {
 }
 
 pub fn show(text: &str) {
-    if crate::NATIVE_HOST {
-        return;
+    if crate::native_ime::show(text) {
+        EDIT.with(|e| *e.borrow_mut() = Some(text.into()));
+    } else {
+        log::warn!("Android system keyboard is unavailable");
     }
-    EDIT.with(|e| *e.borrow_mut() = Some(text.into()));
-    crate::APP.with(|slot| {
-        let app = slot.borrow();
-        let app = app.as_ref().unwrap();
-        app.set_ime_editor_info(
-            InputType::TYPE_CLASS_TEXT | InputType::TYPE_TEXT_FLAG_MULTI_LINE,
-            TextInputAction::None,
-            ImeOptions::IME_FLAG_NO_FULLSCREEN | ImeOptions::IME_FLAG_NO_ENTER_ACTION,
-        );
-        // The Java Editable stores selection offsets in UTF-16 code units.
-        app.set_text_input_state(TextInputState {
-            text: text.into(),
-            selection: TextSpan {
-                start: text.encode_utf16().count(),
-                end: text.encode_utf16().count(),
-            },
-            compose_region: None,
-        });
-        app.show_soft_input(false);
-    });
 }
-
 pub fn hide() {
     EDIT.with(|e| *e.borrow_mut() = None);
-    crate::APP.with(|slot| {
-        if let Some(app) = slot.borrow().as_ref() {
-            app.hide_soft_input(false);
-        }
-    });
+    crate::native_ime::hide();
 }
 
 pub fn poll() -> Vec<Output> {
@@ -392,8 +343,9 @@ pub fn poll() -> Vec<Output> {
         let Some(old) = edit.as_mut() else {
             return vec![];
         };
-        let state = crate::APP.with(|a| a.borrow().as_ref().unwrap().text_input_state());
-        let new = state.text;
+        let Some(new) = crate::native_ime::text() else {
+            return vec![];
+        };
         if new == *old {
             return vec![];
         }

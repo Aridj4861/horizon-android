@@ -37,7 +37,7 @@ compatibility. Low-memory devices such as the Fujitsu F-03L still need testing.
   on 64-bit builds. New packages are disabled until enabled in Installed.
 - **Packs:** find and install resource packs with checksum verification.
 - **Installed:** enable, disable or remove installed additions.
-- **Settings:** rendering mode, input host, profile, server and orientation.
+- **Settings:** rendering mode, input mode, profile, server and orientation.
   Profiles keep separate saves and settings. Offline player names are edited
   alongside Microsoft sign-in in **Accounts**.
 
@@ -117,22 +117,19 @@ rotation. Orientation and HUD margins are independent.
 
 ### Keyboard and mouse
 
-In launcher Settings, **Automatic** selects the mouse host when Android reports both
-a QWERTY keyboard and a mouse. **Keyboard & mouse** selects it explicitly; choose
-**Touch & Android keyboard** to restore the software keyboard. The selection is
-applied when Play is pressed, before opening a world or starting account refresh.
+In launcher Settings, **Automatic** selects keyboard/mouse input when Android reports
+both a QWERTY keyboard and a mouse. **Keyboard & mouse** selects it explicitly;
+**Touch & Android keyboard** restores touch input. The preference is applied at Play.
 
-The mouse host uses stock `android.app.NativeActivity` in a separate process.
-The touch host uses stock GameActivity for Android IME and Unicode composition.
-Both run the same Rust client and share profiles/resources through the app UID;
-there is no project Java/Kotlin host. The mouse host requires a physical keyboard
-for text entry. Host switching never happens automatically inside an open world.
+One stock `android.app.NativeActivity` runs the Rust client for all input modes.
+The system keyboard uses Android's stock text editor and input-method service
+through Rust/JNI on the UI thread. There are no project Java/Kotlin classes and
+no second copy of the engine in the APK.
 
 Mouse cursor, buttons, wheel and modifiers use the normal desktop input path.
 Pointer capture provides relative camera movement and releases in menus or on
 focus loss. Touch buttons hide on hardware input in mouse mode and return on a
-touch. After unplugging devices, return to the launcher to change input mode if
-an onscreen keyboard is needed.
+touch. The system keyboard is available in either mode.
 
 ### Physical keypad and Android TV
 

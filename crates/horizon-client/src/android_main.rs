@@ -18,6 +18,8 @@ mod browser;
 mod catalog;
 #[path = "android/gallery.rs"]
 mod gallery;
+#[path = "android/native_ime.rs"]
+mod native_ime;
 #[path = "android/platform.rs"]
 mod platform;
 #[allow(dead_code)]
@@ -51,14 +53,21 @@ mod backend {
 }
 
 use std::cell::RefCell;
-pub(crate) const NATIVE_HOST: bool = cfg!(feature = "native-host");
-static TOUCH_VISIBLE: std::sync::atomic::AtomicBool =
-    std::sync::atomic::AtomicBool::new(!NATIVE_HOST);
+static KEYBOARD_MOUSE_INPUT: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+static TOUCH_VISIBLE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+pub(crate) fn keyboard_mouse_input() -> bool {
+    KEYBOARD_MOUSE_INPUT.load(std::sync::atomic::Ordering::Relaxed)
+}
+pub(crate) fn configure_input_mode(keyboard_mouse: bool) {
+    KEYBOARD_MOUSE_INPUT.store(keyboard_mouse, std::sync::atomic::Ordering::Relaxed);
+    TOUCH_VISIBLE.store(!keyboard_mouse, std::sync::atomic::Ordering::Relaxed);
+}
 pub(crate) fn touch_visible() -> bool {
     TOUCH_VISIBLE.load(std::sync::atomic::Ordering::Relaxed)
 }
 pub(crate) fn touch_input(touch: bool) {
-    if touch || NATIVE_HOST || horizon_client::android_runtime::keypad_enabled() {
+    if touch || keyboard_mouse_input() || horizon_client::android_runtime::keypad_enabled() {
         TOUCH_VISIBLE.store(touch, std::sync::atomic::Ordering::Relaxed);
     }
 }
@@ -66,6 +75,16 @@ pub(crate) const PUBLIC_BUILD: bool = match option_env!("HORIZON_ANDROID_PUBLIC"
     Some(value) => value.len() == 1 && value.as_bytes()[0] == b'1',
     None => false,
 };
+
+#[unsafe(no_mangle)]
+fn android_on_create(state: &winit::platform::android::activity::OnCreateState<'_>) {
+    init_logging();
+    if let Err(error) =
+        unsafe { native_ime::initialize(state.vm_as_ptr().cast(), state.activity_as_ptr().cast()) }
+    {
+        log::error!("Android system keyboard initialization: {error}");
+    }
+}
 use winit::{
     event_loop::EventLoop,
     platform::android::{EventLoopBuilderExtAndroid, activity::AndroidApp},
@@ -126,17 +145,7 @@ pub(crate) fn android_arguments() -> horizon_client::Result<Vec<String>> {
     Ok(args)
 }
 
-#[unsafe(no_mangle)]
-fn android_main(app: AndroidApp) {
-    use winit::platform::android::activity::input::Axis;
-    for axis in [
-        Axis::Vscroll,
-        Axis::Hscroll,
-        Axis::RelativeX,
-        Axis::RelativeY,
-    ] {
-        app.enable_motion_axis(axis);
-    }
+fn init_logging() {
     let trace_gles = !PUBLIC_BUILD && std::env::var_os("HORIZON_GLES_TRACE").is_some();
     let mut logger = android_logger::Config::default()
         .with_max_level(if trace_gles {
@@ -153,6 +162,20 @@ fn android_main(app: AndroidApp) {
         );
     }
     android_logger::init_once(logger);
+}
+
+#[unsafe(no_mangle)]
+fn android_main(app: AndroidApp) {
+    use winit::platform::android::activity::input::Axis;
+    for axis in [
+        Axis::Vscroll,
+        Axis::Hscroll,
+        Axis::RelativeX,
+        Axis::RelativeY,
+    ] {
+        app.enable_motion_axis(axis);
+    }
+    init_logging();
     let Some(home) = app.internal_data_path() else {
         log::error!("Android supplied no application data directory");
         return;
@@ -208,6 +231,7 @@ fn android_main(app: AndroidApp) {
     // this process cached after Quit, making the next launch fail. run_app's
     // exiting callback has completed the world save before we get here.
     drop(launcher);
+    platform::finish();
     APP.with(|slot| *slot.borrow_mut() = None);
     std::process::exit(0);
 }

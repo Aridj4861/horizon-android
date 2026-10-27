@@ -10,9 +10,9 @@ in the [Android guide](android.md#check).
 | Touch layouts | Four explicit schemes, normal Options > Controls settings, 16–64 px circle, optional 360-degree movement, sprint visibility, editable layouts, custom key buttons, global size and per-button scale/opacity sliders, handedness and direct F3/F5 buttons; passive HUD safe-area margins are in Accessibility |
 | Contextual touch | Use action for held items/entities; movement actions serve flight/swimming. Not all Bedrock contextual icons/gestures are implemented |
 | Controller vibration settings | Phone `Vibrator` now wired to existing game events and the existing vibration switch; no adaptive triggers or external-pad vibration backend |
-| Physical keyboard / mouse | Separate stock NativeActivity host selected before Play; normal keyboard, modifiers, cursor/buttons/wheel and relative pointer-capture path in Rust. Physical gameplay and vendor firmware still need testing; its text fields require a hardware keyboard |
+| Physical keyboard / mouse | One stock NativeActivity with selectable input mode; normal keyboard, modifiers, cursor/buttons/wheel and relative pointer-capture path in Rust. Physical gameplay and vendor firmware still need testing |
 | ABI / TV | ARM64 and x86_64; experimental ARMv7 and x86 without Wasmtime. Android TV launcher entry, D-pad/Enter navigation, optional keypad preset and portrait orientations; full analog gamepad backend remains unfinished |
-| Unicode keyboard | Touch host: GameActivity IME and composition; system keyboard remains responsible for its own clipboard suggestions |
+| Unicode keyboard | Stock Android text editor and IME through Rust/JNI on the UI thread; system keyboard remains responsible for its own clipboard suggestions |
 | Horizon clipboard actions | Newly connected to Android ClipboardManager for explicit text copy/paste; no background clipboard polling or file-URI reads |
 | Sound and subtitles | AAudio mixer and downloaded sound assets; existing category volumes, subtitles and accessibility settings remain available |
 | Graphics / streaming | Existing game resolution, distance, FPS, quality and worker controls. Launcher selects real Vulkan draw paths and does not override them |

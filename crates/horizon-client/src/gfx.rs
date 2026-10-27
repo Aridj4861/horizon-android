@@ -594,11 +594,20 @@ pub(crate) const SPRITE_SPLIT: u32 = 2048;
 /// [`SPRITE_SPLIT`], or a smaller split from `HORIZON_SPRITE_SPLIT` (dev
 /// only: vanilla's sprites drawn from several arrays must look the same).
 fn sprite_split() -> u32 {
+    // Android GLES devices can expose only 256 layers per array. Use the
+    // existing multi-array shader there; Vulkan keeps its 2048-layer layout.
+    let ceiling = if cfg!(target_os = "android")
+        && crate::android_runtime::graphics_api() == GraphicsApi::OpenGl
+    {
+        256
+    } else {
+        SPRITE_SPLIT
+    };
     std::env::var("HORIZON_SPRITE_SPLIT")
         .ok()
         .and_then(|v| v.parse().ok())
-        .filter(|&n| (1..=SPRITE_SPLIT).contains(&n))
-        .unwrap_or(SPRITE_SPLIT)
+        .filter(|&n| (1..=ceiling).contains(&n))
+        .unwrap_or(ceiling)
 }
 fn gl_backend(adapter: &wgpu::Adapter) -> bool {
     adapter.get_info().backend == wgpu::Backend::Gl

@@ -75,6 +75,14 @@ use crate::window::{Window, WindowAttributes};
 
 use self::activity::{AndroidApp, ConfigurationRef, Rect};
 
+/// Route keyboard editing to a focused Android framework text view.
+///
+/// Back, Escape and volume keys retain their ordinary native dispatch. This is
+/// useful when a NativeActivity uses a system EditText for IME composition.
+pub fn set_native_text_input_active(active: bool) {
+    crate::platform_impl::set_native_text_input_active(active);
+}
+
 /// Additional methods on [`EventLoop`] that are specific to Android.
 pub trait EventLoopExtAndroid {
     /// Get the [`AndroidApp`] which was used to create this event loop.

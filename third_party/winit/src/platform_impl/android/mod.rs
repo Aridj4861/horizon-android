@@ -3,7 +3,7 @@ use std::collections::VecDeque;
 use std::hash::Hash;
 use std::marker::PhantomData;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{mpsc, Arc, Mutex};
+use std::sync::{Arc, Mutex, mpsc};
 use std::time::{Duration, Instant};
 
 use android_activity::input::{
@@ -29,6 +29,12 @@ use crate::window::{
 
 mod keycodes;
 mod mouse_state;
+
+static NATIVE_TEXT_INPUT_ACTIVE: AtomicBool = AtomicBool::new(false);
+
+pub(crate) fn set_native_text_input_active(active: bool) {
+    NATIVE_TEXT_INPUT_ACTIVE.store(active, Ordering::Release);
+}
 
 fn modifiers(meta: MetaState) -> crate::keyboard::ModifiersState {
     use crate::keyboard::ModifiersState as M;
@@ -545,6 +551,18 @@ impl<T: 'static> EventLoop<T> {
                 }
             }
             InputEvent::KeyEvent(key) => {
+                if NATIVE_TEXT_INPUT_ACTIVE.load(Ordering::Acquire)
+                    && !matches!(
+                        key.key_code(),
+                        Keycode::Back
+                            | Keycode::Escape
+                            | Keycode::VolumeUp
+                            | Keycode::VolumeDown
+                            | Keycode::VolumeMute
+                    )
+                {
+                    return InputStatus::Unhandled;
+                }
                 match key.key_code() {
                     // Flag keys related to volume as unhandled. While winit does not have a way for
                     // applications to configure what keys to flag as handled,

@@ -149,15 +149,7 @@ impl Launcher {
         if self.login.pending() {
             return Ok(());
         }
-        let native = self.catalog.config.input_host.native();
-        if native != crate::NATIVE_HOST {
-            self.catalog.config.save(&self.home)?;
-            if !crate::platform::switch_input_host(native) {
-                return Err("Could not switch the Android input activity".into());
-            }
-            events.exit();
-            return Ok(());
-        }
+        crate::configure_input_mode(self.catalog.config.input_host.keyboard_mouse());
         if horizon_client::official_install::ready(&self.home) {
             crate::platform::hide();
             self.catalog.config.save(&self.home)?;

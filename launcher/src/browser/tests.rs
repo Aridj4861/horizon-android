@@ -109,7 +109,7 @@ fn data_packs_are_their_own_kind() {
     });
     let p = modrinth::parse_hit(&hit).unwrap();
     assert_eq!(p.kind, Kind::Mod);
-    let p = p.as_datapack();
+    let p = p.into_datapack();
     assert_eq!(
         (p.kind, p.page.as_str()),
         (Kind::DataPack, "https://modrinth.com/datapack/terralith")
