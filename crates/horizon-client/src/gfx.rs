@@ -27,7 +27,7 @@ const CRUMBLING_BLEND: wgpu::BlendState = wgpu::BlendState {
 const TERRAIN_ATTRIBUTES: [wgpu::VertexAttribute; 5] =
     wgpu::vertex_attr_array![0=>Float32x3,1=>Uint16x2,2=>Uint16,4=>Uint8x2,3=>Unorm8x4];
 
-/// entity.wgsl after the OverlayTexture constants it reads.
+/// Terrain sprite selection for Vulkan and legacy GLES compilers.
 fn terrain_shader(gl: bool) -> std::borrow::Cow<'static, str> {
     let source = include_str!("terrain.wgsl");
     if !gl {
@@ -42,6 +42,7 @@ fn terrain_shader(gl: bool) -> std::borrow::Cow<'static, str> {
     std::borrow::Cow::Owned(output)
 }
 
+/// entity.wgsl after the OverlayTexture constants it reads.
 fn entity_shader() -> String {
     crate::overlay::wgsl_constants() + include_str!("entity.wgsl")
 }
@@ -583,6 +584,17 @@ fn sprite_split() -> u32 {
         .and_then(|v| v.parse().ok())
         .filter(|&n| (1..=SPRITE_SPLIT).contains(&n))
         .unwrap_or(SPRITE_SPLIT)
+}
+fn gl_backend(adapter: &wgpu::Adapter) -> bool {
+    adapter.get_info().backend == wgpu::Backend::Gl
+}
+fn instance_buffer_usage(limits: &wgpu::Limits) -> wgpu::BufferUsages {
+    let base = wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST;
+    if limits.max_storage_buffers_per_shader_stage > 0 {
+        base | wgpu::BufferUsages::STORAGE
+    } else {
+        base
+    }
 }
 /// Sprite arrays terrain.wgsl binds (`sprites`, `sprites_1`...).
 const SPRITE_ARRAYS: u32 = 8;
@@ -1318,6 +1330,11 @@ impl Renderer {
                         depth_write: bool,
                         depth_test: bool,
                         blend: Option<wgpu::BlendState>| {
+            if adapter.get_info().backend == wgpu::Backend::Gl {
+                startup_step(format_args!(
+                    "creating GLES pipeline {label} ({vertex}/{fragment})"
+                ));
+            }
             pipeline_in(
                 &layout,
                 label,
@@ -1427,10 +1444,19 @@ impl Renderer {
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
+        if gl_backend(&adapter) {
+            startup_step(format_args!("creating GLES sprite textures"));
+        }
         let prepared = prepared.unwrap_or_else(|| {
             PreparedTextures::new(sprite_pixels, sprite_size, layers, sprite_mips, forcefield)
         });
         let mut mip_levels = 1;
+        let sprite_compute = animate::SpriteAnimator::compute(&adapter, &device);
+        let sprite_storage = if sprite_compute {
+            wgpu::TextureUsages::STORAGE_BINDING
+        } else {
+            wgpu::TextureUsages::empty()
+        };
         let gl = adapter.get_info().backend == wgpu::Backend::Gl;
         let sprite_textures: Vec<wgpu::Texture> = prepared
             .sprites
@@ -1460,7 +1486,7 @@ impl Renderer {
                             | wgpu::TextureUsages::COPY_DST
                             // Shader packs' atlas copies them (pack_atlas.rs).
                             | wgpu::TextureUsages::COPY_SRC
-                            | wgpu::TextureUsages::STORAGE_BINDING,
+                            | sprite_storage,
                         view_formats: &[],
                     },
                     wgpu::util::TextureDataOrder::LayerMajor,
@@ -1475,7 +1501,7 @@ impl Renderer {
             sprite_mips,
             &sprite_textures,
             split,
-            animate::SpriteAnimator::compute(&adapter, &device),
+            sprite_compute,
         );
         let sprite_unused = device
             .create_texture(&wgpu::TextureDescriptor {
@@ -1553,9 +1579,7 @@ impl Renderer {
         let instances = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Section origins"),
             size: instance_capacity * 16,
-            usage: wgpu::BufferUsages::VERTEX
-                | wgpu::BufferUsages::COPY_DST
-                | wgpu::BufferUsages::STORAGE,
+            usage: instance_buffer_usage(&device.limits()),
             mapped_at_creation: false,
         });
         let outline = device.create_buffer(&wgpu::BufferDescriptor {
@@ -1601,6 +1625,9 @@ impl Renderer {
             atlas_pixels,
         );
         let atlas_view = atlas.create_view(&Default::default());
+        if gl {
+            startup_step(format_args!("creating GLES HUD renderer"));
+        }
         let mut hud = HudRenderer::new(&device, config.format.remove_srgb_suffix(), &atlas_view)?;
         hud.atlas_texture = Some(atlas.clone());
         let entity_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
@@ -3644,9 +3671,7 @@ impl Renderer {
             self.instances = self.device.create_buffer(&wgpu::BufferDescriptor {
                 label: Some("Section origins"),
                 size: self.instance_capacity * 16,
-                usage: wgpu::BufferUsages::VERTEX
-                    | wgpu::BufferUsages::COPY_DST
-                    | wgpu::BufferUsages::STORAGE,
+                usage: instance_buffer_usage(&self.device.limits()),
                 mapped_at_creation: false,
             });
         }
@@ -5202,6 +5227,15 @@ fn frustum(m: Mat4) -> [Vec4; 6] {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn instance_buffers_omit_storage_when_the_device_has_no_storage_bindings() {
+        let legacy = instance_buffer_usage(&wgpu::Limits::downlevel_webgl2_defaults());
+        assert!(legacy.contains(wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST));
+        assert!(!legacy.contains(wgpu::BufferUsages::STORAGE));
+        assert!(
+            instance_buffer_usage(&wgpu::Limits::default()).contains(wgpu::BufferUsages::STORAGE)
+        );
+    }
     #[test]
     fn legacy_gles_sprite_selection_keeps_vulkan_source_and_validates_all_entrypoints() {
         assert!(matches!(
