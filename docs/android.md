@@ -28,7 +28,9 @@ or clearing its storage removes them.
 | `x86` | 8.1 / API 27 | Not included; experimental legacy build |
 
 A matching CPU architecture alone does not establish graphics-driver or memory
-compatibility. Low-memory devices such as the Fujitsu F-03L still need testing.
+compatibility. Legacy GPU testing remains in progress. When a shared atlas cannot
+fit the adapter, Android reduces static atlas sprites while retaining font pixels,
+dynamic slots and the separate terrain texture arrays.
 
 ## Launcher
 
@@ -200,9 +202,9 @@ Gradle executable. Public APKs are written to
 `.local/android/apk/<abi>/horizon-android-public.apk`; signing material stays in
 `.local/android/`. Keep the signing key to allow updates over an existing install.
 
-Each APK contains separate GameActivity and NativeActivity Rust libraries, built
-with their respective winit backends. `--rust-only` builds them without shared APK
-staging; `CARGO_TARGET_DIR` can separate parallel compilation caches. Run Gradle
+Each APK contains one `libhorizon_android.so`, using the NativeActivity winit
+backend and the Rust system-keyboard bridge. `--rust-only` builds it without shared
+APK staging; `CARGO_TARGET_DIR` can separate parallel compilation caches. Run Gradle
 packaging sequentially. `--profile dev` is for debugging, not public builds.
 
 Public builds include only allowlisted generated engine tables. Original game
