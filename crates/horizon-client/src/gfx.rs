@@ -2658,6 +2658,17 @@ impl Renderer {
             .get_mut()
             .unwrap_or_else(std::sync::PoisonError::into_inner) = self.surface.take();
     }
+    /// Android destroys the native window when backgrounded. Its surface may
+    /// be reused for an in-process renderer handoff, but never after suspension.
+    #[cfg(target_os = "android")]
+    pub fn suspend_surface(&mut self) {
+        self.suspended = true;
+        self.surface = None;
+        self.spare_surface
+            .get_mut()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .take();
+    }
     /// Reattach a window after surface loss or a failed renderer replacement.
     pub fn recreate_surface(&mut self) -> Result<()> {
         if self.offscreen.is_some() {
@@ -2672,6 +2683,11 @@ impl Renderer {
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .take();
         self.surface = None;
+        #[cfg(target_os = "android")]
+        let spare = {
+            drop(spare);
+            None
+        };
         let surface = match spare {
             Some(surface) => surface,
             None => self.instance.create_surface(self.window.clone())?,
@@ -2683,6 +2699,7 @@ impl Renderer {
             self.hdr.as_ref(),
         );
         self.surface = Some(surface);
+        self.suspended = false;
         Ok(())
     }
     /// The world's depth, which occlusion culling's test may read.
@@ -2753,6 +2770,17 @@ impl Renderer {
         }
     }
     pub fn resize(&mut self, width: u32, height: u32) {
+        #[cfg(target_os = "android")]
+        if self.surface.is_none() && self.offscreen.is_none() {
+            // A resize can precede Resumed. Keep the windowed renderer suspended
+            // until its new ANativeWindow exists; absence is not offscreen intent.
+            if width > 0 && height > 0 {
+                self.config.width = width;
+                self.config.height = height;
+            }
+            self.suspended = true;
+            return;
+        }
         self.suspended = width == 0 || height == 0;
         if self.suspended {
             return;

@@ -265,8 +265,7 @@ impl ApplicationHandler for Launcher {
         }
         self.drag = None;
         if let Some(renderer) = &mut self.renderer {
-            renderer.release_surface();
-            renderer.suspended = true;
+            renderer.suspend_surface();
         }
     }
     fn window_event(&mut self, events: &ActiveEventLoop, id: WindowId, event: WindowEvent) {

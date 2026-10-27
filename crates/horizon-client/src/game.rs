@@ -12260,8 +12260,7 @@ impl ApplicationHandler for Game<'_> {
             self.screen = Screen::Paused;
         }
         if let Some(renderer) = &mut self.renderer {
-            renderer.release_surface();
-            renderer.suspended = true;
+            renderer.suspend_surface();
         }
     }
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
@@ -15130,8 +15129,7 @@ impl ApplicationHandler for App {
             App::Ready(game) => game.suspended(event_loop),
             App::Loading(loading) => {
                 if let Some(renderer) = &mut loading.renderer {
-                    renderer.release_surface();
-                    renderer.suspended = true;
+                    renderer.suspend_surface();
                 }
             }
         }
