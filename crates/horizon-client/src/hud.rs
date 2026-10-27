@@ -359,6 +359,65 @@ impl HudAtlas {
             width = (width * 2).min(max);
         }
     }
+    /// Fit static sprites to a small adapter without shrinking glyphs or dynamic
+    /// map/skin/GUI slots. Terrain uses separate texture arrays and is unchanged.
+    #[cfg(any(target_os = "android", test))]
+    fn fit_mobile_atlas(
+        images: &mut [PackedImage],
+        gui_sizes: &mut HashMap<String, (u32, u32)>,
+        flags: &HashMap<String, TextureFlags>,
+        limit: u32,
+    ) -> Result<()> {
+        loop {
+            let mut dimensions: Vec<PackedImage> = images
+                .iter()
+                .map(|(name, w, h, _)| {
+                    let border = if flags.get(name).is_some_and(|f| f.blur) {
+                        2
+                    } else {
+                        0
+                    };
+                    (name.clone(), w + border, h + border, Vec::new())
+                })
+                .collect();
+            dimensions.sort_by(|a, b| b.2.cmp(&a.2).then(b.1.cmp(&a.1)));
+            match Self::layout(&dimensions, limit) {
+                Ok(_) => return Ok(()),
+                Err(error) => {
+                    let mut changed = false;
+                    for (name, w, h, rgba) in images.iter_mut() {
+                        if name.starts_with("font/")
+                            || name.starts_with("horizon/")
+                            || (*w == 1 && *h == 1)
+                        {
+                            continue;
+                        }
+                        // Keep original GUI units and normalized UVs. Runtime patches
+                        // retain their full-size slots, so no coordinate remapping occurs.
+                        gui_sizes.entry(name.clone()).or_insert((*w, *h));
+                        let (old_w, old_h) = (*w, *h);
+                        *w = (*w / 2).max(1);
+                        *h = (*h / 2).max(1);
+                        let mut smaller = Vec::with_capacity((*w * *h * 4) as usize);
+                        for y in 0..*h {
+                            for x in 0..*w {
+                                let at = ((y * old_h / *h * old_w + x * old_w / *w) * 4) as usize;
+                                smaller.extend_from_slice(&rgba[at..at + 4]);
+                            }
+                        }
+                        *rgba = smaller;
+                        changed = true;
+                    }
+                    if !changed {
+                        return Err(error);
+                    }
+                    log::info!(
+                        "Reduced static atlas sprites to fit the adapter's {limit}px texture limit"
+                    );
+                }
+            }
+        }
+    }
     /// Pack the textures under these folders of `textures/`, and for the
     /// `full` atlas the generated sprites and the run-time slots too.
     fn pack(root: &Path, defaults: &Path, folders: &[&str], full: bool) -> Result<Self> {
@@ -448,6 +507,14 @@ impl HudAtlas {
         if full {
             Self::slots(&mut images, crate::trims::slot_size(root));
         }
+        #[cfg(target_os = "android")]
+        let atlas_limit = crate::android_runtime::atlas_limit().min(MAX_ATLAS_SIZE);
+        #[cfg(not(target_os = "android"))]
+        let atlas_limit = MAX_ATLAS_SIZE;
+        #[cfg(target_os = "android")]
+        if atlas_limit < MAX_ATLAS_SIZE {
+            Self::fit_mobile_atlas(&mut images, &mut gui_sizes, &flags, atlas_limit)?;
+        }
         // Blurred sprites are sampled linearly in the atlas (screen.wgsl): a
         // border wrapped from their own edges keeps the filter off their
         // neighbours, as repeat addressing of their own texture would.
@@ -459,7 +526,7 @@ impl HudAtlas {
             }
         }
         images.sort_by(|a, b| b.2.cmp(&a.2).then(b.1.cmp(&a.1)));
-        let (width, placements, glyph_region) = Self::layout(&images, MAX_ATLAS_SIZE)?;
+        let (width, placements, glyph_region) = Self::layout(&images, atlas_limit)?;
         // A multiple of 1024 rather than a power of two: the default resources
         // need 4096x5120 (8192 rows before), Faithful 32x 4096x12288 (16384).
         let height = (glyph_region + GLYPH_ROWS).next_multiple_of(1024);
@@ -1589,6 +1656,21 @@ mod tests {
             4, 3, 4, 3,
             2, 1, 2, 1,
         ]);
+    }
+
+    #[test]
+    fn mobile_atlas_retains_font_and_dynamic_slots() {
+        let mut images = vec![
+            ("gui/large".into(), 600, 600, vec![255; 600 * 600 * 4]),
+            ("font/test".into(), 8, 8, vec![123; 8 * 8 * 4]),
+            ("horizon/map0".into(), 128, 128, vec![0; 128 * 128 * 4]),
+        ];
+        let mut sizes = HashMap::new();
+        HudAtlas::fit_mobile_atlas(&mut images, &mut sizes, &HashMap::new(), 1024).unwrap();
+        assert_eq!(sizes["gui/large"], (600, 600));
+        assert_eq!((images[0].1, images[0].2), (300, 300));
+        assert_eq!((images[1].1, images[1].2, images[1].3[0]), (8, 8, 123));
+        assert_eq!((images[2].1, images[2].2), (128, 128));
     }
 
     /// A synthetic default font: two 8x8 glyphs, 3 and 5 pixels wide.

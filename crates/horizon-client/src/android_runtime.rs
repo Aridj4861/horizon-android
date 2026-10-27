@@ -1,5 +1,13 @@
-//! Explicit Android renderer policy. Both modes render through Vulkan on the GPU.
+//! Android renderer and platform policy.
 use std::sync::atomic::{AtomicBool, Ordering};
+static ATLAS_LIMIT: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(16384);
+/// The launcher opens the adapter before the resource worker builds the game atlas.
+pub fn configure_atlas_limit(limit: u32) {
+    ATLAS_LIMIT.store(limit, Ordering::Relaxed);
+}
+pub fn atlas_limit() -> u32 {
+    ATLAS_LIMIT.load(Ordering::Relaxed)
+}
 static GPU_BATCHING: AtomicBool = AtomicBool::new(false);
 static KEYPAD_ENABLED: AtomicBool = AtomicBool::new(false);
 static KEYPAD: std::sync::LazyLock<std::sync::Mutex<crate::keypad::Keypad>> =

@@ -1131,6 +1131,8 @@ impl Renderer {
             }
             None => open_device(&window, offscreen, api, layers).await?,
         };
+        #[cfg(target_os = "android")]
+        crate::android_runtime::configure_atlas_limit(device.limits().max_texture_dimension_2d);
         let info = adapter.get_info();
         crate::graphics::suggest_reduced_far_detail(crate::graphics::lod_capped(&info));
         let size = window.inner_size();
