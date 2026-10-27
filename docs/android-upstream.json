@@ -7,10 +7,10 @@
   "compared_source_files": 3147,
   "modified_existing_files": 41,
   "branch": "android",
-  "merged_upstream_commit": "94290b01eed2ce52bde7e5177b5d914299dd227a",
-  "merged_upstream_commits": 2084,
+  "merged_upstream_commit": "8155baa6f382e29b00672586ddb1452e21b0eec6",
+  "merged_upstream_commits": 2739,
   "last_reviewed_date": "2026-10-27",
-  "last_update_commits": 610,
-  "latest_fetched_commit": "9972feb7",
-  "deferred_review": "Reviewed upstream/main through 94290b01 is integrated in the 0.7.0 regression candidate. A subsequent fetch found 391 commits through 9972feb7; their full integration is deferred while device regressions are validated. The newer renderer changes cover item/armour glint and lightning attributes, with no direct surface/performance fix identified. Unified-host ARM64 and ARMv7 Clippy passed; replacement device checks are in progress."
+  "last_update_commits": 655,
+  "latest_fetched_commit": "8155baa6f382e29b00672586ddb1452e21b0eec6",
+  "review": "0.7.0 upstream cutoff: 8155baa6. Integrated 655 commits from upstream/main, including item-crate extraction, settings option relocation, HUD/glint rendering and vanilla gameplay fixes. Android HUD insets, touch aiming, GLES fallback and the single NativeActivity host are preserved. Upstream deployment/nightly workflows remain disabled. ARM64 and ARMv7 Clippy and all 10 Android source-export/public-audit unit tests passed. Device validation and release APK packaging remain separate steps."
 }

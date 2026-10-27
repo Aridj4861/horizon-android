@@ -11,7 +11,7 @@ in the [Android guide](android.md#check).
 | Contextual touch | Use action for held items/entities; movement actions serve flight/swimming. Not all Bedrock contextual icons/gestures are implemented |
 | Controller vibration settings | Phone `Vibrator` now wired to existing game events and the existing vibration switch; no adaptive triggers or external-pad vibration backend |
 | Physical keyboard / mouse | One stock NativeActivity with selectable input mode; normal keyboard, modifiers, cursor/buttons/wheel and relative pointer-capture path in Rust. Physical gameplay and vendor firmware still need testing |
-| ABI / TV | ARM64 and x86_64; experimental ARMv7 and x86 without Wasmtime. Android TV launcher entry, D-pad/Enter navigation, optional keypad preset and portrait orientations; full analog gamepad backend remains unfinished |
+| ABI / TV | ARM64 and x86_64; experimental ARMv7 and x86 without Wasmtime. Android TV launcher entry, D-pad/Enter navigation, editable keypad profile with in-game focus navigation and retained utility buttons, plus portrait orientations; full analog gamepad backend remains unfinished |
 | Unicode keyboard | Stock Android text editor and IME through Rust/JNI on the UI thread; system keyboard remains responsible for its own clipboard suggestions |
 | Horizon clipboard actions | Newly connected to Android ClipboardManager for explicit text copy/paste; no background clipboard polling or file-URI reads |
 | Sound and subtitles | AAudio mixer and downloaded sound assets; existing category volumes, subtitles and accessibility settings remain available |

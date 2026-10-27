@@ -39,3 +39,22 @@ Upstream deployment workflow edits stay under the inactive workflow directory.
 Android integration checks caught and fixed the fork scoreboard UUID helper
 reference after its move into client-core. Both ARMv7 Activity hosts type-check
 with the new crate split.
+
+## 0.7.0 cutoff: 8155baa6
+
+Integrated 655 additional commits after `94290b01` (307 changed files). The
+upstream `horizon-items` extraction keeps the existing client re-exports, while
+`Opt` now lives in `settings.rs`; Android touch and F3 options follow that move.
+Renderer integration includes separate item/armour glint textures and vanilla
+HUD visibility fixes. The Android reticle policy, passive HUD margins,
+capability-based GLES base-vertex fallback and single NativeActivity lifecycle
+remain in place.
+
+Vanilla fixes include attack-speed effects, sprint input, player poses, chat
+interaction, entity behaviour and block rendering. A Clippy boolean simplification
+in the incoming enchantment code preserves its condition. Incoming desktop and
+nightly publication workflows are stored inactive alongside the other upstream
+workflows; the Android source check remains the only active workflow.
+
+This commit is the upstream cutoff for 0.7.0. Later upstream changes belong to a
+subsequent release rather than restarting the current validation cycle.
