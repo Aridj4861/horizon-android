@@ -87,7 +87,7 @@ pub struct Placement {
     pub opacity: f32,
 }
 impl Placement {
-    fn new(x: f32, y: f32, size: f32) -> Self {
+    pub(super) fn new(x: f32, y: f32, size: f32) -> Self {
         Self {
             center: [x, y],
             size,
@@ -132,6 +132,8 @@ pub struct Settings {
     pub swap_jump_sneak: bool,
     pub sensitivity: f32,
     pub circle_size: f32,
+    pub button_scale: f32,
+    pub custom_buttons: Vec<super::CustomButton>,
     pub analog_movement: bool,
     pub sprint_button: bool,
     pub attack_indicator_left: bool,
@@ -185,6 +187,8 @@ impl Default for Settings {
             swap_jump_sneak: false,
             sensitivity: 1.0,
             circle_size: 32.0,
+            button_scale: 1.0,
+            custom_buttons: Vec::new(),
             analog_movement: false,
             sprint_button: true,
             attack_indicator_left: true,
@@ -240,11 +244,24 @@ impl Settings {
             self.sensitivity = 1.0;
         }
         self.sensitivity = self.sensitivity.clamp(0.1, 3.0);
+        self.button_scale = if self.button_scale.is_finite() {
+            self.button_scale.clamp(0.5, 2.0)
+        } else {
+            1.0
+        };
         self.circle_size = if self.circle_size.is_finite() {
             self.circle_size.clamp(16.0, 64.0)
         } else {
             32.0
         };
+        self.custom_buttons.truncate(32);
+        self.custom_buttons
+            .retain(|b| crate::keybinds::key_code(&b.key).is_some());
+        for button in &mut self.custom_buttons {
+            for p in &mut button.layouts {
+                p.sanitize();
+            }
+        }
         for p in self.layouts.iter_mut().flatten() {
             p.sanitize();
         }
