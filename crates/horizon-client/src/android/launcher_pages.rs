@@ -142,6 +142,15 @@ impl Launcher {
         self.targets.clear();
         let mut b = HudBatch::new([r.config.width, r.config.height]);
         let mut ui = Ui::mobile(&gui.atlas, &mut b, (0.0, 0.0));
+        // OEM navigation bars can remain visible even in fullscreen (keypad phones).
+        // Inset the launcher layout only; keep surface and input coordinates intact.
+        if let Some(window) = &self.window {
+            use winit::platform::android::WindowExtAndroid;
+            let bottom = window.content_rect().bottom;
+            if bottom > 0 {
+                ui.h = ui.h.min(bottom as f32 / ui.density);
+            }
+        }
         let (w, h) = (ui.w, ui.h);
         let scale = ui.density / ui.batch.scale;
         ui.batch

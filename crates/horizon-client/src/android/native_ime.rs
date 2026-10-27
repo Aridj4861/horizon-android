@@ -36,7 +36,7 @@ struct Ui {
     vm: JavaVM,
     edit: GlobalRef,
     input: GlobalRef,
-    decor: GlobalRef,
+    native: GlobalRef,
     commands: Mutex<VecDeque<Command>>,
     reader: Mutex<UnixStream>,
     writer: Mutex<UnixStream>,
@@ -62,9 +62,26 @@ pub unsafe fn initialize(
     }
     let vm = unsafe { JavaVM::from_raw(vm) }.map_err(|e| e.to_string())?;
     let mut env = vm.attach_current_thread().map_err(|e| e.to_string())?;
-    let (edit, input, decor) = env
+    let (edit, input, native) = env
         .with_local_frame(32, |env| -> jni::errors::Result<_> {
             let activity = unsafe { JObject::from_raw(activity) };
+            let content = env
+                .call_method(
+                    &activity,
+                    "findViewById",
+                    "(I)Landroid/view/View;",
+                    &[JValue::Int(0x01020002)],
+                )?
+                .l()?;
+            // NativeActivity's first content child owns the native input queue.
+            let native = env
+                .call_method(
+                    &content,
+                    "getChildAt",
+                    "(I)Landroid/view/View;",
+                    &[JValue::Int(0)],
+                )?
+                .l()?;
             let edit = env.new_object(
                 "android/widget/EditText",
                 "(Landroid/content/Context;)V",
@@ -75,6 +92,7 @@ pub unsafe fn initialize(
             env.call_method(&edit, "setAlpha", "(F)V", &[JValue::Float(0.0)])?;
             env.call_method(&edit, "setSaveEnabled", "(Z)V", &[JValue::Bool(0)])?;
             env.call_method(&edit, "setFocusableInTouchMode", "(Z)V", &[JValue::Bool(1)])?;
+            env.call_method(&edit, "setFocusable", "(Z)V", &[JValue::Bool(0)])?;
             let params = env.new_object(
                 "android/view/ViewGroup$LayoutParams",
                 "(II)V",
@@ -95,16 +113,11 @@ pub unsafe fn initialize(
                     &[JValue::Object(&service)],
                 )?
                 .l()?;
-            let window = env
-                .call_method(&activity, "getWindow", "()Landroid/view/Window;", &[])?
-                .l()?;
-            let decor = env
-                .call_method(window, "getDecorView", "()Landroid/view/View;", &[])?
-                .l()?;
+            env.call_method(&native, "requestFocus", "()Z", &[])?;
             Ok((
                 env.new_global_ref(edit)?,
                 env.new_global_ref(input)?,
-                env.new_global_ref(decor)?,
+                env.new_global_ref(native)?,
             ))
         })
         .map_err(|e| {
@@ -119,7 +132,7 @@ pub unsafe fn initialize(
         vm,
         edit,
         input,
-        decor,
+        native,
         commands: Mutex::new(VecDeque::new()),
         reader: Mutex::new(reader),
         writer: Mutex::new(writer),
@@ -177,6 +190,7 @@ impl Ui {
                     "(I)V",
                     &[JValue::Int(text.encode_utf16().count() as i32)],
                 )?;
+                env.call_method(&self.edit, "setFocusable", "(Z)V", &[JValue::Bool(1)])?;
                 env.call_method(&self.edit, "requestFocus", "()Z", &[])?;
                 let shown = env
                     .call_method(
@@ -206,6 +220,8 @@ impl Ui {
                     &[JValue::Object(&token), JValue::Int(0)],
                 )?;
                 env.call_method(&self.edit, "clearFocus", "()V", &[])?;
+                env.call_method(&self.edit, "setFocusable", "(Z)V", &[JValue::Bool(0)])?;
+                env.call_method(&self.native, "requestFocus", "()Z", &[])?;
             }
             Command::Poll => {
                 self.polling.store(false, Ordering::Release);
@@ -223,7 +239,7 @@ impl Ui {
             }
             Command::Capture(capture) => {
                 env.call_method(
-                    &self.decor,
+                    &self.native,
                     if capture {
                         "requestPointerCapture"
                     } else {
