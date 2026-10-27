@@ -30,6 +30,8 @@ pub(super) enum Action {
     LoginLink,
     CloseLogin,
     Renderer,
+    RenderScale,
+    ChooseRenderScale(crate::display::RenderScale),
     Orientation,
     InputHost,
     ChooseInputHost(crate::catalog::InputHost),
@@ -582,8 +584,22 @@ impl Launcher {
                 color::TEXT,
                 "Launch settings",
             );
+            let row_height = if compact { 82.0 } else { 66.0 };
+            self.catalog.scroll = self
+                .catalog
+                .scroll
+                .clamp(0.0, (6.0 * row_height - (h - 80.0 - 195.0)).max(0.0));
             for (i, (title, value, action)) in [
                 ("Rendering", c.renderer.label().to_owned(), Action::Renderer),
+                (
+                    "Client resolution",
+                    if self.catalog.editing == Some("render_scale") {
+                        self.catalog.render_scale_text.clone()
+                    } else {
+                        format!("{}%", c.render_scale.percent())
+                    },
+                    Action::RenderScale,
+                ),
                 ("Profile", format!("Profile {}", c.profile), Action::Profile),
                 (
                     "Orientation",
@@ -604,7 +620,10 @@ impl Launcher {
             .into_iter()
             .enumerate()
             {
-                let y = 195.0 + i as f32 * if compact { 82.0 } else { 66.0 };
+                let y = 195.0 + i as f32 * row_height - self.catalog.scroll;
+                if y < 185.0 || y + if compact { 70.0 } else { 46.0 } > h - 60.0 {
+                    continue;
+                }
                 ui.text(
                     Face::Regular,
                     16.0,
@@ -628,6 +647,7 @@ impl Launcher {
                         if matches!(
                             action,
                             Action::Renderer
+                                | Action::RenderScale
                                 | Action::Profile
                                 | Action::Orientation
                                 | Action::InputHost
@@ -799,10 +819,16 @@ impl Launcher {
                 self.catalog.config.save(&self.home)?;
             }
             Some(Action::Field(name)) => {
+                if name == "render_scale" {
+                    self.catalog.render_scale_text =
+                        self.catalog.config.render_scale.percent().to_string();
+                    self.chooser = None;
+                }
                 self.catalog.editing = Some(name);
                 let initial = match name {
                     "name" => &self.catalog.config.name,
                     "server" => &self.catalog.config.server,
+                    "render_scale" => &self.catalog.render_scale_text,
                     "client_id" => &self.catalog.config.microsoft_client_id,
                     _ => &self.catalog.query,
                 };
@@ -821,6 +847,13 @@ impl Launcher {
             }
             Some(Action::Profile) => self.open_chooser(chooser::Kind::Profile),
             Some(Action::Renderer) => self.open_chooser(chooser::Kind::Renderer),
+            Some(Action::RenderScale) => self.open_chooser(chooser::Kind::RenderScale),
+            Some(Action::ChooseRenderScale(scale)) => {
+                self.catalog.config.render_scale = scale;
+                self.catalog.config.save(&self.home)?;
+                self.chooser = None;
+                crate::display::set_scale(scale);
+            }
             Some(Action::Orientation) => self.open_chooser(chooser::Kind::Orientation),
             Some(Action::InputHost) => self.open_chooser(chooser::Kind::InputHost),
             Some(Action::ChooseInputHost(mode)) => {

@@ -39,6 +39,7 @@ pub struct Config {
     #[serde(skip)]
     pub microsoft_client_id: String,
     pub renderer: RendererMode,
+    pub render_scale: crate::display::RenderScale,
     pub orientation: Orientation,
     pub input_host: InputHost,
     pub keypad_controls: bool,
@@ -189,6 +190,7 @@ pub struct Catalog {
     pub config: Config,
     pub enabled: Vec<bool>,
     pub editing: Option<&'static str>,
+    pub render_scale_text: String,
     worker: Option<mpsc::Receiver<Result<Reply, String>>>,
 }
 impl Catalog {
@@ -207,6 +209,7 @@ impl Catalog {
             installed,
             config,
             editing: None,
+            render_scale_text: String::new(),
             worker: None,
         };
         result.refresh(home);
@@ -427,6 +430,7 @@ impl Catalog {
         let field = match self.editing {
             Some("name") => &mut self.config.name,
             Some("server") => &mut self.config.server,
+            Some("render_scale") => &mut self.render_scale_text,
             Some("client_id") => &mut self.config.microsoft_client_id,
             _ => &mut self.query,
         };
@@ -436,6 +440,18 @@ impl Catalog {
                 field.pop();
             }
             Output::Enter | Output::Close => {
+                if self.editing == Some("render_scale") {
+                    match crate::display::RenderScale::parse(&self.render_scale_text) {
+                        Ok(scale) => {
+                            self.config.render_scale = scale;
+                            crate::display::set_scale(scale);
+                        }
+                        Err(error) => {
+                            self.status = error.into();
+                            return;
+                        }
+                    }
+                }
                 self.editing = None;
                 let _ = self.config.save(home);
                 if self.page.is_catalog() {

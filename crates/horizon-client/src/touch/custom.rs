@@ -18,8 +18,40 @@ impl CustomButton {
             ); 3],
         }
     }
+    pub fn valid_token(token: &str) -> bool {
+        token == "key.keyboard.unknown"
+            || crate::keybinds::key_code(token).is_some()
+            || token
+                .strip_prefix("action:")
+                .is_some_and(|name| crate::keybinds::MAPPINGS.iter().any(|m| m.0 == name))
+    }
     pub fn label(&self) -> String {
+        if self.key == "key.keyboard.unknown" {
+            return "Button".into();
+        }
+        if let Some(name) = self.key.strip_prefix("action:") {
+            return crate::text::Text::translate(name, &[]).plain();
+        }
         crate::keybinds::display_name(&self.key).plain()
+    }
+}
+pub(super) fn choices(raw_keys: bool) -> Vec<(String, String)> {
+    if raw_keys {
+        crate::keybinds::available_keys()
+            .iter()
+            .map(|(name, _)| ((*name).into(), crate::keybinds::display_name(name).plain()))
+            .collect()
+    } else {
+        crate::keybinds::MAPPINGS
+            .iter()
+            .filter(|m| m.1 != "key.keyboard.unknown")
+            .map(|(name, _, _)| {
+                (
+                    format!("action:{name}"),
+                    crate::text::Text::translate(*name, &[]).plain(),
+                )
+            })
+            .collect()
     }
 }
 impl TouchControls {
@@ -64,6 +96,9 @@ impl TouchControls {
         }
         if started && let Some(index) = self.custom_at(point) {
             let key = self.settings.custom_buttons[index].key.clone();
+            if key == "key.keyboard.unknown" {
+                return false;
+            }
             let pressed = !self.custom_fingers.values().any(|k| *k == key);
             self.custom_fingers.insert(id, key.clone());
             self.fingers.insert(id, (Role::Ignore, point));
@@ -74,6 +109,9 @@ impl TouchControls {
             return true;
         }
         false
+    }
+    pub fn held_custom_tokens(&self) -> impl Iterator<Item = &str> {
+        self.custom_fingers.values().map(String::as_str)
     }
     pub fn key_events(&mut self) -> Vec<(String, bool)> {
         std::mem::take(&mut self.custom_events)
@@ -109,7 +147,17 @@ impl TouchControls {
             } else {
                 rgba(255, 255, 255, (opacity * 255.0) as u8)
             };
-            nine(b, a, "ui/button_borderless_light", 2.0, rect, tint);
+            if !theme_button(
+                b,
+                a,
+                "button",
+                rect,
+                pressed,
+                rgba(255, 255, 255, (opacity * 255.0) as u8),
+                true,
+            ) {
+                nine(b, a, "ui/button_borderless_light", 2.0, rect, tint);
+            }
             let label = button.label();
             let width = HudBatch::text_width(a, &label);
             let start = b.vertices.len();
@@ -136,6 +184,18 @@ impl TouchControls {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn unassigned_button_emits_no_input() {
+        let mut touch = TouchControls::default();
+        touch.viewport(1920, 1080);
+        touch
+            .settings
+            .custom_buttons
+            .push(CustomButton::new("key.keyboard.unknown".into(), 0));
+        let point = touch.custom_placement(0).center;
+        touch.update(1, point, true, false);
+        assert!(touch.key_events().is_empty());
+    }
     #[test]
     fn custom_keys_hold_through_motion_and_shared_keys_release_only_after_last_finger() {
         let mut t = TouchControls::default();

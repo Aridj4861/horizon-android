@@ -293,6 +293,24 @@ impl TouchControls {
                     );
                 }
             } else {
+                let pressed = held
+                    || self
+                        .fingers
+                        .values()
+                        .any(|(_, point)| layout::contains(p.rect(self.aspect()), *point));
+                let themed = match control {
+                    Control::Chat => Some("chat"),
+                    Control::Pause => Some("pause"),
+                    Control::Settings => Some("settings"),
+                    Control::Debug => Some("debug"),
+                    Control::Perspective => Some("perspective"),
+                    _ => None,
+                };
+                if themed.is_some_and(|name| {
+                    theme_button(b, a, name, [x, y, size, size], pressed, color, false)
+                }) {
+                    continue;
+                }
                 let name = match control {
                     Control::Sprint => "ui/sprint",
                     Control::Attack => "ui/attack",
@@ -620,6 +638,61 @@ impl TouchControls {
         }
         state
     }
+}
+
+/// Original optional resource-pack artwork. Missing states keep the default UI.
+#[allow(clippy::too_many_arguments)]
+pub fn theme_button(
+    b: &mut HudBatch,
+    a: &HudAtlas,
+    name: &str,
+    bounds: [f32; 4],
+    pressed: bool,
+    color: u32,
+    frame: bool,
+) -> bool {
+    let (base, active) = match name {
+        "chat" => (
+            "gui/horizon/touch/chat_normal",
+            "gui/horizon/touch/chat_pressed",
+        ),
+        "pause" => (
+            "gui/horizon/touch/pause_normal",
+            "gui/horizon/touch/pause_pressed",
+        ),
+        "settings" => (
+            "gui/horizon/touch/settings_normal",
+            "gui/horizon/touch/settings_pressed",
+        ),
+        "debug" => (
+            "gui/horizon/touch/debug_normal",
+            "gui/horizon/touch/debug_pressed",
+        ),
+        "perspective" => (
+            "gui/horizon/touch/perspective_normal",
+            "gui/horizon/touch/perspective_pressed",
+        ),
+        "button" => (
+            "gui/horizon/touch/button_normal",
+            "gui/horizon/touch/button_pressed",
+        ),
+        _ => return false,
+    };
+    let key = if pressed && a.sprites.contains_key(active) {
+        active
+    } else {
+        base
+    };
+    let Some(rect) = a.sprites.get(key).copied() else {
+        return false;
+    };
+    let [x, y, w, h] = bounds;
+    if frame {
+        crate::ui::nine_slice(b, a, key, x, y, w, h, color);
+    } else {
+        control_quad(b, a, x, y, w, h, rect, color);
+    }
+    true
 }
 
 /// Reuse Chat's complete 18x18 border, including its bottommost pixel row.

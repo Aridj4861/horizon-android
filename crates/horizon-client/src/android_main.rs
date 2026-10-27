@@ -16,6 +16,8 @@ mod account;
 mod browser;
 #[path = "android/catalog.rs"]
 mod catalog;
+#[path = "android/display.rs"]
+mod display;
 #[path = "android/gallery.rs"]
 mod gallery;
 #[path = "android/native_ime.rs"]
@@ -33,9 +35,9 @@ mod skins;
 // The shared account protocol needs only the launcher's version and data path.
 mod backend {
     pub const VERSION: &str = if crate::PUBLIC_BUILD {
-        "0.7.0"
+        "0.7.1"
     } else {
-        "0.7.0-dev"
+        "0.7.1-dev"
     };
     static HOME: std::sync::OnceLock<std::path::PathBuf> = std::sync::OnceLock::new();
     pub fn initialize(home: std::path::PathBuf) {

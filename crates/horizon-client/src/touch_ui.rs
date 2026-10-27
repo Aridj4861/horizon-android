@@ -250,7 +250,9 @@ impl TouchUi {
     }
 }
 fn button(b: &mut HudBatch, a: &HudAtlas, label: &str, x: f32, y: f32, w: f32) {
-    b.fill(a, x, y, w, 20.0, rgba(16, 18, 24, 180));
+    if !crate::touch::theme_button(b, a, "button", [x, y, w, 20.0], false, u32::MAX, true) {
+        b.fill(a, x, y, w, 20.0, rgba(16, 18, 24, 180));
+    }
     b.text(a, label, x + 4.0, y + 6.0, rgba(245, 245, 245, 255), true);
 }
 

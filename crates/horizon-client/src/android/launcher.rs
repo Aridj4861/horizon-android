@@ -116,8 +116,12 @@ impl Launcher {
 
     fn open(&mut self, events: &ActiveEventLoop) -> Result<()> {
         crate::platform::set_orientation(self.catalog.config.orientation);
+        crate::display::set_scale(self.catalog.config.render_scale);
         horizon_client::android_runtime::configure_gpu(false);
         if let Some(renderer) = &mut self.renderer {
+            if let Some(size) = crate::display::prepare(self.window.as_ref().unwrap())? {
+                renderer.resize(size[0], size[1]);
+            }
             renderer.recreate_surface()?;
             let size = self.window.as_ref().unwrap().inner_size();
             renderer.resize(size.width, size.height);
@@ -126,6 +130,7 @@ impl Launcher {
         let window = Arc::new(
             events.create_window(Window::default_attributes().with_title("Horizon Android"))?,
         );
+        crate::display::prepare(&window)?;
         let gui = game::UiResources {
             atlas: HudAtlas::build(&self.home.join("installer"))?,
             panorama: Arc::new(horizon_client::gfx::panorama::Faces {
@@ -266,6 +271,9 @@ impl ApplicationHandler for Launcher {
         }
     }
     fn window_event(&mut self, events: &ActiveEventLoop, id: WindowId, event: WindowEvent) {
+        if matches!(event, WindowEvent::Resized(_)) {
+            let _ = crate::native_ime::viewport_bottom();
+        }
         if let Some(game) = &mut self.game {
             game.window_event(events, id, event);
             self.restore_launcher(events);
@@ -361,6 +369,12 @@ impl ApplicationHandler for Launcher {
             game.about_to_wait(events);
             self.restore_launcher(events);
             return;
+        }
+        if let (Some(window), Some(renderer)) = (&self.window, &mut self.renderer)
+            && let Err(error) = crate::display::apply(window, renderer)
+        {
+            crate::display::set_scale(crate::display::RenderScale::default());
+            self.fail(error);
         }
         if let Some(result) = self.worker.as_ref().and_then(|w| w.try_recv().ok()) {
             self.worker = None;

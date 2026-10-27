@@ -11,6 +11,7 @@ pub struct Editor {
     selected_custom: Option<usize>,
     key_picker: bool,
     key_page: usize,
+    raw_keys: bool,
 }
 
 enum Drag {
@@ -32,6 +33,7 @@ impl TouchControls {
             selected_custom: None,
             key_picker: false,
             key_page: 0,
+            raw_keys: false,
         });
     }
     pub fn cancel_editor(&mut self) {
@@ -345,24 +347,30 @@ impl TouchControls {
         }
         if e.key_picker {
             if started {
-                if layout::contains([0.2, 0.84, 0.18, 0.07], p) {
+                if layout::contains([0.15, 0.16, 0.33, 0.06], p) {
+                    e.raw_keys = false;
+                    e.key_page = 0;
+                } else if layout::contains([0.52, 0.16, 0.33, 0.06], p) {
+                    e.raw_keys = true;
+                    e.key_page = 0;
+                } else if layout::contains([0.2, 0.86, 0.18, 0.07], p) {
                     e.key_page = e.key_page.saturating_sub(1);
-                } else if layout::contains([0.41, 0.84, 0.18, 0.07], p) {
+                } else if layout::contains([0.41, 0.86, 0.18, 0.07], p) {
                     e.key_picker = false;
-                } else if layout::contains([0.62, 0.84, 0.18, 0.07], p) {
-                    e.key_page =
-                        (e.key_page + 1).min((crate::keybinds::available_keys().len() - 1) / 24);
+                } else if layout::contains([0.62, 0.86, 0.18, 0.07], p) {
+                    e.key_page = (e.key_page + 1)
+                        .min(super::custom::choices(e.raw_keys).len().saturating_sub(1) / 8);
                 } else {
-                    for (i, (name, _)) in crate::keybinds::available_keys()
-                        .iter()
-                        .skip(e.key_page * 24)
-                        .take(24)
+                    for (i, (token, _)) in super::custom::choices(e.raw_keys)
+                        .into_iter()
+                        .skip(e.key_page * 8)
+                        .take(8)
                         .enumerate()
                     {
                         if layout::contains(key_rect(i), p)
                             && let Some(index) = e.selected_custom
                         {
-                            self.settings.custom_buttons[index].key = (*name).into();
+                            self.settings.custom_buttons[index].key = token;
                             e.key_picker = false;
                             break;
                         }
@@ -376,9 +384,12 @@ impl TouchControls {
                 let index = self.settings.custom_buttons.len();
                 self.settings
                     .custom_buttons
-                    .push(CustomButton::new("key.keyboard.z".into(), index));
+                    .push(CustomButton::new("key.keyboard.unknown".into(), index));
                 e.selected = None;
                 e.selected_custom = Some(index);
+                e.key_picker = true;
+                e.raw_keys = false;
+                e.key_page = 0;
                 e.palette = false;
                 e.option = None;
                 e.drag = None;
@@ -487,7 +498,7 @@ impl TouchControls {
     fn draw_custom_editor(&self, b: &mut HudBatch, a: &HudAtlas, e: &Editor) {
         let (w, h) = (b.width, b.height);
         if e.palette {
-            plate(b, a, [0.22, 0.84, 0.56, 0.07], "Add custom key...", false);
+            plate(b, a, [0.22, 0.84, 0.56, 0.07], "Create button...", false);
         }
         if let Some(i) = e.selected_custom
             && !e.palette
@@ -568,31 +579,22 @@ impl TouchControls {
                 h * 0.81,
                 rgba(15, 15, 15, 250),
             );
-            for (i, (name, _)) in crate::keybinds::available_keys()
+            plate(b, a, [0.15, 0.16, 0.33, 0.06], "Game action", !e.raw_keys);
+            plate(b, a, [0.52, 0.16, 0.33, 0.06], "Keyboard key", e.raw_keys);
+            for (i, (_, label)) in super::custom::choices(e.raw_keys)
                 .iter()
-                .skip(e.key_page * 24)
-                .take(24)
+                .skip(e.key_page * 8)
+                .take(8)
                 .enumerate()
             {
-                plate(
-                    b,
-                    a,
-                    key_rect(i),
-                    &crate::keybinds::display_name(name).plain(),
-                    false,
-                );
+                plate(b, a, key_rect(i), label, false);
             }
-            plate(b, a, [0.2, 0.84, 0.18, 0.07], "Previous", false);
-            plate(b, a, [0.41, 0.84, 0.18, 0.07], "Back", false);
-            plate(b, a, [0.62, 0.84, 0.18, 0.07], "Next", false);
+            plate(b, a, [0.2, 0.86, 0.18, 0.07], "Previous", false);
+            plate(b, a, [0.41, 0.86, 0.18, 0.07], "Back", false);
+            plate(b, a, [0.62, 0.86, 0.18, 0.07], "Next", false);
         }
     }
 }
 fn key_rect(i: usize) -> [f32; 4] {
-    [
-        0.15 + (i % 4) as f32 * 0.175,
-        0.18 + (i / 4) as f32 * 0.105,
-        0.16,
-        0.085,
-    ]
+    [0.15, 0.25 + i as f32 * 0.072, 0.7, 0.06]
 }

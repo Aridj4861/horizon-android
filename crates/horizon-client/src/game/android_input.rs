@@ -8,6 +8,15 @@ use horizon_client::{
 use winit::event::{Touch, TouchPhase};
 
 impl Game<'_> {
+    pub(crate) fn android_apply_display_scale(&mut self) {
+        if let (Some(window), Some(renderer)) = (&self.window, &mut self.renderer)
+            && let Err(error) = crate::display::apply(window, renderer)
+        {
+            crate::display::set_scale(crate::display::RenderScale::default());
+            log::warn!("Android display scale: {error}");
+        }
+    }
+
     pub(super) fn android_keypad_menu_key(
         &mut self,
         events: &ActiveEventLoop,
@@ -90,8 +99,50 @@ impl Game<'_> {
         true
     }
 
+    pub(super) fn android_custom_key_held(&self, key: KeyCode) -> bool {
+        self.pad.touch.held_custom_tokens().any(|token| {
+            if let Some(mapping) = token.strip_prefix("action:") {
+                horizon_client::keybinds::key_code(horizon_client::keybinds::KeyBinds::default_of(
+                    mapping,
+                )) == Some(key)
+            } else {
+                horizon_client::keybinds::key_code(token).is_some_and(|physical| {
+                    self.settings
+                        .keys
+                        .translate_all(physical)
+                        .contains(&Ok(key))
+                })
+            }
+        })
+    }
+    pub(super) fn android_custom_mouse_held(&self, button: MouseButton) -> bool {
+        self.pad.touch.held_custom_tokens().any(|token| {
+            token.strip_prefix("action:").is_some_and(|mapping| {
+                horizon_client::keybinds::mouse_button(
+                    horizon_client::keybinds::KeyBinds::default_of(mapping),
+                ) == Some(button)
+            })
+        })
+    }
     pub(super) fn android_custom_events(&mut self) {
         for (name, down) in self.pad.touch.key_events() {
+            if let Some(mapping) = name.strip_prefix("action:") {
+                let default = horizon_client::keybinds::KeyBinds::default_of(mapping);
+                let result = if let Some(key) = horizon_client::keybinds::key_code(default) {
+                    self.mapped_key(key, down, false)
+                } else if let Some(button) = horizon_client::keybinds::mouse_button(default) {
+                    self.play_mouse(button, down)
+                } else {
+                    Ok(())
+                };
+                if let Err(error) = result {
+                    log::warn!("Custom touch action: {error}");
+                }
+                if down && self.screen == Screen::Chat {
+                    self.android_show_keyboard();
+                }
+                continue;
+            }
             let Some(key) = horizon_client::keybinds::key_code(&name) else {
                 continue;
             };

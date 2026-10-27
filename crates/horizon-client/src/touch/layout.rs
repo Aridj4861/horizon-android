@@ -256,7 +256,7 @@ impl Settings {
         };
         self.custom_buttons.truncate(32);
         self.custom_buttons
-            .retain(|b| crate::keybinds::key_code(&b.key).is_some());
+            .retain(|b| super::CustomButton::valid_token(&b.key));
         for button in &mut self.custom_buttons {
             for p in &mut button.layouts {
                 p.sanitize();
@@ -316,6 +316,42 @@ pub fn contains([x, y, w, h]: [f32; 4], p: [f32; 2]) -> bool {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn blank_buttons_and_game_actions_survive_settings_validation() {
+        let mut settings = super::Settings::default();
+        settings
+            .custom_buttons
+            .push(super::super::CustomButton::new(
+                "key.keyboard.unknown".into(),
+                0,
+            ));
+        settings
+            .custom_buttons
+            .push(super::super::CustomButton::new("action:key.jump".into(), 1));
+        settings.sanitize();
+        assert_eq!(settings.custom_buttons.len(), 2);
+        let encoded = serde_json::to_string(&settings.custom_buttons[1]).unwrap();
+        assert_eq!(
+            serde_json::from_str::<super::super::CustomButton>(&encoded)
+                .unwrap()
+                .key,
+            "action:key.jump"
+        );
+        assert!(!super::super::CustomButton::valid_token(
+            "action:no-such-action"
+        ));
+        assert!(
+            super::super::custom::choices(false)
+                .iter()
+                .any(|(token, _)| token == "action:key.attack")
+        );
+        assert!(
+            super::super::custom::choices(true)
+                .iter()
+                .any(|(token, _)| token == "key.keyboard.z")
+        );
+    }
+
     use super::*;
 
     #[test]

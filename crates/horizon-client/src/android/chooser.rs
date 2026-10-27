@@ -8,6 +8,7 @@ use horizon_client::ui_theme::{Face, Ui, color};
 
 pub(super) enum Kind {
     Renderer,
+    RenderScale,
     Profile,
     Orientation,
     InputHost,
@@ -35,6 +36,34 @@ impl Launcher {
         };
         let c = &self.catalog.config;
         let (title, help, choices) = match kind {
+            Kind::RenderScale => {
+                let mut choices: Vec<_> = crate::display::RenderScale::PRESETS
+                    .into_iter()
+                    .map(|percent| {
+                        (
+                            format!("{percent}%"),
+                            if percent == 100 {
+                                "Native resolution".into()
+                            } else {
+                                "Lower resolution for the whole picture".into()
+                            },
+                            Action::ChooseRenderScale(crate::display::RenderScale::new(percent)),
+                            c.render_scale.percent() == percent,
+                        )
+                    })
+                    .collect();
+                choices.push((
+                    "Custom percentage...".into(),
+                    "Enter a value from 25 to 100".into(),
+                    Action::Field("render_scale"),
+                    false,
+                ));
+                (
+                    "Client resolution",
+                    "Small screens retain a usable menu size.",
+                    choices,
+                )
+            }
             Kind::InputHost => (
                 "Input mode",
                 "Mouse mode uses a physical keyboard. Touch mode keeps the Android keyboard.",

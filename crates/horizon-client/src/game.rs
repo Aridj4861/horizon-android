@@ -5560,6 +5560,10 @@ impl Game<'_> {
     /// A key event after rebinding, as the default key of its mapping (the
     /// keyboard and controllers both end here).
     fn mapped_key(&mut self, key: KeyCode, pressed: bool, repeat: bool) -> Result<()> {
+        #[cfg(target_os = "android")]
+        if !pressed && self.android_custom_key_held(key) {
+            return Ok(());
+        }
         // Sneak and sprint are ToggleKeyMappings: a press (or a key
         // repeat) flips them when toggling; only releases reach them
         // behind a screen (KeyboardHandler.keyPress).
@@ -12331,6 +12335,10 @@ impl Game<'_> {
     }
     /// A mouse button while playing (window or control socket).
     fn play_mouse(&mut self, button: MouseButton, pressed: bool) -> Result<()> {
+        #[cfg(target_os = "android")]
+        if !pressed && self.android_custom_mouse_held(button) {
+            return Ok(());
+        }
         // A mod's claimed item takes the use button (capability `input`).
         if self.mod_use(button, pressed) {
             return Ok(());
@@ -12662,6 +12670,13 @@ impl ApplicationHandler for Game<'_> {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         #[cfg(target_os = "android")]
         if let Some(renderer) = &mut self.renderer {
+            if let Some(window) = &self.window {
+                match crate::display::prepare(window) {
+                    Ok(Some(size)) => renderer.resize(size[0], size[1]),
+                    Ok(None) => {}
+                    Err(error) => log::warn!("Android display scale on resume: {error}"),
+                }
+            }
             if let Err(error) = renderer.recreate_surface() {
                 self.error = Some(error);
                 crate::game::exit_app(event_loop);
@@ -13879,6 +13894,8 @@ impl ApplicationHandler for Game<'_> {
         }
     }
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
+        #[cfg(target_os = "android")]
+        self.android_apply_display_scale();
         #[cfg(target_os = "android")]
         self.android_poll_keyboard();
         if horizon_threads::stop_requests() > 0
