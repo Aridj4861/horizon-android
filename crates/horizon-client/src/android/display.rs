@@ -106,11 +106,17 @@ pub fn apply(
     if renderer.suspended {
         return Ok(());
     }
-    let Some(size) = desired(window) else {
-        return Ok(());
+    let size = if let Some(size) = desired(window) {
+        set_render_size(window, size)?
+    } else {
+        let size = window.inner_size();
+        [size.width, size.height]
     };
-    let size = set_render_size(window, size)?;
-    renderer.resize(size[0], size[1]);
+    // Some Android firmware updates the native window without delivering a
+    // matching Resized event. Reconcile even at 100%, where no scale changes.
+    if size[0] > 0 && size[1] > 0 && size != [renderer.config.width, renderer.config.height] {
+        renderer.resize(size[0], size[1]);
+    }
     Ok(())
 }
 

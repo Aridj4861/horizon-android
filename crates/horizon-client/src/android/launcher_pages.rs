@@ -898,31 +898,36 @@ impl Launcher {
         }
         Ok(())
     }
+    pub(super) fn ui_density(&self) -> f32 {
+        let (Some(r), Some(gui)) = (&self.renderer, &self.gui) else {
+            return 1.0;
+        };
+        let mut batch = HudBatch::new([r.config.width, r.config.height]);
+        Ui::mobile(&gui.atlas, &mut batch, (0.0, 0.0)).density
+    }
+
     pub(super) fn touch_event(&mut self, events: &ActiveEventLoop, t: Touch) -> Result<()> {
         self.focus = None;
         self.cursor = (t.location.x, t.location.y);
         match t.phase {
             TouchPhase::Started => {
-                self.drag = Some((t.location.x, t.location.y, false));
+                self.drag = Some(super::gesture::Drag::new(t.location.x, t.location.y));
             }
             TouchPhase::Moved => {
-                if let Some((x, y, moved)) = &mut self.drag {
-                    if (t.location.x - *x).hypot(t.location.y - *y) > 12.0 {
-                        *moved = true;
-                    }
-                    if *moved {
+                let density = self.ui_density() as f64;
+                if let Some(drag) = &mut self.drag {
+                    let delta = drag.update(t.location.x, t.location.y, density);
+                    if drag.moved {
                         if let Some(chooser) = &mut self.chooser {
-                            chooser.scroll = (chooser.scroll + (*y - t.location.y) as f32).max(0.0);
-                        } else if t.location.y > 230.0 {
-                            self.catalog.scroll =
-                                (self.catalog.scroll + (*y - t.location.y) as f32).max(0.0);
+                            chooser.scroll = (chooser.scroll + delta).max(0.0);
+                        } else if drag.origin_y() / density > 185.0 {
+                            self.catalog.scroll = (self.catalog.scroll + delta).max(0.0);
                         }
                     }
-                    *y = t.location.y;
                 }
             }
             TouchPhase::Ended => {
-                if self.drag.take().is_some_and(|(_, _, moved)| !moved) {
+                if self.drag.take().is_some_and(|drag| !drag.moved) {
                     self.activate(events)?;
                 }
             }

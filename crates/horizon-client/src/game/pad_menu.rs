@@ -59,6 +59,9 @@ struct Pending {
 
 #[derive(Default)]
 pub(super) struct MenuCursor {
+    /// Hardware Android arrows can focus menus before a gameplay profile is enabled.
+    #[cfg(target_os = "android")]
+    pub(super) keyboard_focus: bool,
     /// Where the pad put the pointer (GUI pixels); `None` while the mouse
     /// has it.
     pos: Option<(f32, f32)>,
@@ -110,6 +113,10 @@ impl Game<'_> {
 
     /// Focus mode is on for the open screen.
     fn pad_focus_mode(&self) -> bool {
+        #[cfg(target_os = "android")]
+        if self.pad.menu.keyboard_focus {
+            return true;
+        }
         (cfg!(target_os = "android") && self.settings.keypad.enabled)
             || ((self.settings.controller.menu_nav == MenuNav::Focus) != self.pad.menu.swapped)
     }
@@ -632,8 +639,19 @@ impl Game<'_> {
             .last_poll
             .map_or(0.0, |t| now.duration_since(t).as_secs_f32().min(0.05));
         self.pad.menu.last_poll = Some(now);
+        let keyboard_focus = {
+            #[cfg(target_os = "android")]
+            {
+                self.pad.menu.keyboard_focus
+            }
+            #[cfg(not(target_os = "android"))]
+            {
+                false
+            }
+        };
         let in_menu = self.pad_in_menu()
             && (self.settings.controller.enabled
+                || keyboard_focus
                 || (cfg!(target_os = "android") && self.settings.keypad.enabled));
         if !in_menu {
             let menu = &mut self.pad.menu;
@@ -643,6 +661,10 @@ impl Game<'_> {
             menu.held = [false; 2];
             menu.focus = None;
             menu.swapped = false;
+            #[cfg(target_os = "android")]
+            {
+                menu.keyboard_focus = false;
+            }
             menu.pending = None;
             menu.nudge = None;
             menu.osk = None;

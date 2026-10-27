@@ -22,8 +22,7 @@ impl Game<'_> {
         events: &ActiveEventLoop,
         event: &winit::event::KeyEvent,
     ) -> Result<bool> {
-        if !self.settings.keypad.enabled
-            || !self.pad_in_menu()
+        if !self.pad_in_menu()
             || crate::platform::active()
             || self.ui.options.selected_key.is_some()
         {
@@ -33,10 +32,34 @@ impl Game<'_> {
         else {
             return Ok(false);
         };
+        // Menu arrows work independently of the optional gameplay keypad profile.
+        let arrow = matches!(
+            key,
+            KeyCode::ArrowUp | KeyCode::ArrowDown | KeyCode::ArrowLeft | KeyCode::ArrowRight
+        );
+        if !self.settings.keypad.enabled && !arrow && !self.pad.menu.keyboard_focus {
+            return Ok(false);
+        }
+        if !self.settings.keypad.enabled
+            && !matches!(
+                key,
+                KeyCode::ArrowUp
+                    | KeyCode::ArrowDown
+                    | KeyCode::ArrowLeft
+                    | KeyCode::ArrowRight
+                    | KeyCode::Enter
+                    | KeyCode::NumpadEnter
+                    | KeyCode::Space
+                    | KeyCode::Escape
+            )
+        {
+            return Ok(false);
+        }
         let Some(button) = self.settings.keypad.menu_button(key) else {
             return Ok(false);
         };
         if !event.repeat {
+            self.pad.menu.keyboard_focus = true;
             self.pad.in_use = true;
             self.pad_menu_button(events, button, event.state == ElementState::Pressed)?;
         }

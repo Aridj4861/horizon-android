@@ -9,6 +9,8 @@ pub(crate) fn session_argument() -> Option<PathBuf> {
 }
 #[path = "chooser.rs"]
 mod chooser;
+#[path = "launcher_gesture.rs"]
+mod gesture;
 #[path = "launcher_pages.rs"]
 mod pages;
 use horizon_client::{
@@ -43,7 +45,7 @@ pub(super) struct Launcher {
     error: Option<String>,
     catalog: Catalog,
     targets: Vec<([f32; 4], pages::Action)>,
-    drag: Option<(f64, f64, bool)>,
+    drag: Option<gesture::Drag>,
     chooser: Option<chooser::Chooser>,
     login: login::Login,
     session_worker: Option<mpsc::Receiver<std::result::Result<Option<PathBuf>, String>>>,
@@ -322,7 +324,7 @@ impl ApplicationHandler for Launcher {
             WindowEvent::MouseWheel { delta, .. } => {
                 let y = match delta {
                     winit::event::MouseScrollDelta::LineDelta(_, y) => y * 42.0,
-                    winit::event::MouseScrollDelta::PixelDelta(p) => p.y as f32,
+                    winit::event::MouseScrollDelta::PixelDelta(p) => p.y as f32 / self.ui_density(),
                 };
                 if let Some(chooser) = &mut self.chooser {
                     chooser.scroll = (chooser.scroll - y).max(0.0);
