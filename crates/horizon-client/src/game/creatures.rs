@@ -46,6 +46,10 @@ pub(super) struct Creatures {
     pub projectiles: Vec<Projectile>,
     /// Wind bursts from a guest's turn, waiting for it to end (game/wind.rs).
     pub wind_bursts: Vec<super::wind::Burst>,
+    /// The players a fishing hook can catch, taken as the hooks tick, and
+    /// the pulls on them waiting for the hub (game/fishing.rs).
+    pub hook_targets: Vec<super::fishing::HookTarget>,
+    pub hook_pulls: Vec<(u32, horizon_core::geometry::Vec3)>,
     /// Mace smash knockback on the other players from a guest's turn, waiting
     /// for it to end (game/mace.rs).
     pub smash_pushes: Vec<super::mace::SmashPush>,
@@ -3654,7 +3658,12 @@ impl Game<'_> {
             }
             // Parrot.mobInteract: the owner makes a tame parrot on the ground
             // sit or stand (poisonous food is handled apart).
-            Species::Parrot if m.extra.tame && m.on_ground && !parrot_poisonous => {
+            Species::Parrot
+                if m.extra.tame
+                    && m.extra.owner == Some(acting)
+                    && m.on_ground
+                    && !parrot_poisonous =>
+            {
                 m.extra.sitting = !m.extra.sitting;
                 self.world.modified.insert((
                     m.position.x.floor() as i32 >> 4,

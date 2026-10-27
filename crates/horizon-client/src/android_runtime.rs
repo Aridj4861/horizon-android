@@ -50,24 +50,7 @@ pub fn compatibility() -> bool {
     cfg!(target_os = "android") && !GPU_BATCHING.load(Ordering::Relaxed)
 }
 
-/// Android's native entry point installs these without making the shared lib
-/// depend on an Activity or on JNI. Clipboard access is only on explicit edits.
-pub struct ClipboardHooks {
-    pub get: fn() -> Option<String>,
-    pub set: fn(&str),
-}
-static CLIPBOARD: std::sync::OnceLock<ClipboardHooks> = std::sync::OnceLock::new();
-pub fn install_clipboard(hooks: ClipboardHooks) {
-    let _ = CLIPBOARD.set(hooks);
-}
-pub fn clipboard_get() -> Option<String> {
-    CLIPBOARD.get().and_then(|h| (h.get)())
-}
-pub fn clipboard_set(text: &str) {
-    if let Some(h) = CLIPBOARD.get() {
-        (h.set)(text);
-    }
-}
+pub use crate::clipboard::{ClipboardHooks, clipboard_get, clipboard_set, install_clipboard};
 
 static RETURN_TO_LAUNCHER: AtomicBool = AtomicBool::new(false);
 pub fn return_to_launcher() {

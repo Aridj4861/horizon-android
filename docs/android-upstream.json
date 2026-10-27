@@ -7,10 +7,10 @@
   "compared_source_files": 3147,
   "modified_existing_files": 41,
   "branch": "android",
-  "merged_upstream_commit": "8155baa6f382e29b00672586ddb1452e21b0eec6",
-  "merged_upstream_commits": 2739,
-  "last_reviewed_date": "2026-10-27",
-  "last_update_commits": 655,
-  "latest_fetched_commit": "8155baa6f382e29b00672586ddb1452e21b0eec6",
-  "review": "0.7.0 upstream cutoff: 8155baa6. Integrated 655 commits from upstream/main, including item-crate extraction, settings option relocation, HUD/glint rendering and vanilla gameplay fixes. Android HUD insets, touch aiming, GLES fallback and the single NativeActivity host are preserved. Upstream deployment/nightly workflows remain disabled. ARM64 and ARMv7 Clippy and all 10 Android source-export/public-audit unit tests passed. Device validation and release APK packaging remain separate steps."
+  "merged_upstream_commit": "1feb28c0452cde2587375357f56ac606c5de7276",
+  "merged_upstream_commits": 2807,
+  "last_reviewed_date": "2026-10-28",
+  "last_update_commits": 68,
+  "latest_fetched_commit": "1feb28c0452cde2587375357f56ac606c5de7276",
+  "review": "0.7.1 integration: 68 main-branch commits after the published 0.7.0 cutoff. Input modules moved to horizon-client-input; Android clipboard callbacks follow the move, and desktop keychain tests stay isolated. Mob sound/state, fishing, campfire and bundle fixes are included. Upstream triage/deployment workflows remain inactive. ARM64 Clippy and 10 Android export/audit tests passed. An isolated harness passed 31 input/account/installer/skin tests (one real keychain test ignored). New APK runtime validation remains pending."
 }

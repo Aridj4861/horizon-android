@@ -1,12 +1,17 @@
 //! Microsoft account sign-in (docs/microsoft-account.md): the OAuth device-code flow, then Xbox
 //! Live, XSTS and the Minecraft services, the game ownership check and the profile. Secrets (the
-//! Microsoft refresh token, the Minecraft access token) live in the OS keychain; accounts.json
-//! keeps only names and UUIDs. The game gets the session in a file it reads once
-//! (`--session-file`), never on its command line. Tokens never reach logs, errors or output.
+//! Microsoft refresh token, the Minecraft access token, the last ownership answer) live in the OS
+//! keychain; accounts.json keeps only names and UUIDs. The game gets the session in a file it
+//! reads once (`--session-file`), never on its command line. Tokens never reach logs, errors or
+//! output.
+//!
+//! The owner gate ([`launch`]): the launcher starts the game only while an account in it owns
+//! Minecraft: Java Edition, as other launchers do. Offline names play behind such an account.
+//! The game binary itself, its harnesses and the servers don't go through the launcher's gate.
 //!
 //! The Azure app (client ID) is Horizon's own and is configuration: `HORIZON_MSA_CLIENT_ID` at
 //! build time, or at run time to override it. Without one, sign-in says it is not configured.
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
@@ -15,8 +20,20 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 /// The keychain service name every secret is stored under.
 pub const SERVICE: &str = "dev.playhorizon.launcher";
 const SCOPE: &str = "XboxLive.signin offline_access";
-pub const NOT_CONFIGURED: &str = "Microsoft sign-in is coming soon. Until then the game plays offline: single player, \
+#[cfg(target_os = "android")]
+pub const NOT_CONFIGURED: &str =
+    "Microsoft sign-in is coming soon. Until then the game plays offline: single player, \
      LAN and servers in offline mode work.";
+#[cfg(not(target_os = "android"))]
+pub const NOT_CONFIGURED: &str = "This build of the launcher has no Microsoft sign-in (HORIZON_MSA_CLIENT_ID), so it can't start the game.";
+/// What every Play says while no account in the launcher owns the game.
+pub const NEEDS_OWNER: &str =
+    "Sign in with a Microsoft account that owns Minecraft: Java Edition to play";
+const DOES_NOT_OWN: &str = "This account doesn't own Minecraft: Java Edition.";
+const NO_PROFILE: &str =
+    "This account has no Minecraft profile yet. Create one at minecraft.net, then sign in again.";
+const OTHER_PROFILE: &str =
+    "The Microsoft account now has another Minecraft profile. Sign in again.";
 const SIGN_IN_AGAIN: &str = "Your Microsoft sign-in expired. Sign in again.";
 /// The Minecraft token is renewed when it has less than this left.
 const RENEW_BEFORE: u64 = 3600;
@@ -24,9 +41,14 @@ const RENEW_BEFORE: u64 = 3600;
 /// The configured Azure app, if any: the run-time variable wins over the build-time one, and an
 /// empty value means none.
 pub fn client_id() -> Option<String> {
-    std::env::var("HORIZON_MSA_CLIENT_ID")
-        .ok()
-        .or_else(|| option_env!("HORIZON_MSA_CLIENT_ID").map(str::to_owned))
+    configured_client_id(
+        std::env::var("HORIZON_MSA_CLIENT_ID").ok(),
+        option_env!("HORIZON_MSA_CLIENT_ID"),
+    )
+}
+fn configured_client_id(runtime: Option<String>, compiled: Option<&str>) -> Option<String> {
+    runtime
+        .or_else(|| compiled.map(str::to_owned))
         .map(|id| id.trim().to_owned())
         .filter(|id| !id.is_empty())
 }
@@ -454,7 +476,8 @@ pub struct Account {
     pub cape: Option<String>,
 }
 
-fn profile(ep: &Endpoints, token: &str) -> Result<Account, String> {
+/// The profile; none when the account has none (it doesn't own the game, or never made one).
+fn profile(ep: &Endpoints, token: &str) -> Result<Option<Account>, String> {
     let (status, v) = send(
         bearer(
             request_to("GET", &format!("{}/minecraft/profile", ep.minecraft)),
@@ -464,7 +487,7 @@ fn profile(ep: &Endpoints, token: &str) -> Result<Account, String> {
         "the Minecraft services",
     )?;
     if status == 404 {
-        return Err("This account has no Minecraft profile yet. Create one at minecraft.net, then sign in again.".into());
+        return Ok(None);
     }
     let (Some(uuid), Some(name)) = (str_field(&v, "id"), str_field(&v, "name")) else {
         return Err("Could not read the Minecraft profile.".into());
@@ -478,7 +501,7 @@ fn profile(ep: &Endpoints, token: &str) -> Result<Account, String> {
             })
             .cloned()
     };
-    Ok(Account {
+    Ok(Some(Account {
         uuid: uuid.replace('-', "").to_lowercase(),
         name,
         skin: active("skins").and_then(|s| {
@@ -490,13 +513,7 @@ fn profile(ep: &Endpoints, token: &str) -> Result<Account, String> {
             ))
         }),
         cape: active("capes").and_then(|c| str_field(&c, "url")),
-    })
-}
-
-/// Whether the signed-in account still owns Minecraft: Java Edition, asked again now: the
-/// launcher downloads the game's files only for an owner (sources.rs).
-pub fn owns_minecraft(ep: &Endpoints, secrets: &Secrets) -> Result<bool, String> {
-    owns_game(ep, &secrets.minecraft_token)
+    }))
 }
 
 /// What the keychain keeps for one account.
@@ -507,6 +524,14 @@ pub struct Secrets {
     minecraft_expires_at: u64,
     #[serde(default)]
     xuid: Option<String>,
+    /// The last answer the Minecraft services gave: whether the account owns the game. It is
+    /// kept here, beside the tokens, so that no plain file can say yes. Accounts saved before it
+    /// existed passed the same check at sign-in, which refuses everyone else.
+    #[serde(default = "owned_at_sign_in")]
+    owns: bool,
+}
+fn owned_at_sign_in() -> bool {
+    true
 }
 impl std::fmt::Debug for Secrets {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -518,22 +543,74 @@ impl std::fmt::Debug for Secrets {
 pub fn finish_sign_in(ep: &Endpoints, ms: MsTokens) -> Result<(Account, Secrets), String> {
     let mc = minecraft_login(ep, &ms.access, ms.legacy)?;
     if !owns_game(ep, &mc.token)? {
-        return Err("This account doesn't own Minecraft: Java Edition.".into());
+        return Err(DOES_NOT_OWN.into());
     }
-    let account = profile(ep, &mc.token)?;
-    Ok((
-        account,
-        Secrets {
-            refresh_token: ms.refresh,
+    let account = profile(ep, &mc.token)?.ok_or(NO_PROFILE)?;
+    Ok((account, Secrets::new(ms.refresh, mc)))
+}
+
+impl Secrets {
+    fn new(refresh_token: String, mc: Minecraft) -> Self {
+        Self {
+            refresh_token,
             minecraft_token: mc.token,
             minecraft_expires_at: mc.expires_at,
             xuid: mc.xuid,
-        },
-    ))
+            owns: true,
+        }
+    }
 }
 
-/// A Minecraft token with at least an hour left, renewed through the refresh token if needed.
-/// The profile is read again on renewal (the name may have changed).
+/// What asking the Minecraft services again found for one account.
+enum Check {
+    /// It owns the game: its profile as it is now (the name may have changed) and its tokens.
+    Owns(Account, Secrets),
+    /// The services said it doesn't own the game (or has no profile any more).
+    DoesNot(Secrets),
+    /// No answer (no network, a sign-in that can't be renewed): the last answer stands.
+    NoAnswer(String, Secrets),
+}
+
+/// Asks whether `account` owns the game, with a Minecraft token renewed through the refresh token
+/// first when it has less than an hour left. The secrets come back renewed whatever the answer.
+fn check(ep: &Endpoints, client_id: Option<&str>, account: &Account, secrets: Secrets) -> Check {
+    let mut secrets = secrets;
+    if secrets.minecraft_expires_at <= now() + RENEW_BEFORE {
+        let renewed = client_id
+            .ok_or_else(|| NOT_CONFIGURED.to_string())
+            .and_then(|id| refresh_ms(ep, id, &secrets.refresh_token))
+            .and_then(|ms| Ok((minecraft_login(ep, &ms.access, ms.legacy)?, ms.refresh)));
+        match renewed {
+            Ok((mc, refresh)) => {
+                secrets = Secrets {
+                    owns: secrets.owns,
+                    ..Secrets::new(refresh, mc)
+                }
+            }
+            Err(e) => return Check::NoAnswer(e, secrets),
+        }
+    }
+    let token = &secrets.minecraft_token;
+    match owns_game(ep, token).and_then(|owns| Ok(if owns { profile(ep, token)? } else { None })) {
+        Err(e) => Check::NoAnswer(e, secrets),
+        Ok(None) => Check::DoesNot(Secrets {
+            owns: false,
+            ..secrets
+        }),
+        Ok(Some(p)) if p.uuid != account.uuid => Check::NoAnswer(OTHER_PROFILE.into(), secrets),
+        Ok(Some(p)) => Check::Owns(
+            p,
+            Secrets {
+                owns: true,
+                ..secrets
+            },
+        ),
+    }
+}
+
+/// Android's session adapter preserves a still-valid token without a network request.
+/// Renewal uses the same ownership/profile checks as the desktop launcher.
+#[cfg(any(target_os = "android", test))]
 pub fn fresh(
     ep: &Endpoints,
     client_id: &str,
@@ -543,14 +620,11 @@ pub fn fresh(
     if secrets.minecraft_expires_at > now() + RENEW_BEFORE {
         return Ok((account.clone(), secrets));
     }
-    let ms = refresh_ms(ep, client_id, &secrets.refresh_token)?;
-    let (renewed, secrets) = finish_sign_in(ep, ms)?;
-    if renewed.uuid != account.uuid {
-        return Err(
-            "The Microsoft account now has another Minecraft profile. Sign in again.".into(),
-        );
+    match check(ep, Some(client_id), account, secrets) {
+        Check::Owns(account, secrets) => Ok((account, secrets)),
+        Check::DoesNot(_) => Err(DOES_NOT_OWN.into()),
+        Check::NoAnswer(error, _) => Err(error),
     }
-    Ok((renewed, secrets))
 }
 
 // ----- The keychain --------------------------------------------------------------------------------
@@ -641,28 +715,102 @@ impl SecretStore for SystemStore {
     }
 }
 
-/// Keychain on macOS, Credential Manager on Windows (the keyring crate).
+/// Keychain on macOS, Credential Manager on Windows (the keyring crate). Credential Manager takes at
+/// most 2560 bytes of UTF-16 per item and a sign-in's secrets are longer, so a secret is kept in
+/// pieces: the first under the account's key, the rest under `key.1`, `key.2`...
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 pub struct SystemStore;
+
+/// Bytes of UTF-8 per keychain item: at most twice as many in UTF-16, well under 2560.
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+const PIECE: usize = 1000;
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+fn piece_key(key: &str, n: usize) -> String {
+    if n == 0 {
+        key.to_string()
+    } else {
+        format!("{key}.{n}")
+    }
+}
+
+/// `secret` cut into pieces of at most `PIECE` bytes, on character boundaries.
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+fn split_secret(mut secret: &str) -> Vec<&str> {
+    let mut pieces = Vec::new();
+    while secret.len() > PIECE {
+        let mut cut = PIECE;
+        while !secret.is_char_boundary(cut) {
+            cut -= 1;
+        }
+        let (head, tail) = secret.split_at(cut);
+        pieces.push(head);
+        secret = tail;
+    }
+    pieces.push(secret);
+    pieces
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+fn read_item(key: &str) -> Result<Option<String>, String> {
+    match keyring::Entry::new(SERVICE, key).and_then(|e| e.get_password()) {
+        Ok(secret) => Ok(Some(secret)),
+        Err(keyring::Error::NoEntry) => Ok(None),
+        Err(e) => Err(e.to_string()),
+    }
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+fn write_item(key: &str, secret: &str) -> Result<(), String> {
+    keyring::Entry::new(SERVICE, key)
+        .and_then(|e| e.set_password(secret))
+        .map_err(|e| e.to_string())
+}
+
+/// Removes one item; false when there was none.
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+fn remove_item(key: &str) -> Result<bool, String> {
+    match keyring::Entry::new(SERVICE, key).and_then(|e| e.delete_credential()) {
+        Ok(()) => Ok(true),
+        Err(keyring::Error::NoEntry) => Ok(false),
+        Err(e) => Err(e.to_string()),
+    }
+}
+
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 impl SecretStore for SystemStore {
     fn get(&self, key: &str) -> Result<Option<String>, String> {
-        match keyring::Entry::new(SERVICE, key).and_then(|e| e.get_password()) {
-            Ok(secret) => Ok(Some(secret)),
-            Err(keyring::Error::NoEntry) => Ok(None),
-            Err(e) => Err(e.to_string()),
+        let Some(mut secret) = read_item(key)? else {
+            return Ok(None);
+        };
+        for n in 1.. {
+            match read_item(&piece_key(key, n))? {
+                Some(piece) => secret.push_str(&piece),
+                None => break,
+            }
         }
+        Ok(Some(secret))
     }
     fn set(&self, key: &str, secret: &str) -> Result<(), String> {
-        keyring::Entry::new(SERVICE, key)
-            .and_then(|e| e.set_password(secret))
-            .map_err(|e| e.to_string())
+        let pieces = split_secret(secret);
+        for (n, piece) in pieces.iter().enumerate() {
+            write_item(&piece_key(key, n), piece)?;
+        }
+        // Pieces left over from a longer secret would be read back as part of this one.
+        for n in pieces.len().. {
+            if !remove_item(&piece_key(key, n))? {
+                break;
+            }
+        }
+        Ok(())
     }
     fn delete(&self, key: &str) -> Result<(), String> {
-        match keyring::Entry::new(SERVICE, key).and_then(|e| e.delete_credential()) {
-            Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
-            Err(e) => Err(e.to_string()),
+        for n in 0.. {
+            if !remove_item(&piece_key(key, n))? {
+                break;
+            }
         }
+        Ok(())
     }
     fn persistent(&self) -> bool {
         true
@@ -676,19 +824,23 @@ pub fn store() -> &'static dyn SecretStore {
     static STORE: OnceLock<Box<dyn SecretStore>> = OnceLock::new();
     STORE
         .get_or_init(|| {
-            #[cfg(target_os = "android")]
+            #[cfg(all(target_os = "android", not(test)))]
             return Box::new(crate::secure_store::AndroidStore);
-            #[cfg(any(
-                target_os = "linux",
-                target_os = "freebsd",
-                target_os = "macos",
-                target_os = "windows"
+            // Unit tests never reach the player's keychain.
+            #[cfg(all(
+                not(test),
+                any(
+                    target_os = "linux",
+                    target_os = "freebsd",
+                    target_os = "macos",
+                    target_os = "windows"
+                )
             ))]
             if std::env::var_os("HORIZON_NO_KEYCHAIN").is_none() && SystemStore.get("probe").is_ok()
             {
                 return Box::new(SystemStore);
             }
-            #[cfg(not(target_os = "android"))]
+            #[cfg(any(not(target_os = "android"), test))]
             {
                 Box::<MemoryStore>::default()
             }
@@ -725,6 +877,18 @@ pub enum Player {
     Offline(String),
     /// Offline as the name the game made up.
     GameName,
+}
+
+const OFFLINE_NEEDS_OWNER: &str =
+    "Offline names need a Microsoft account that owns Minecraft: Java Edition in the launcher.";
+
+/// The secrets an account keeps in `store`, if it still has them there.
+fn secrets_in(store: &dyn SecretStore, uuid: &str) -> Option<Secrets> {
+    store
+        .get(uuid)
+        .ok()
+        .flatten()
+        .and_then(|s| serde_json::from_str(&s).ok())
 }
 
 /// Whether `name` can be an offline name: 3 to 16 letters, digits or `_`, as account names are.
@@ -780,6 +944,14 @@ impl Accounts {
         }
         Ok(())
     }
+    /// Whether an account here owned the game at its last check (the keychain's answer, no
+    /// request): what Play and offline names need.
+    pub fn has_owner(&self, store: &dyn SecretStore) -> bool {
+        self.accounts
+            .iter()
+            .any(|a| secrets_in(store, &a.uuid).is_some_and(|s| s.owns))
+    }
+
     /// Who plays now.
     pub fn player(&self) -> Player {
         match (self.selected(), &self.offline_selected) {
@@ -789,8 +961,9 @@ impl Accounts {
         }
     }
 
-    /// Plays as `who`: an account, an offline name (kept), or the game's own name.
-    pub fn play_as(&mut self, who: Player) -> Result<(), String> {
+    /// Plays as `who`: an account, an offline name (kept, only beside an account that owns the
+    /// game), or the game's own name.
+    pub fn play_as(&mut self, store: &dyn SecretStore, who: Player) -> Result<(), String> {
         match who {
             Player::Microsoft(uuid) => {
                 if !self.accounts.iter().any(|a| a.uuid == uuid) {
@@ -799,6 +972,9 @@ impl Accounts {
                 self.selected = Some(uuid);
             }
             Player::Offline(name) => {
+                if !self.has_owner(store) {
+                    return Err(OFFLINE_NEEDS_OWNER.into());
+                }
                 let name = self.add_offline(&name)?;
                 self.selected = None;
                 self.offline_selected = Some(name);
@@ -812,7 +988,7 @@ impl Accounts {
     }
 
     /// Keeps an offline name (once, in any case); returns it as kept.
-    pub fn add_offline(&mut self, name: &str) -> Result<String, String> {
+    fn add_offline(&mut self, name: &str) -> Result<String, String> {
         let name = name.trim();
         if !valid_offline_name(name) {
             return Err(format!(
@@ -868,7 +1044,15 @@ impl Accounts {
         }
     }
 
-    /// Sign out: the secrets leave the keychain, the account the list.
+    /// A renewed profile (its name or skin changed) in place of the old one; who plays stays.
+    fn update(&mut self, account: Account) {
+        if let Some(a) = self.accounts.iter_mut().find(|a| a.uuid == account.uuid) {
+            *a = account;
+        }
+    }
+
+    /// Sign out: the secrets leave the keychain, the account the list. Offline names stay, but
+    /// play only once an account that owns the game is back.
     pub fn remove(&mut self, store: &dyn SecretStore, uuid: &str) -> Result<(), String> {
         store.delete(uuid)?;
         self.accounts.retain(|a| a.uuid != uuid);
@@ -879,32 +1063,86 @@ impl Accounts {
     }
 }
 
-/// The selected account with a token good for this game, renewed and saved if needed.
-pub fn session_for_launch(
+/// No account in the launcher owns Minecraft: Java Edition: the game must not start.
+#[derive(Debug, PartialEq)]
+pub struct NoOwner;
+impl std::fmt::Display for NoOwner {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{NEEDS_OWNER}.")
+    }
+}
+
+/// The owner gate's pass for one launch.
+#[derive(Debug, Default)]
+pub struct Launch {
+    /// The selected account and its renewed session; none when an offline name plays, or when
+    /// its sign-in couldn't be renewed now (`offline` says why).
+    pub session: Option<(Account, Secrets)>,
+    /// Why the selected account plays without its session this time.
+    pub offline: Option<String>,
+    /// An account the services said owns the game just now, the selected one first: who the
+    /// launcher may download the game for.
+    pub owner: Option<(Account, Secrets)>,
+}
+
+/// The owner gate: the game starts only while an account in the launcher owns Minecraft: Java
+/// Edition. The accounts are asked again, the selected one first, until one owns it; each keeps
+/// the answer in the keychain. An account that gets no answer (no network) keeps its last one, so
+/// being offline never blocks a player who passed before, while "doesn't own" blocks at once.
+/// The caller saves `accounts` (renewed names and skins).
+pub fn launch(
     ep: &Endpoints,
+    client_id: Option<&str>,
     store: &dyn SecretStore,
     accounts: &mut Accounts,
-) -> Result<Option<(Account, Secrets)>, String> {
-    let Some(account) = accounts.selected().cloned() else {
-        return Ok(None);
-    };
-    let secrets: Secrets = store
-        .get(&account.uuid)?
-        .and_then(|s| serde_json::from_str(&s).ok())
-        .ok_or_else(|| {
-            format!(
-                "{} is no longer signed in on this computer. Sign in again.",
-                account.name
-            )
-        })?;
-    let client_id = client_id().ok_or(NOT_CONFIGURED)?;
-    let before = secrets.minecraft_token.clone();
-    let (renewed, secrets) = fresh(ep, &client_id, &account, secrets)?;
-    if renewed != account || secrets.minecraft_token != before {
-        accounts.add(store, renewed.clone(), &secrets)?;
-        accounts.save()?;
+) -> Result<Launch, NoOwner> {
+    let selected = accounts.selected.clone();
+    let mut order = accounts.accounts.clone();
+    order.sort_by_key(|a| Some(&a.uuid) != selected.as_ref());
+    let mut pass = Launch::default();
+    let mut owned = false;
+    for account in order {
+        if owned {
+            break;
+        }
+        let plays = Some(&account.uuid) == selected.as_ref();
+        let Some(secrets) = secrets_in(store, &account.uuid) else {
+            if plays {
+                pass.offline = Some(format!(
+                    "{} is no longer signed in on this computer. Sign in again.",
+                    account.name
+                ));
+            }
+            continue;
+        };
+        let before = serde_json::to_string(&secrets).ok();
+        let (said, secrets) = match check(ep, client_id, &account, secrets) {
+            Check::Owns(renewed, secrets) => {
+                accounts.update(renewed.clone());
+                if plays {
+                    pass.session = Some((renewed.clone(), secrets.clone()));
+                }
+                pass.owner = Some((renewed, secrets.clone()));
+                (None, secrets)
+            }
+            Check::DoesNot(secrets) => (Some(DOES_NOT_OWN.to_string()), secrets),
+            Check::NoAnswer(e, secrets) => (Some(e), secrets),
+        };
+        owned = secrets.owns;
+        if plays {
+            pass.offline = said;
+        }
+        let after = serde_json::to_string(&secrets).ok();
+        if let (true, Some(text)) = (after != before, after) {
+            // A store that refuses costs only this answer: the next launch asks again.
+            let _ = store.set(&account.uuid, &text);
+        }
     }
-    Ok(Some((renewed, secrets)))
+    if owned {
+        Ok(pass)
+    } else {
+        Err(NoOwner)
+    }
 }
 
 /// Write the session for the game, readable by this user only, in a fresh file it deletes
@@ -1002,19 +1240,24 @@ impl SignIn {
     }
 }
 
-/// Give the game the selected account's session, when there is one.
-pub fn attach_session(
-    cmd: &mut std::process::Command,
-    game_home: &Path,
-) -> Result<Option<Account>, String> {
+/// The owner gate for the game about to start, then the selected account's session in a file
+/// for it: the file (none: offline) and why the account plays offline this time, if it does.
+pub fn session_for_game(game_home: &Path) -> Result<(Option<PathBuf>, Option<String>), NoOwner> {
     let mut accounts = Accounts::load();
-    let Some((account, secrets)) = session_for_launch(&Endpoints::live(), store(), &mut accounts)?
-    else {
-        return Ok(None);
+    let pass = launch(
+        &Endpoints::live(),
+        client_id().as_deref(),
+        store(),
+        &mut accounts,
+    )?;
+    let _ = accounts.save();
+    let Some((account, secrets)) = pass.session else {
+        return Ok((None, pass.offline));
     };
-    let file = write_session_file(&game_home.join("sessions"), &account, &secrets)?;
-    cmd.arg("--session-file").arg(file);
-    Ok(Some(account))
+    match write_session_file(&game_home.join("sessions"), &account, &secrets) {
+        Ok(file) => Ok((Some(file), None)),
+        Err(e) => Ok((None, Some(e))),
+    }
 }
 
 #[cfg(test)]
