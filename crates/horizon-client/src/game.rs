@@ -5721,8 +5721,10 @@ impl Game<'_> {
             let delay = horizon_client::attack_strength::delay(self.main_hand_attack_speed());
             let strength = self.hand_strength.scale(0.0, self.main_hand_attack_speed());
             // The 3D crosshair (F3) takes the 2D one's place.
+            // Android aiming schemes need a visible reticle in spectator too.
+            // Tap schemes still suppress it through interaction_crosshair().
             if self.camera_type.first_person()
-                && !spectator
+                && (!spectator || cfg!(target_os = "android"))
                 && !self.debug_crosshair()
                 && self.interaction_crosshair()
             {
