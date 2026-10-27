@@ -94,7 +94,9 @@ python tools/export_android_source.py
 It writes a ZIP and hash manifest under `.local/android/public/`, excluding game
 inputs, caches, saves, build products and signing material. Upstream workflows
 remain under `.github/upstream-workflows/*.disabled`; the Android source workflow
-is manual and uses read-only permissions.
+runs source checks on pushes and pull requests to `android`, with read-only
+permissions. A manual run with `native_checks` enabled also type-checks all four
+Android ABIs. It does not build APKs, use signing keys or publish releases.
 
 ## Upstream maintenance
 
