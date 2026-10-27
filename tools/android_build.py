@@ -80,18 +80,20 @@ def main():
     parser.add_argument('--rust-only', action='store_true', help='Build the Rust host without touching shared APK staging')
     parser.add_argument('--release-candidate', action='store_true', help='Build a non-debuggable candidate and audit privacy; this does not authorize redistribution of bundled game resources')
     parser.add_argument('--public', action='store_true', help='Distribution APK: generated tables only; original resources download from Mojang')
-    parser.add_argument('--profile', choices=['fast', 'dev'], default='fast', help='Optimized by default; dev is for debugging only')
+    parser.add_argument('--profile', choices=['release', 'fast', 'dev'], help='Public/candidate builds default to release (ThinLTO); local builds default to optimized fast')
     parser.add_argument('--gradle', type=Path, help='Gradle 8.14 executable (otherwise discover the cached distribution)')
     parser.add_argument('--check', action='store_true', help='Only type-check the Android target')
     parser.add_argument('--clippy', action='store_true', help='Run Android Clippy with warnings denied')
     parser.add_argument('--bootstrap', type=Path, help=argparse.SUPPRESS)  # Old scripts: no longer used.
     args = parser.parse_args()
+    if args.profile is None:
+        args.profile = 'release' if args.public or args.release_candidate else 'fast'
     if args.public:
         args.release_candidate = True
         if args.skip_rust:
             parser.error('--public cannot reuse a native library from a different build mode')
-    if args.release_candidate and args.profile != 'fast':
-        parser.error('--release-candidate requires the optimized fast profile')
+    if args.release_candidate and args.profile == 'dev':
+        parser.error('--release-candidate requires an optimized release or fast profile')
     suffix = '.exe' if os.name == 'nt' else ''
     tools = latest(args.sdk / 'build-tools')
     ndk = latest(args.sdk / 'ndk') / 'toolchains/llvm/prebuilt' / ('windows-x86_64' if os.name == 'nt' else 'linux-x86_64')

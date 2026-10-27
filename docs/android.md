@@ -205,7 +205,9 @@ Gradle executable. Public APKs are written to
 Each APK contains one `libhorizon_android.so`, using the NativeActivity winit
 backend and the Rust system-keyboard bridge. `--rust-only` builds it without shared
 APK staging; `CARGO_TARGET_DIR` can separate parallel compilation caches. Run Gradle
-packaging sequentially. `--profile dev` is for debugging, not public builds.
+packaging sequentially. Public builds default to `release`: optimization level 3,
+ThinLTO and one codegen unit. Local iteration defaults to optimized `fast` without
+LTO. `--profile dev` is for debugging and is rejected for public/candidate APKs.
 
 Public builds include only allowlisted generated engine tables. Original game
 resources and control textures download on the device. Never commit prepared
