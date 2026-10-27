@@ -55,7 +55,7 @@ pub(crate) fn touch_visible() -> bool {
     TOUCH_VISIBLE.load(std::sync::atomic::Ordering::Relaxed)
 }
 pub(crate) fn touch_input(touch: bool) {
-    if NATIVE_HOST {
+    if touch || NATIVE_HOST || horizon_client::android_runtime::keypad_enabled() {
         TOUCH_VISIBLE.store(touch, std::sync::atomic::Ordering::Relaxed);
     }
 }

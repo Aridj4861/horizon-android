@@ -1877,7 +1877,9 @@ impl Game<'_> {
     fn interaction_crosshair(&self) -> bool {
         #[cfg(target_os = "android")]
         {
-            crate::NATIVE_HOST || self.pad.touch.settings.crosshair()
+            crate::NATIVE_HOST
+                || self.settings.keypad.enabled
+                || self.pad.touch.settings.crosshair()
         }
         #[cfg(not(target_os = "android"))]
         {
@@ -5337,7 +5339,7 @@ impl Game<'_> {
             let indicator = self.settings.attack_indicator;
             #[cfg(target_os = "android")]
             let indicator =
-                horizon_client::touch::attack_indicator(indicator, self.settings.touch.crosshair());
+                horizon_client::touch::attack_indicator(indicator, self.interaction_crosshair());
             let delay = horizon_client::attack_strength::delay(self.main_hand_attack_speed());
             let strength = self.hand_strength.scale(0.0, self.main_hand_attack_speed());
             // The 3D crosshair (F3) takes the 2D one's place.
@@ -9980,8 +9982,14 @@ impl Game<'_> {
         #[cfg(target_os = "android")]
         {
             self.pad.touch.settings = self.settings.touch.clone();
-            self.pad.touch.force_crosshair = crate::NATIVE_HOST;
+            self.pad.touch.force_crosshair = crate::NATIVE_HOST || self.settings.keypad.enabled;
+            let changed =
+                horizon_client::android_runtime::keypad_enabled() != self.settings.keypad.enabled;
             horizon_client::android_runtime::configure_keypad_settings(&self.settings.keypad);
+            if changed {
+                self.pad.touch.clear();
+                crate::touch_input(!self.settings.keypad.enabled);
+            }
         }
         // LocalPlayer.refreshChatAbilities: the chat shows what the Chat option allows.
         let abilities = self.chat_abilities();
