@@ -106,8 +106,8 @@ pub(crate) fn android_arguments() -> horizon_client::Result<Vec<String>> {
             "--session-file".into(),
             session.to_string_lossy().into_owned(),
         ]);
-    }
-    if !config.name.is_empty() {
+    } else if !config.name.is_empty() {
+        // Offline identity must never override a licensed session's profile.
         args.extend(["--name".into(), config.name.clone()]);
     }
     if !config.server.is_empty() {
