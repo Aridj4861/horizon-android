@@ -126,7 +126,7 @@ impl Game<'_> {
                 .map(|(_, s, _)| s.to_owned())
                 .unwrap_or_default()
         } else if self.screen == Screen::Creative {
-            self.creative_screen.search.clone()
+            self.creative_screen.search.value.clone()
         } else {
             String::new()
         };

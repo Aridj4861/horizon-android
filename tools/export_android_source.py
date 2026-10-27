@@ -17,7 +17,7 @@ ROOT = Path(__file__).resolve().parents[1]
 DIRECTORIES = {'.githooks', '.github', 'benchmarks', 'crates', 'docs', 'launcher',
                'mods', 'packaging', 'packs', 'tests', 'third_party', 'tools', 'website', 'xtask'}
 FILES = {'.dockerignore', '.gitattributes', '.gitignore', 'AGENTS.md', 'CLAUDE.md',
-         'Cargo.lock', 'Cargo.toml', 'CONTRIBUTING.md', 'CONTRIBUTING_ANDROID.md', 'LICENSE', 'README.md',
+         'Cargo.lock', 'Cargo.toml', 'rust-toolchain.toml', 'CONTRIBUTING.md', 'CONTRIBUTING_ANDROID.md', 'LICENSE', 'README.md',
          'research-lock.json', 'THIRD_PARTY_NOTICES.md'}
 SKIP = {'.git', '.local', 'target', 'build', 'dist', 'logs', 'node_modules',
         '__pycache__', '.gradle', '.venv', '.horizon-cache'}

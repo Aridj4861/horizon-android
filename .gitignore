@@ -46,3 +46,6 @@
 !.env.example
 /android-launch.json
 /control.json
+
+# Release-only compiled original exporter bundle.
+/exporters/

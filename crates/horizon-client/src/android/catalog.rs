@@ -33,6 +33,7 @@ impl RendererMode {
 #[serde(default)]
 pub struct Config {
     pub profile: u32,
+    pub proxy: Option<String>,
     pub name: String,
     pub server: String,
     #[serde(skip)]

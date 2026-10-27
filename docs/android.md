@@ -164,7 +164,7 @@ triggers need a separate backend. Leaving the game returns to the launcher.
 
 ## Build (developers only)
 
-Install Rust, Python 3.11+, Android SDK platform 35, build tools, NDK, a JDK and
+Install Rust 1.95 (pinned in `rust-toolchain.toml`), Python 3.11+, Android SDK platform 35, build tools, NDK, a JDK and
 Gradle 8.14. Android Studio's bundled JDK is supported. Prepare the pinned engine
 tables privately, then build the required ABI:
 

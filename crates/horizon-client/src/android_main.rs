@@ -1,7 +1,7 @@
 //! Android's native entry point. The simulation and renderer are shared with desktop.
 #![cfg(target_os = "android")]
 
-#[allow(dead_code)] // Desktop-only launch and harness entry points share this module.
+#[allow(dead_code, clippy::collapsible_match)] // Shared vanilla match structure and desktop harnesses.
 mod game;
 #[path = "android/launcher.rs"]
 mod launcher;
@@ -17,6 +17,9 @@ mod browser;
 mod catalog;
 #[path = "android/platform.rs"]
 mod platform;
+#[allow(dead_code)]
+#[path = "../../../launcher/src/proxy.rs"]
+mod proxy;
 #[path = "android/secure_store.rs"]
 mod secure_store;
 // The shared account protocol needs only the launcher's version and data path.
@@ -29,6 +32,7 @@ mod backend {
     pub fn game_home() -> std::path::PathBuf {
         data_dir()
     }
+    pub fn game_mod_api_level() -> Option<u32> { Some(horizon_mods::api_level::LEVEL) }
     pub fn data_dir() -> std::path::PathBuf {
         HOME.get().expect("android_main sets account home").clone()
     }

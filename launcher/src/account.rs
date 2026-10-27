@@ -6,7 +6,7 @@
 //!
 //! The Azure app (client ID) is Horizon's own and is configuration: `HORIZON_MSA_CLIENT_ID` at
 //! build time, or at run time to override it. Without one, sign-in says it is not configured.
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
@@ -15,8 +15,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 /// The keychain service name every secret is stored under.
 pub const SERVICE: &str = "dev.playhorizon.launcher";
 const SCOPE: &str = "XboxLive.signin offline_access";
-pub const NOT_CONFIGURED: &str =
-    "Microsoft sign-in is coming soon. Until then the game plays offline: single player, \
+pub const NOT_CONFIGURED: &str = "Microsoft sign-in is coming soon. Until then the game plays offline: single player, \
      LAN and servers in offline mode work.";
 const SIGN_IN_AGAIN: &str = "Your Microsoft sign-in expired. Sign in again.";
 /// The Minecraft token is renewed when it has less than this left.
@@ -60,11 +59,17 @@ impl Endpoints {
     }
 }
 
-fn agent() -> ureq::Agent {
-    ureq::AgentBuilder::new()
-        .timeout(Duration::from_secs(20))
-        .user_agent(&format!("horizon-launcher/{}", crate::backend::VERSION))
-        .build()
+/// A request to `url`: the launcher's user agent, a 20 s timeout, and the player's proxy when one
+/// is set (`proxy`), since a sign-in has to get out the way downloads do.
+fn request_to(method: &str, url: &str) -> ureq::Request {
+    crate::proxy::agent(
+        ureq::AgentBuilder::new()
+            .timeout(Duration::from_secs(20))
+            .user_agent(&format!("horizon-launcher/{}", crate::backend::VERSION)),
+        url,
+    )
+    .build()
+    .request(method, url)
 }
 
 /// One request's result: the status and the JSON body (empty when there is none). Transport
@@ -187,8 +192,7 @@ pub fn device_code(ep: &Endpoints, client_id: &str) -> Result<DeviceCode, String
     if legacy_client(client_id) {
         fields.push(("response_type", "device_code"));
     }
-    let response = match agent()
-        .post(&microsoft_endpoint(ep, client_id, false))
+    let response = match request_to("POST", &microsoft_endpoint(ep, client_id, false))
         .send_form(&fields)
     {
         Ok(r) => r,
@@ -243,9 +247,7 @@ fn oauth_error(v: &Value) -> String {
 /// One poll of the token endpoint while the player signs in.
 pub fn poll(ep: &Endpoints, client_id: &str, code: &DeviceCode) -> Result<Poll, String> {
     let (status, v) = send(
-        agent()
-            .post(&microsoft_endpoint(ep, client_id, true))
-            .set("Cookie", &code.cookies),
+        request_to("POST", &microsoft_endpoint(ep, client_id, true)).set("Cookie", &code.cookies),
         Some(Body::Form(vec![
             ("grant_type", "urn:ietf:params:oauth:grant-type:device_code"),
             ("client_id", client_id),
@@ -309,7 +311,7 @@ pub fn wait_for_sign_in(
 
 fn refresh_ms(ep: &Endpoints, client_id: &str, refresh: &str) -> Result<MsTokens, String> {
     let (status, v) = send(
-        agent().post(&microsoft_endpoint(ep, client_id, true)),
+        request_to("POST", &microsoft_endpoint(ep, client_id, true)),
         Some(Body::Form(vec![
             ("grant_type", "refresh_token"),
             ("client_id", client_id),
@@ -346,7 +348,7 @@ struct Minecraft {
 
 fn minecraft_login(ep: &Endpoints, ms_access: &str, legacy: bool) -> Result<Minecraft, String> {
     let (status, xbl) = send(
-        agent().post(&ep.xbox_user),
+        request_to("POST", &ep.xbox_user),
         Some(Body::Json(json!({
             "Properties": {
                 "AuthMethod": "RPS",
@@ -362,7 +364,7 @@ fn minecraft_login(ep: &Endpoints, ms_access: &str, legacy: bool) -> Result<Mine
         .filter(|_| status == 200)
         .ok_or("Xbox Live refused the sign-in.")?;
     let (status, xsts) = send(
-        agent().post(&ep.xsts),
+        request_to("POST", &ep.xsts),
         Some(Body::Json(json!({
             "Properties": { "SandboxId": "RETAIL", "UserTokens": [xbl_token] },
             "RelyingParty": "rp://api.minecraftservices.com/",
@@ -382,7 +384,10 @@ fn minecraft_login(ep: &Endpoints, ms_access: &str, legacy: bool) -> Result<Mine
     };
     let xuid = claims.and_then(|c| str_field(c, "xid"));
     let (status, mc) = send(
-        agent().post(&format!("{}/authentication/login_with_xbox", ep.minecraft)),
+        request_to(
+            "POST",
+            &format!("{}/authentication/login_with_xbox", ep.minecraft),
+        ),
         Some(Body::Json(
             json!({ "identityToken": format!("XBL3.0 x={uhs};{xsts_token}") }),
         )),
@@ -415,7 +420,7 @@ fn bearer(request: ureq::Request, token: &str) -> ureq::Request {
 fn owns_game(ep: &Endpoints, token: &str) -> Result<bool, String> {
     let (status, v) = send(
         bearer(
-            agent().get(&format!("{}/entitlements/mcstore", ep.minecraft)),
+            request_to("GET", &format!("{}/entitlements/mcstore", ep.minecraft)),
             token,
         ),
         None,
@@ -452,7 +457,7 @@ pub struct Account {
 fn profile(ep: &Endpoints, token: &str) -> Result<Account, String> {
     let (status, v) = send(
         bearer(
-            agent().get(&format!("{}/minecraft/profile", ep.minecraft)),
+            request_to("GET", &format!("{}/minecraft/profile", ep.minecraft)),
             token,
         ),
         None,
