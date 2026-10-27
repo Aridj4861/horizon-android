@@ -43,6 +43,7 @@ struct Ui {
     text: Mutex<String>,
     polling: AtomicBool,
     active: AtomicBool,
+    ready: AtomicBool,
     failed: AtomicBool,
 }
 static UI: OnceLock<Arc<Ui>> = OnceLock::new();
@@ -125,6 +126,7 @@ pub unsafe fn initialize(
         text: Mutex::new(String::new()),
         polling: AtomicBool::new(false),
         active: AtomicBool::new(false),
+        ready: AtomicBool::new(false),
         failed: AtomicBool::new(false),
     });
     let looper = unsafe { ALooper_forThread() };
@@ -188,6 +190,7 @@ impl Ui {
                     .text
                     .lock()
                     .unwrap_or_else(std::sync::PoisonError::into_inner) = text;
+                self.ready.store(true, Ordering::Release);
                 if !shown {
                     log::debug!("Android has deferred the system keyboard request");
                 }
@@ -287,6 +290,8 @@ fn callback_inner(ui: &Ui) -> i32 {
 pub fn show(text: &str) -> bool {
     if let Some(ui) = UI.get().filter(|ui| !ui.failed.load(Ordering::Acquire)) {
         winit::platform::android::set_native_text_input_active(true);
+        // Do not diff an earlier editor buffer while Show is queued on the UI thread.
+        ui.ready.store(false, Ordering::Release);
         ui.active.store(true, Ordering::Release);
         ui.enqueue(Command::Show(text.into()));
         true
@@ -303,7 +308,7 @@ pub fn hide() {
 }
 pub fn text() -> Option<String> {
     let ui = UI.get()?;
-    if !ui.active.load(Ordering::Acquire) {
+    if !ui.active.load(Ordering::Acquire) || !ui.ready.load(Ordering::Acquire) {
         return None;
     }
     if !ui.polling.swap(true, Ordering::AcqRel) {

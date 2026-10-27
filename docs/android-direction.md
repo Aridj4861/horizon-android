@@ -23,7 +23,7 @@ See [the feature matrix](android-features.md), [mod SDK](mods.md),
 
 ## Platform boundaries
 
-Player-facing game and launcher code is Rust. Android APIs use JNI/NDK calls;
+Player-facing game and launcher code is Rust. Android APIs use JNI/NDK calls.
 A single stock NativeActivity supplies the native input queue. Rust/JNI uses the
 system text editor and IME on Android's UI thread; no project Java/Kotlin host or
 second engine library is packaged.
