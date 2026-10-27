@@ -188,6 +188,11 @@ fn android_main(app: AndroidApp) {
     }
     let engine_data = app.asset_manager().open(c"engine-data.zip");
     APP.with(|slot| *slot.borrow_mut() = Some(app));
+    let Some(cache) = platform::cache_dir() else {
+        log::error!("Android supplied no application cache directory");
+        return;
+    };
+    horizon_client::official_install::configure_download_cache_dir(cache);
     horizon_client::android_runtime::install_clipboard(
         horizon_client::android_runtime::ClipboardHooks {
             get: platform::clipboard_get,

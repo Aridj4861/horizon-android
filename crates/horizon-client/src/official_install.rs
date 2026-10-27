@@ -15,6 +15,20 @@ use std::{
 
 const CATALOG: &str = "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json";
 const LOCK: &str = include_str!("../../../research-lock.json");
+static DOWNLOAD_CACHE_DIR: OnceLock<PathBuf> = OnceLock::new();
+
+/// Android supplies Context.getCacheDir(), keeping temporary downloads out of files/.
+pub fn configure_download_cache_dir(directory: PathBuf) {
+    let _ = DOWNLOAD_CACHE_DIR.set(directory.join("minecraft-downloads"));
+}
+
+fn download_cache(home: &Path) -> PathBuf {
+    DOWNLOAD_CACHE_DIR
+        .get()
+        .cloned()
+        .unwrap_or_else(|| home.join(".local/downloads"))
+        .join(horizon_core::VANILLA_VERSION)
+}
 
 /// Earlier Android packages installed textures only. An audio-capable APK must
 /// upgrade those resources before entering the game, not silently stay mute.
@@ -25,6 +39,62 @@ pub fn ready(home: &Path) -> bool {
     crate::resource_install::ready(home)
         && root.join("android-downloads-v2.json").is_file()
         && (!cfg!(feature = "audio") || root.join("audio-complete.json").is_file())
+}
+
+/// Discard redundant installer inputs only after the prepared installation is complete.
+/// An interrupted download/preparation keeps its cache for the next attempt.
+pub fn cleanup_download_cache(home: &Path) -> Result<()> {
+    if !ready(home) {
+        return Ok(());
+    }
+    let root = fs::canonicalize(home)?;
+    let cache = root
+        .join(".local/downloads")
+        .join(horizon_core::VANILLA_VERSION);
+    let metadata = match fs::symlink_metadata(&cache) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => return Err(error.into()),
+    };
+    // Verify the final absolute target before recursive removal. Reject aliases
+    // of this path, including a redirected .local/downloads ancestor.
+    if !metadata.is_dir() || metadata.file_type().is_symlink() || fs::canonicalize(&cache)? != cache
+    {
+        return Err("Refusing redirected installer cache path".into());
+    }
+    fs::remove_dir_all(cache)?;
+    Ok(())
+}
+
+fn cleanup_system_download_cache() -> Result<()> {
+    let Some(directory) = DOWNLOAD_CACHE_DIR.get() else {
+        return Ok(());
+    };
+    if !directory.exists() {
+        return Ok(());
+    }
+    let root = fs::canonicalize(directory)?;
+    let cache = root.join(horizon_core::VANILLA_VERSION);
+    let metadata = match fs::symlink_metadata(&cache) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => return Err(error.into()),
+    };
+    if !metadata.is_dir() || metadata.file_type().is_symlink() || fs::canonicalize(&cache)? != cache
+    {
+        return Err("Refusing redirected system installer cache".into());
+    }
+    fs::remove_dir_all(cache)?;
+    Ok(())
+}
+
+/// Clean both old files/ downloads and the system cache when resources are complete.
+pub fn cleanup_completed_downloads(home: &Path) -> Result<()> {
+    if !ready(home) {
+        return Ok(());
+    }
+    cleanup_download_cache(home)?;
+    cleanup_system_download_cache()
 }
 
 fn official_url(text: &str) -> Result<()> {
@@ -232,6 +302,17 @@ pub fn install_with_progress(home: &Path, progress: impl Fn(InstallProgress) + S
     let report = |stage, done, total| progress(InstallProgress { stage, done, total });
     report(InstallStage::Metadata, 0, 0);
     let version = horizon_core::VANILLA_VERSION;
+    let cache = download_cache(home);
+    let legacy = home.join(".local/downloads").join(version);
+    if cache != legacy && legacy.is_dir() && !cache.exists() {
+        let root = fs::canonicalize(home)?;
+        if fs::canonicalize(&legacy)? != root.join(".local/downloads").join(version) {
+            return Err("Refusing redirected legacy installer cache".into());
+        }
+        fs::create_dir_all(cache.parent().ok_or("Missing cache parent")?)?;
+        fs::rename(&legacy, &cache)?;
+    }
+    fs::create_dir_all(&cache)?;
     let pins: Value = serde_json::from_str(LOCK)?;
     let pins = &pins["minecraft"];
     let catalog = json(CATALOG)?;
@@ -245,8 +326,6 @@ pub fn install_with_progress(home: &Path, progress: impl Fn(InstallProgress) + S
     // Mojang may reissue metadata while Minecraft 26.3's game jars are unchanged.
     // The downloaded JSON is still verified against the catalogue's SHA-1,
     // and the actual client/server jar hashes remain engine-pinned.
-    let cache = home.join(".local/downloads").join(version);
-    fs::create_dir_all(&cache)?;
     let manifest_url = entry["url"]
         .as_str()
         .ok_or("Missing version metadata URL")?;
@@ -395,12 +474,148 @@ pub fn install_with_progress(home: &Path, progress: impl Fn(InstallProgress) + S
     if stage.exists() {
         let _ = fs::remove_dir_all(stage);
     }
+    if result.is_ok()
+        && let Err(error) = cleanup_completed_downloads(home)
+    {
+        // Resources were committed successfully; failed housekeeping must not
+        // turn a working installation into a reported installation failure.
+        log::warn!("Could not clean completed Minecraft downloads: {error}");
+    }
     result
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    struct CacheHome(PathBuf);
+    impl CacheHome {
+        fn path(&self) -> &Path {
+            &self.0
+        }
+    }
+    impl Drop for CacheHome {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+    fn cache_home() -> CacheHome {
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let base = fs::canonicalize(std::env::temp_dir()).unwrap();
+        let path = base.join(format!(
+            "horizon-installer-cache-test-{}-{stamp}",
+            std::process::id()
+        ));
+        fs::create_dir(&path).unwrap();
+        let home = CacheHome(path);
+        let cache = home
+            .path()
+            .join(".local/downloads")
+            .join(horizon_core::VANILLA_VERSION);
+        fs::create_dir_all(&cache).unwrap();
+        fs::write(cache.join("client.jar"), b"download input").unwrap();
+        fs::create_dir_all(home.path().join("saves")).unwrap();
+        fs::write(home.path().join("saves/keep"), b"player world").unwrap();
+        home
+    }
+
+    fn mark_cache_install_ready(home: &Path) {
+        let root = home
+            .join(".local/horizon-client")
+            .join(horizon_core::VANILLA_VERSION);
+        fs::create_dir_all(&root).unwrap();
+        for marker in [
+            "horizon-resources.json",
+            "android-downloads-v2.json",
+            "audio-complete.json",
+        ] {
+            fs::write(root.join(marker), b"{}").unwrap();
+        }
+        fs::write(root.join("prepared-data"), b"runtime data").unwrap();
+    }
+
+    #[test]
+    fn completed_install_discards_only_its_download_cache() {
+        let home = cache_home();
+        mark_cache_install_ready(home.path());
+        cleanup_download_cache(home.path()).unwrap();
+        assert!(
+            !home
+                .path()
+                .join(".local/downloads")
+                .join(horizon_core::VANILLA_VERSION)
+                .exists()
+        );
+        assert!(home.path().join("saves/keep").is_file());
+        assert!(
+            home.path()
+                .join(".local/horizon-client")
+                .join(horizon_core::VANILLA_VERSION)
+                .join("prepared-data")
+                .is_file()
+        );
+        cleanup_download_cache(home.path()).unwrap();
+    }
+
+    #[test]
+    fn interrupted_install_keeps_inputs_for_retry() {
+        let home = cache_home();
+        cleanup_download_cache(home.path()).unwrap();
+        assert!(
+            home.path()
+                .join(".local/downloads")
+                .join(horizon_core::VANILLA_VERSION)
+                .join("client.jar")
+                .is_file()
+        );
+    }
+
+    #[test]
+    fn android_cache_location_is_disposable_after_preparation() {
+        let home = cache_home();
+        let android_cache = home.path().join("android-cache");
+        configure_download_cache_dir(android_cache.clone());
+        let cache = download_cache(home.path());
+        assert_eq!(
+            cache,
+            android_cache
+                .join("minecraft-downloads")
+                .join(horizon_core::VANILLA_VERSION)
+        );
+        fs::create_dir_all(&cache).unwrap();
+        fs::write(cache.join("client.jar"), b"download").unwrap();
+        cleanup_completed_downloads(home.path()).unwrap();
+        assert!(cache.is_dir());
+        mark_cache_install_ready(home.path());
+        cleanup_completed_downloads(home.path()).unwrap();
+        assert!(!cache.exists());
+        assert!(
+            !home
+                .path()
+                .join(".local/downloads")
+                .join(horizon_core::VANILLA_VERSION)
+                .exists()
+        );
+        assert!(home.path().join("saves/keep").is_file());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn redirected_cache_cannot_remove_a_different_directory() {
+        let home = cache_home();
+        mark_cache_install_ready(home.path());
+        let cache = home
+            .path()
+            .join(".local/downloads")
+            .join(horizon_core::VANILLA_VERSION);
+        fs::remove_dir_all(&cache).unwrap();
+        std::os::unix::fs::symlink(home.path().join("saves"), &cache).unwrap();
+        assert!(cleanup_download_cache(home.path()).is_err());
+        assert!(home.path().join("saves/keep").is_file());
+    }
     fn manifest_fixture() -> (Value, Value) {
         let pins = serde_json::json!({
             "manifest_sha1": "old-metadata-hash",

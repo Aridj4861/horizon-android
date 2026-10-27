@@ -45,6 +45,9 @@ pub(super) struct Launcher {
     error: Option<String>,
     catalog: Catalog,
     targets: Vec<([f32; 4], pages::Action)>,
+    list_targets: Vec<([f32; 4], pages::Action)>,
+    list_view: Option<[f32; 3]>,
+    pending_focus: Option<pages::Action>,
     drag: Option<gesture::Drag>,
     chooser: Option<chooser::Chooser>,
     login: login::Login,
@@ -55,6 +58,15 @@ pub(super) struct Launcher {
 
 impl Launcher {
     pub(super) fn new(home: PathBuf) -> Self {
+        // Upgrade existing installations that retained the old download cache.
+        let cleanup_home = home.clone();
+        std::thread::spawn(move || {
+            if let Err(error) =
+                horizon_client::official_install::cleanup_completed_downloads(&cleanup_home)
+            {
+                log::warn!("Could not clean completed Minecraft downloads: {error}");
+            }
+        });
         let catalog = Catalog::new(&home);
         Self {
             home,
@@ -70,6 +82,9 @@ impl Launcher {
             error: None,
             catalog,
             targets: vec![],
+            list_targets: vec![],
+            list_view: None,
+            pending_focus: None,
             drag: None,
             chooser: None,
             login: login::Login::new(),
@@ -95,6 +110,8 @@ impl Launcher {
         self.cursor = (0.0, 0.0);
         self.drag = None;
         self.chooser = None;
+        self.focus = None;
+        self.pending_focus = None;
         if let Err(error) = std::env::set_current_dir(&self.home) {
             self.fail(error);
             return;
@@ -298,6 +315,7 @@ impl ApplicationHandler for Launcher {
             }
             WindowEvent::CursorMoved { position, .. } => {
                 self.focus = None;
+                self.pending_focus = None;
                 self.cursor = (position.x, position.y);
                 Ok(())
             }

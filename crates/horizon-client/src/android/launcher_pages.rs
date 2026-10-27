@@ -5,7 +5,7 @@ use winit::{
     keyboard::{KeyCode, PhysicalKey},
 };
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq)]
 pub(super) enum Action {
     ToggleNative(usize),
     Page(Page),
@@ -112,6 +112,9 @@ impl Launcher {
     pub(super) fn navigate(&mut self, key: &KeyEvent) -> bool {
         use horizon_client::gamepad::{self, Button};
         use winit::keyboard::{Key, NamedKey};
+        if self.pending_focus.is_some() {
+            return true;
+        }
         if self.catalog.editing.is_some() || self.targets.is_empty() {
             return false;
         }
@@ -126,6 +129,29 @@ impl Launcher {
             }
             _ => return false,
         };
+        if matches!(button, Button::DPadUp | Button::DPadDown)
+            && let Some((_, action)) = self.focus.and_then(|i| self.targets.get(i))
+            && let Some(index) = self.list_targets.iter().position(|(_, a)| a == action)
+        {
+            let rects: Vec<_> = self.list_targets.iter().map(|(r, _)| *r).collect();
+            if let Some(next) = gamepad::focus_step_strict(rects[index], button, &rects)
+                && let Some(view) = self.list_view
+            {
+                let (rect, action) = self.list_targets[next];
+                let scroll = if let Some(chooser) = &mut self.chooser {
+                    &mut chooser.scroll
+                } else {
+                    &mut self.catalog.scroll
+                };
+                *scroll = super::gesture::reveal(*scroll, rect, view);
+                self.pending_focus = Some(action);
+                self.focus = None;
+                if let Some(window) = &self.window {
+                    window.request_redraw();
+                }
+                return true;
+            }
+        }
         self.focus = Some(
             if let Some(index) = self.focus.filter(|i| *i < self.targets.len()) {
                 let rects: Vec<_> = self.targets.iter().map(|(rect, _)| *rect).collect();
@@ -142,6 +168,8 @@ impl Launcher {
             return Ok(());
         };
         self.targets.clear();
+        self.list_targets.clear();
+        self.list_view = None;
         let mut b = HudBatch::new([r.config.width, r.config.height]);
         let mut ui = Ui::mobile(&gui.atlas, &mut b, (0.0, 0.0));
         // OEM navigation bars can remain visible even in fullscreen (keypad phones).
@@ -444,10 +472,17 @@ impl Launcher {
                 0.0,
                 (self.catalog.results.len() as f32 * 78.0 - (bottom - top)).max(0.0),
             );
+            self.list_view = Some([
+                top,
+                bottom,
+                (self.catalog.results.len() as f32 * 78.0 - (bottom - top)).max(0.0),
+            ]);
             for (i, p) in self.catalog.results.iter().enumerate() {
                 let title = ui.fit_text(Face::Medium, 19.0, &p.title, w - 214.0);
                 let summary = ui.fit_text(Face::Regular, 14.0, &p.summary, w - 214.0);
                 let y = top + i as f32 * 78.0 - self.catalog.scroll;
+                self.list_targets
+                    .push(([w - 150.0, y, 118.0, 70.0], Action::Install(i)));
                 if y < top || y + 70.0 > bottom {
                     continue;
                 }
@@ -489,6 +524,14 @@ impl Launcher {
                     - (bottom - top))
                     .max(0.0),
             );
+            self.list_view = Some([
+                top,
+                bottom,
+                ((self.catalog.installed.entries.len() + self.catalog.native.len()) as f32
+                    * row_height
+                    - (bottom - top))
+                    .max(0.0),
+            ]);
             if self.catalog.installed.entries.is_empty() && self.catalog.native.is_empty() {
                 ui.text(
                     Face::Regular,
@@ -507,7 +550,14 @@ impl Launcher {
                     if compact { w - 64.0 } else { w - 364.0 },
                 );
                 let y = top + i as f32 * row_height - self.catalog.scroll;
-                if y < top || y + 64.0 > bottom {
+                let row_size = if compact { 95.0 } else { 64.0 };
+                self.list_targets.push((
+                    [if compact { 32.0 } else { w - 300.0 }, y, 120.0, row_size],
+                    Action::Toggle(i),
+                ));
+                self.list_targets
+                    .push(([w - 165.0, y, 133.0, row_size], Action::Remove(i)));
+                if y < top || y + if compact { 95.0 } else { 64.0 } > bottom {
                     continue;
                 }
                 ui.text(Face::Medium, 19.0, 32.0, y, color::TEXT, &title);
@@ -547,7 +597,11 @@ impl Launcher {
             for (i, (_, name, on)) in self.catalog.native.iter().enumerate() {
                 let y = top + (i + self.catalog.installed.entries.len()) as f32 * row_height
                     - self.catalog.scroll;
-                if y < top || y + 64.0 > bottom {
+                self.list_targets.push((
+                    [w - 165.0, y, 133.0, if compact { 95.0 } else { 64.0 }],
+                    Action::ToggleNative(i),
+                ));
+                if y < top || y + if compact { 95.0 } else { 64.0 } > bottom {
                     continue;
                 }
                 ui.text(
@@ -589,6 +643,11 @@ impl Launcher {
                 .catalog
                 .scroll
                 .clamp(0.0, (6.0 * row_height - (h - 80.0 - 195.0)).max(0.0));
+            self.list_view = Some([
+                195.0,
+                h - 60.0,
+                (6.0 * row_height - (h - 80.0 - 195.0)).max(0.0),
+            ]);
             for (i, (title, value, action)) in [
                 ("Rendering", c.renderer.label().to_owned(), Action::Renderer),
                 (
@@ -621,6 +680,15 @@ impl Launcher {
             .enumerate()
             {
                 let y = 195.0 + i as f32 * row_height - self.catalog.scroll;
+                self.list_targets.push((
+                    [
+                        if compact { 32.0 } else { w * 0.36 },
+                        y,
+                        if compact { w - 64.0 } else { w * 0.64 - 32.0 },
+                        if compact { 70.0 } else { 46.0 },
+                    ],
+                    action,
+                ));
                 if y < 185.0 || y + if compact { 70.0 } else { 46.0 } > h - 60.0 {
                     continue;
                 }
@@ -704,6 +772,8 @@ impl Launcher {
             );
         }
         if self.login.visible {
+            self.list_targets.clear();
+            self.list_view = None;
             self.login.draw(
                 &mut ui,
                 &mut self.targets,
@@ -713,6 +783,25 @@ impl Launcher {
         }
         if let Some(chooser) = &mut self.chooser {
             chooser.draw(&mut ui, &mut self.targets);
+            self.list_targets = chooser.navigation(ui.w);
+            self.list_view = Some(chooser.viewport(ui.h));
+        }
+        if let Some([top, bottom, maximum]) = self.list_view
+            && maximum > 0.0
+            && bottom > top
+        {
+            let scroll = self
+                .chooser
+                .as_ref()
+                .map_or(self.catalog.scroll, |c| c.scroll);
+            let height = bottom - top;
+            let thumb = (height * height / (height + maximum)).max(20.0).min(height);
+            let y = top + (height - thumb) * (scroll / maximum).clamp(0.0, 1.0);
+            ui.rounded(w - 12.0, top, 4.0, height, 2.0, color::BORDER);
+            ui.rounded(w - 12.0, y, 4.0, thumb, 2.0, color::MUTED);
+        }
+        if let Some(action) = self.pending_focus.take() {
+            self.focus = self.targets.iter().position(|(_, a)| *a == action);
         }
         if let Some(index) = self.focus
             && let Some(([x, y, w, h], _)) = self.targets.get(index)
@@ -908,6 +997,10 @@ impl Launcher {
 
     pub(super) fn touch_event(&mut self, events: &ActiveEventLoop, t: Touch) -> Result<()> {
         self.focus = None;
+        self.pending_focus = None;
+        if let Some(window) = &self.window {
+            window.request_redraw();
+        }
         self.cursor = (t.location.x, t.location.y);
         match t.phase {
             TouchPhase::Started => {

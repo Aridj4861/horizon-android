@@ -178,6 +178,30 @@ impl Launcher {
     }
 }
 impl Chooser {
+    pub(super) fn navigation(&self, width: f32) -> Vec<([f32; 4], Action)> {
+        self.choices
+            .iter()
+            .enumerate()
+            .map(|(i, (_, _, action, _))| {
+                (
+                    [
+                        32.0,
+                        137.0 + i as f32 * 84.0 - self.scroll,
+                        width - 64.0,
+                        76.0,
+                    ],
+                    *action,
+                )
+            })
+            .collect()
+    }
+    pub(super) fn viewport(&self, height: f32) -> [f32; 3] {
+        [
+            137.0,
+            height - 100.0,
+            (self.choices.len() as f32 * 84.0 - (height - 237.0)).max(0.0),
+        ]
+    }
     pub fn draw(&mut self, ui: &mut Ui, targets: &mut Vec<([f32; 4], Action)>) {
         let (w, h) = (ui.w, ui.h);
         targets.clear();

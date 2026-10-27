@@ -1,4 +1,16 @@
 //! Track total drag distance separately from per-event scroll deltas.
+/// Scroll only enough to reveal the selected row, retaining the current offset.
+pub(super) fn reveal(scroll: f32, row: [f32; 4], view: [f32; 3]) -> f32 {
+    let [top, bottom, maximum] = view;
+    let adjustment = if row[1] < top {
+        row[1] - top
+    } else if row[1] + row[3] > bottom {
+        row[1] + row[3] - bottom
+    } else {
+        0.0
+    };
+    (scroll + adjustment).clamp(0.0, maximum.max(0.0))
+}
 pub(super) struct Drag {
     origin: [f64; 2],
     previous_y: f64,
@@ -34,6 +46,26 @@ impl Drag {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn focus_scroll_reveals_rows_in_both_directions_and_stops_at_bounds() {
+        assert_eq!(
+            reveal(0.0, [0.0, 350.0, 100.0, 60.0], [100.0, 400.0, 500.0]),
+            10.0
+        );
+        assert_eq!(
+            reveal(200.0, [0.0, 80.0, 100.0, 60.0], [100.0, 400.0, 500.0]),
+            180.0
+        );
+        assert_eq!(
+            reveal(20.0, [0.0, 150.0, 100.0, 60.0], [100.0, 400.0, 500.0]),
+            20.0
+        );
+        assert_eq!(
+            reveal(490.0, [0.0, 700.0, 100.0, 60.0], [100.0, 400.0, 500.0]),
+            500.0
+        );
+    }
 
     #[test]
     fn slow_vertical_drag_crosses_the_total_threshold() {

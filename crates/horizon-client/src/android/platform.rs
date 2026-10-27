@@ -175,6 +175,20 @@ pub fn set_orientation(orientation: crate::catalog::Orientation) {
         Ok(())
     });
 }
+
+pub fn cache_dir() -> Option<std::path::PathBuf> {
+    with_context(|env, activity| {
+        let file = env
+            .call_method(activity, "getCacheDir", "()Ljava/io/File;", &[])?
+            .l()?;
+        let path = jni::objects::JString::from(
+            env.call_method(&file, "getAbsolutePath", "()Ljava/lang/String;", &[])?
+                .l()?,
+        );
+        let text: String = env.get_string(&path)?.into();
+        Ok(std::path::PathBuf::from(text))
+    })
+}
 pub fn clipboard_set(text: &str) {
     let _ = clipboard_write(text, false);
 }
