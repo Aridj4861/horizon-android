@@ -74,6 +74,7 @@ def engine_data(public=False):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--abi', choices=TARGETS, default='arm64-v8a')
+    parser.add_argument('--host', choices=['both', 'game', 'native'], default='both', help='Development-only Activity host selection; public builds require both')
     parser.add_argument('--sdk', type=Path, default=os.environ.get('ANDROID_HOME') or Path(os.environ.get('LOCALAPPDATA', str(Path.home()))) / 'Android/Sdk')
     parser.add_argument('--java-home', type=Path, default=os.environ.get('JAVA_HOME') or 'C:/Program Files/Android/Android Studio/jbr')
     parser.add_argument('--skip-rust', action='store_true')
@@ -86,7 +87,11 @@ def main():
     parser.add_argument('--clippy', action='store_true', help='Run Android Clippy with warnings denied')
     parser.add_argument('--bootstrap', type=Path, help=argparse.SUPPRESS)  # Old scripts: no longer used.
     args = parser.parse_args()
+    if args.host != 'both' and not (args.rust_only or args.check or args.clippy):
+        parser.error('--host selection is only for --rust-only, --check or --clippy; APKs require both hosts')
     if args.public:
+        if args.host != 'both':
+            parser.error('--public requires both Activity hosts')
         args.release_candidate = True
         if args.skip_rust:
             parser.error('--public cannot reuse a native library from a different build mode')
@@ -105,6 +110,8 @@ def main():
     native_features = ['--no-default-features', '--features', 'audio,native-host'] if legacy else []
     manifests = [(['-p', 'horizon-android'], features),
                  (['--manifest-path', str(ROOT / 'packaging/android-native/Cargo.toml')], native_features)]
+    if args.host != 'both':
+        manifests = [manifests[0 if args.host == 'game' else 1]]
     environment = dict(os.environ)
     environment['PATH'] = os.pathsep.join([str(ndk / 'bin'), str(args.java_home / 'bin'), environment['PATH']])
     environment['JAVA_HOME'] = str(args.java_home)
