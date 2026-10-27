@@ -54,6 +54,26 @@ Compilation results and device gameplay results should be reported separately.
 Account integration remains a development configuration pending project-owned
 Microsoft/Mojang registration; do not describe it as an approved integration.
 
+## Versions and release branches
+
+`0.6.7` is the previous public Android release. Versions `0.6.8` through `0.6.10`
+were development builds committed to the source branch, without a corresponding
+public APK release. The next public version is `0.7.0`: the minor increment groups
+new platform support and input features. A Git push does not itself publish an APK.
+
+Use `0.7.0-dev.<build>` for intermediate development APKs and `0.7.0-rc.<build>`
+for explicitly prepared release candidates. Debug builds use a separate `.dev`
+application ID by default, keeping their data separate from the release app.
+Never replace an existing release asset with a different binary of the same name.
+
+Maintain changes as focused commits on working branches, integrate reviewed
+upstream history into `android`, and record changes relative to the last public
+release. Build and test the exact commit to be tagged. Only then create an Android
+release tag such as `android-v0.7.0` and attach the audited APKs and checksums.
+Increment `versionCode` for every public Android update and preserve its signing
+certificate. A source commit or development version is not a compatibility or
+performance guarantee; list the architectures and device checks actually completed.
+
 ## Source checks
 
 ```sh

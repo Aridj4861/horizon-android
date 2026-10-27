@@ -1,4 +1,4 @@
-# Android feature audit (0.6.10)
+# Android feature support (0.7.0 development)
 
 Support varies by device and build architecture. The table lists implemented
 integrations and remaining platform work; device-specific validation is described
@@ -7,7 +7,7 @@ in the [Android guide](android.md#check).
 | Horizon feature | Android integration / remaining work |
 |---|---|
 | Controller action mapping | Touch uses the same actions, default Java eight-direction or optional analog movement, and toggle sneak. Hardware controller enumeration/stick input still needs a native Android backend; do not infer it from desktop gilrs support |
-| Touch layouts | Four explicit schemes, normal Options > Controls settings, 16–64 px circle, optional 360-degree movement, sprint visibility, editable layouts, scale/opacity sliders, handedness and direct F3/F5 buttons; passive HUD safe-area margins are in Accessibility |
+| Touch layouts | Four explicit schemes, normal Options > Controls settings, 16–64 px circle, optional 360-degree movement, sprint visibility, editable layouts, custom key buttons, global size and per-button scale/opacity sliders, handedness and direct F3/F5 buttons; passive HUD safe-area margins are in Accessibility |
 | Contextual touch | Use action for held items/entities; movement actions serve flight/swimming. Not all Bedrock contextual icons/gestures are implemented |
 | Controller vibration settings | Phone `Vibrator` now wired to existing game events and the existing vibration switch; no adaptive triggers or external-pad vibration backend |
 | Physical keyboard / mouse | Separate stock NativeActivity host selected before Play; normal keyboard, modifiers, cursor/buttons/wheel and relative pointer-capture path in Rust. Physical gameplay and vendor firmware still need testing; its text fields require a hardware keyboard |
@@ -24,7 +24,7 @@ in the [Android guide](android.md#check).
 | Play with Friends | Shared core exists, but relay/account/clipboard/background behavior needs an Android end-to-end pass before advertising parity |
 | Saves and backups | Engine save logic works; Android Storage Access Framework import/export and share UI remain to implement. Uninstalling the app deletes internal data |
 | Lifecycle | Touch/key cancellation, vibration stop and surface release/recreation. Leaving the game returns to the native launcher; background process termination still needs broader save/recovery testing |
-| Android file access | Downloads use internal app storage; no broad storage permission. System document picker and URI-permission handling remain absent |
+| Android file access | Downloads use internal app storage. F2 gallery export uses MediaStore; Android 8.1�9 requests storage access for that explicit action. General document import/export remains absent |
 | Physical device tuning | Thermal/frame-pacing and GPU-driver comparisons need measurements on the target phone; an emulator is not evidence of phone performance |
 | Desktop updates / telemetry services | Desktop deployment/auto-update infrastructure is not an Android updater; fork exports keep original workflows inactive |
 

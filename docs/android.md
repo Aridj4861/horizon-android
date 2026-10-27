@@ -32,13 +32,14 @@ compatibility. Low-memory devices such as the Fujitsu F-03L still need testing.
 
 ## Launcher
 
-- **Play:** install resources, select an input mode, launch a world or server.
+- **Play:** install resources and launch a world or server.
 - **Mods:** import native Horizon packages using a direct HTTPS `.hmod` URL
   on 64-bit builds. New packages are disabled until enabled in Installed.
 - **Packs:** find and install resource packs with checksum verification.
 - **Installed:** enable, disable or remove installed additions.
-- **Settings:** rendering mode, profile, player name, server, orientation and
-  optional physical-keypad controls. Profiles keep separate saves and settings.
+- **Settings:** rendering mode, input host, profile, server and orientation.
+  Profiles keep separate saves and settings. Offline player names are edited
+  alongside Microsoft sign-in in **Accounts**.
 
 Java mod search and modpack import are not available on Android. Fabric, Forge,
 NeoForge and Mixin code require native ports; installing their JARs does not make
@@ -84,15 +85,21 @@ stays visible while pressed. Default joystick movement follows eight Java input
 directions; optional 360-degree movement is available in Touch Controls.
 
 Open **Options > Controls > Touch Controls** to select a scheme, adjust
-sensitivity, circle size, F3 text scale, handedness and Sprint-button visibility.
+sensitivity, global button size, circle size, F3 text scale, handedness and
+Sprint-button visibility. Global button size affects both drawing and hit areas;
+individual saved sizes remain editable.
 **Auto Sprint** is beside **Auto-Jump** in Controls. Hiding Sprint leaves normal
 double-forward sprinting available. The attack indicator uses actual weapon
 recovery and can sit left or right of the hotbar.
 
 **Customize layout** edits button position, size and opacity for each scheme.
-**Add buttons...** restores any of the twelve supported controls; **Remove button**
-hides the selection. Done saves; Cancel/Android Back restores the previous layout.
-Arbitrary key macros and duplicate controls are not implemented.
+**Add buttons...** restores built-in controls or adds a **custom key**. Select its
+Action to choose a keyboard key, or press a physical key while the picker is open.
+For example, a Z button holds Z until its finger is released, using the same
+key bindings as a keyboard. Position, size and opacity are editable per scheme.
+Up to 32 custom buttons are supported, including duplicate keys. Removing a
+custom button deletes that binding; removing a built-in hides it. Done saves;
+Cancel/Android Back restores the previous layout. Multi-key macros are not implemented.
 
 The top row includes F3, chat, pause, Options and F5 perspective. The auxiliary
 `...` drawer retains F1â€“F12 and other Java keys. Multiple fingers or **Hold F3**
@@ -110,7 +117,7 @@ rotation. Orientation and HUD margins are independent.
 
 ### Keyboard and mouse
 
-On the Play page, **Automatic** selects the mouse host when Android reports both
+In launcher Settings, **Automatic** selects the mouse host when Android reports both
 a QWERTY keyboard and a mouse. **Keyboard & mouse** selects it explicitly; choose
 **Touch & Android keyboard** to restore the software keyboard. The selection is
 applied when Play is pressed, before opening a world or starting account refresh.
@@ -129,21 +136,34 @@ an onscreen keyboard is needed.
 
 ### Physical keypad and Android TV
 
-**Physical keypad** in launcher settings enables this optional preset:
+Open **Options > Controls > Key Binds** and change **Input profile** from
+Keyboard to **D-pad / keypad**. The profile is optional and off by default;
+its rows support rebinding and Reset just like keyboard bindings. It is saved
+per game profile in `horizon-keypad.json`. Existing launcher presets migrate once.
 
-| Key | Action |
+| Default key | Action |
 | --- | --- |
-| D-pad arrows | Walk |
-| 2 / 8 / 4 / 6 | Look up / down / left / right |
-| 1 / 3 | Attack / use |
-| 5, Enter or D-pad centre | Jump |
-| 0 | Sneak |
-| 7 | Inventory |
-| 9 | Next hotbar slot |
+| D-pad arrows / numpad 8, 2, 4, 6 | Walk |
+| Numpad 7, 9, 1, 3 | Diagonal movement |
+| Number row 2 / 8 / 4 / 6 | Look up / down / left / right |
+| Number row 1 / 3 | Attack / use |
+| 5, numpad 5, Enter or D-pad centre | Jump |
+| 0 / numpad 0 | Sneak |
+| Number row 7 | Inventory |
+| Number row 9 | Next hotbar slot |
 
-The preset is off by default. Normal keyboards retain standard Minecraft
-bindings. Menus use arrows and Enter. Android TV has a Leanback launcher entry;
-TV support is experimental and analog gamepad axes are not connected yet.
+All eighteen actions are editable. Opposing directions cancel and diagonals
+are normalized to normal movement speed. Number-row keys and numpad keys can
+have different actions. Menus retain arrows and Enter. Android TV has a Leanback
+launcher entry; TV support is experimental and analog gamepad axes are not connected yet.
+
+### Screenshots
+
+F2 keeps the original PNG in the profile and publishes a copy to
+**Pictures/HorizonAndroid** through Android MediaStore. Android 10+ needs no
+storage permission. Android 8.1–9 asks for storage permission when first saving;
+if access is denied, the profile copy remains available. Gallery publication runs
+outside the render thread and reports success or failure in game chat.
 
 ## Rendering, sound and vibration
 
