@@ -7,10 +7,10 @@
   "compared_source_files": 3147,
   "modified_existing_files": 41,
   "branch": "android",
-  "merged_upstream_commit": "fde2dfffefe4bb557f24eb886a4ee9867e2e56cd",
-  "merged_upstream_commits": 1474,
+  "merged_upstream_commit": "94290b01eed2ce52bde7e5177b5d914299dd227a",
+  "merged_upstream_commits": 2084,
   "last_reviewed_date": "2026-10-27",
-  "last_update_commits": 38,
-  "latest_fetched_commit": "fde2dfffefe4bb557f24eb886a4ee9867e2e56cd",
-  "deferred_review": "All fetched upstream/main history through fde2dfff integrated, including the client-core/command crate split. Experimental branches were not merged."
+  "last_update_commits": 610,
+  "latest_fetched_commit": "94290b01eed2ce52bde7e5177b5d914299dd227a",
+  "deferred_review": "All fetched upstream/main history through 94290b01 integrated. Android input, HUD margins, GLES compatibility and inactive upstream workflows retained. Both ARM64 Activity hosts pass cargo check after shared skin/account integration; final APK checks remain pending."
 }

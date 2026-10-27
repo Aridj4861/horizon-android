@@ -25,6 +25,9 @@ mod platform;
 mod proxy;
 #[path = "android/secure_store.rs"]
 mod secure_store;
+#[allow(dead_code)]
+#[path = "../../../launcher/src/skins.rs"]
+mod skins;
 // The shared account protocol needs only the launcher's version and data path.
 mod backend {
     pub const VERSION: &str = if crate::PUBLIC_BUILD {
