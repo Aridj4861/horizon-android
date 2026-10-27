@@ -83,6 +83,17 @@ pub fn set_native_text_input_active(active: bool) {
     crate::platform_impl::set_native_text_input_active(active);
 }
 
+/// Map absolute view coordinates into a fixed-size NativeActivity surface.
+/// Relative mouse motion remains unscaled.
+pub fn set_native_input_scale(scale: [f64; 2]) {
+    crate::platform_impl::set_native_input_scale(scale);
+}
+
+/// Current absolute-coordinate scale for platform viewport calculations.
+pub fn native_input_scale() -> [f64; 2] {
+    crate::platform_impl::native_input_scale()
+}
+
 /// Additional methods on [`EventLoop`] that are specific to Android.
 pub trait EventLoopExtAndroid {
     /// Get the [`AndroidApp`] which was used to create this event loop.
@@ -103,12 +114,25 @@ pub trait ActiveEventLoopExtAndroid {
 
 /// Additional methods on [`Window`] that are specific to Android.
 pub trait WindowExtAndroid {
+    /// Set logical render dimensions without changing the native presentation surface.
+    fn set_render_size(
+        &self,
+        size: crate::dpi::PhysicalSize<u32>,
+    ) -> std::io::Result<crate::dpi::PhysicalSize<u32>>;
+
     fn content_rect(&self) -> Rect;
 
     fn config(&self) -> ConfigurationRef;
 }
 
 impl WindowExtAndroid for Window {
+    fn set_render_size(
+        &self,
+        size: crate::dpi::PhysicalSize<u32>,
+    ) -> std::io::Result<crate::dpi::PhysicalSize<u32>> {
+        self.window.set_render_size(size)
+    }
+
     fn content_rect(&self) -> Rect {
         self.window.content_rect()
     }

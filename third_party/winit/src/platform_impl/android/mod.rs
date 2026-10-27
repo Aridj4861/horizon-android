@@ -2,8 +2,8 @@ use std::cell::Cell;
 use std::collections::VecDeque;
 use std::hash::Hash;
 use std::marker::PhantomData;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex, mpsc};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::{mpsc, Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use android_activity::input::{
@@ -34,6 +34,41 @@ static NATIVE_TEXT_INPUT_ACTIVE: AtomicBool = AtomicBool::new(false);
 
 pub(crate) fn set_native_text_input_active(active: bool) {
     NATIVE_TEXT_INPUT_ACTIVE.store(active, Ordering::Release);
+}
+
+static NATIVE_INPUT_X: AtomicU64 = AtomicU64::new(1.0f64.to_bits());
+static NATIVE_INPUT_Y: AtomicU64 = AtomicU64::new(1.0f64.to_bits());
+
+pub(crate) fn set_native_input_scale(scale: [f64; 2]) {
+    let safe = |value: f64| {
+        if value.is_finite() && value > 0.0 {
+            value
+        } else {
+            1.0
+        }
+    };
+    NATIVE_INPUT_X.store(safe(scale[0]).to_bits(), Ordering::Relaxed);
+    NATIVE_INPUT_Y.store(safe(scale[1]).to_bits(), Ordering::Relaxed);
+}
+
+pub(crate) fn native_input_scale() -> [f64; 2] {
+    [
+        f64::from_bits(NATIVE_INPUT_X.load(Ordering::Relaxed)),
+        f64::from_bits(NATIVE_INPUT_Y.load(Ordering::Relaxed)),
+    ]
+}
+
+fn native_render_size(physical: PhysicalSize<u32>) -> PhysicalSize<u32> {
+    let [sx, sy] = native_input_scale();
+    PhysicalSize::new(
+        (physical.width as f64 * sx).round() as u32,
+        (physical.height as f64 * sy).round() as u32,
+    )
+}
+
+fn native_pointer_position(x: f64, y: f64) -> PhysicalPosition<f64> {
+    let [sx, sy] = native_input_scale();
+    PhysicalPosition::new(x * sx, y * sy)
 }
 
 fn modifiers(meta: MetaState) -> crate::keyboard::ModifiersState {
@@ -384,7 +419,7 @@ impl<T: 'static> EventLoop<T> {
                 };
                 let event = event::Event::WindowEvent {
                     window_id: window::WindowId(WindowId),
-                    event: event::WindowEvent::Resized(size),
+                    event: event::WindowEvent::Resized(native_render_size(size)),
                 };
                 callback(event, self.window_target());
             }
@@ -467,7 +502,7 @@ impl<T: 'static> EventLoop<T> {
                             M::Leave => event::WindowEvent::CursorLeft { device_id },
                             M::Position(x, y) => event::WindowEvent::CursorMoved {
                                 device_id,
-                                position: PhysicalPosition::new(x, y),
+                                position: native_pointer_position(x, y),
                             },
                             M::Wheel(x, y) => event::WindowEvent::MouseWheel {
                                 device_id,
@@ -528,10 +563,8 @@ impl<T: 'static> EventLoop<T> {
                         };
 
                     for pointer in pointers {
-                        let location = PhysicalPosition {
-                            x: pointer.x() as _,
-                            y: pointer.y() as _,
-                        };
+                        let location =
+                            native_pointer_position(pointer.x() as f64, pointer.y() as f64);
                         trace!(
                             "Input event {device_id:?}, {phase:?}, loc={location:?}, \
                              pointer={pointer:?}"
@@ -1005,7 +1038,26 @@ impl Window {
     }
 
     pub fn inner_size(&self) -> PhysicalSize<u32> {
-        self.outer_size()
+        native_render_size(self.outer_size())
+    }
+
+    pub fn set_render_size(&self, size: PhysicalSize<u32>) -> std::io::Result<PhysicalSize<u32>> {
+        let physical = self.outer_size();
+        if physical.width == 0 || physical.height == 0 {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::WouldBlock,
+                "Native window unavailable",
+            ));
+        }
+        if size.width == 0 || size.height == 0 {
+            set_native_input_scale([1.0, 1.0]);
+        } else {
+            set_native_input_scale([
+                size.width as f64 / physical.width as f64,
+                size.height as f64 / physical.height as f64,
+            ]);
+        }
+        Ok(self.inner_size())
     }
 
     pub fn request_inner_size(&self, _size: Size) -> Option<PhysicalSize<u32>> {

@@ -48,6 +48,7 @@ struct Ui {
     bounds_pending: AtomicBool,
     bottom: AtomicI32,
     failed: AtomicBool,
+    keyboard_request: Mutex<Option<std::time::Instant>>,
 }
 static UI: OnceLock<Arc<Ui>> = OnceLock::new();
 
@@ -152,6 +153,7 @@ pub unsafe fn initialize(
         bounds_pending: AtomicBool::new(false),
         bottom: AtomicI32::new(0),
         failed: AtomicBool::new(false),
+        keyboard_request: Mutex::new(None),
     });
     let looper = unsafe { ALooper_forThread() };
     if looper.is_null() {
@@ -185,6 +187,51 @@ impl Ui {
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .write(&[1]);
     }
+    fn try_show_keyboard(&self, env: &mut JNIEnv<'_>) -> jni::errors::Result<()> {
+        let mut request = self
+            .keyboard_request
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let Some(started) = *request else {
+            return Ok(());
+        };
+        if !self.active.load(Ordering::Acquire) {
+            *request = None;
+            return Ok(());
+        }
+        let focused = env.call_method(&self.edit, "hasFocus", "()Z", &[])?.z()?;
+        let window_focused = env
+            .call_method(&self.edit, "hasWindowFocus", "()Z", &[])?
+            .z()?;
+        let served = focused
+            && window_focused
+            && env
+                .call_method(
+                    &self.input,
+                    "isActive",
+                    "(Landroid/view/View;)Z",
+                    &[JValue::Object(self.edit.as_obj())],
+                )?
+                .z()?;
+        if served
+            && env
+                .call_method(
+                    &self.input,
+                    "showSoftInput",
+                    "(Landroid/view/View;I)Z",
+                    &[JValue::Object(self.edit.as_obj()), JValue::Int(0)],
+                )?
+                .z()?
+        {
+            *request = None;
+        } else if started.elapsed() > std::time::Duration::from_secs(2) {
+            log::warn!(
+                "Android keyboard was not served (view focus={focused}, window focus={window_focused}, served={served})"
+            );
+            *request = None;
+        }
+        Ok(())
+    }
     fn apply(&self, env: &mut JNIEnv<'_>, c: Command) -> jni::errors::Result<()> {
         match c {
             Command::Show(text) => {
@@ -201,26 +248,40 @@ impl Ui {
                     "(I)V",
                     &[JValue::Int(text.encode_utf16().count() as i32)],
                 )?;
-                env.call_method(&self.edit, "setFocusable", "(Z)V", &[JValue::Bool(1)])?;
+                // Re-enable touch focus on every edit. NativeActivity owns focus
+                // between editors, and some Android versions do not serve a view
+                // until the next UI-loop turn after requestFocus.
+                env.call_method(&self.native, "clearFocus", "()V", &[])?;
+                env.call_method(
+                    &self.edit,
+                    "setFocusableInTouchMode",
+                    "(Z)V",
+                    &[JValue::Bool(1)],
+                )?;
                 env.call_method(&self.edit, "requestFocus", "()Z", &[])?;
-                let shown = env
-                    .call_method(
-                        &self.input,
-                        "showSoftInput",
-                        "(Landroid/view/View;I)Z",
-                        &[JValue::Object(self.edit.as_obj()), JValue::Int(0)],
-                    )?
-                    .z()?;
+                env.call_method(
+                    &self.input,
+                    "restartInput",
+                    "(Landroid/view/View;)V",
+                    &[JValue::Object(self.edit.as_obj())],
+                )?;
+                *self
+                    .keyboard_request
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner) =
+                    Some(std::time::Instant::now());
+                self.try_show_keyboard(env)?;
                 *self
                     .text
                     .lock()
                     .unwrap_or_else(std::sync::PoisonError::into_inner) = text;
                 self.ready.store(true, Ordering::Release);
-                if !shown {
-                    log::debug!("Android has deferred the system keyboard request");
-                }
             }
             Command::Hide => {
+                *self
+                    .keyboard_request
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner) = None;
                 let token = env
                     .call_method(&self.edit, "getWindowToken", "()Landroid/os/IBinder;", &[])?
                     .l()?;
@@ -236,6 +297,7 @@ impl Ui {
             }
             Command::Poll => {
                 self.polling.store(false, Ordering::Release);
+                self.try_show_keyboard(env)?;
                 let editable = env
                     .call_method(&self.edit, "getText", "()Landroid/text/Editable;", &[])?
                     .l()?;
@@ -378,5 +440,6 @@ pub fn viewport_bottom() -> Option<u32> {
         ui.enqueue(Command::Bounds);
     }
     let bottom = ui.bottom.load(Ordering::Acquire);
-    (bottom > 0).then_some(bottom as u32)
+    (bottom > 0)
+        .then(|| (bottom as f64 * winit::platform::android::native_input_scale()[1]).round() as u32)
 }
