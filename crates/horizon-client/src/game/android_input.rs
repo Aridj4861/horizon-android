@@ -8,6 +8,54 @@ use horizon_client::{
 use winit::event::{Touch, TouchPhase};
 
 impl Game<'_> {
+    pub(super) fn android_custom_events(&mut self) {
+        for (name, down) in self.pad.touch.key_events() {
+            let Some(key) = horizon_client::keybinds::key_code(&name) else {
+                continue;
+            };
+            if down {
+                self.pad.custom_keys.insert(key);
+            } else {
+                self.pad.custom_keys.remove(&key);
+            }
+            if self.pad.hardware_keys.contains(&key) {
+                continue;
+            }
+            if (!self.pad_in_menu() || !down)
+                && horizon_client::android_runtime::keypad_key(key, down)
+            {
+                continue;
+            }
+            if down {
+                self.physical_keys.insert(key);
+            } else {
+                self.physical_keys.remove(&key);
+            }
+            self.mod_key(key, down, false);
+            let action = if down {
+                KeyAction::Press
+            } else {
+                KeyAction::Release
+            };
+            if self.debug_key(key, action) {
+                continue;
+            }
+            for mapped in self.settings.keys.translate_all(key) {
+                let result = match mapped {
+                    Ok(code) => self.mapped_key(code, down, false),
+                    Err(button) => self.play_mouse(button, down),
+                };
+                if let Err(error) = result {
+                    log::warn!("Custom touch key: {error}");
+                }
+            }
+            if down && matches!(key, KeyCode::KeyT | KeyCode::Slash) && self.screen == Screen::Chat
+            {
+                self.android_show_keyboard();
+            }
+        }
+    }
+
     pub(super) fn android_aux_touch(
         &mut self,
         t: &Touch,
@@ -133,6 +181,7 @@ impl Game<'_> {
         crate::platform::show(&initial);
     }
     pub(super) fn android_poll_keyboard(&mut self) {
+        self.android_custom_events();
         for result in crate::gallery::poll() {
             self.system_message(horizon_client::text::Text::literal(
                 result.unwrap_or_else(|e| format!("Screenshot export failed: {e}")),
@@ -152,12 +201,16 @@ impl Game<'_> {
         }
     }
     fn android_key_up(&mut self, key: KeyCode) {
+        if self.pad.custom_keys.contains(&key) {
+            return;
+        }
         self.physical_keys.remove(&key);
         self.keys.remove(&key);
         self.debug_key(key, KeyAction::Release);
     }
     pub(super) fn android_release_touch_keys(&mut self, cancelled: bool) {
         if cancelled {
+            self.pad.hardware_keys.clear();
             crate::platform::cancel_vibration();
             self.pad.touch.clear();
             self.pad.touch_aim = None;
@@ -166,6 +219,7 @@ impl Game<'_> {
                 self.pause = false;
             }
         }
+        self.android_custom_events();
         for key in self.pad.touch_ui.release_keys() {
             if cancelled && key == KeyCode::F3 {
                 self.physical_keys.remove(&key);

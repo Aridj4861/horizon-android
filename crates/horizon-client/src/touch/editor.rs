@@ -8,6 +8,9 @@ pub struct Editor {
     drag: Option<(u64, Drag)>,
     error: Option<String>,
     palette: bool,
+    selected_custom: Option<usize>,
+    key_picker: bool,
+    key_page: usize,
 }
 
 enum Drag {
@@ -26,6 +29,9 @@ impl TouchControls {
             drag: None,
             error: None,
             palette: false,
+            selected_custom: None,
+            key_picker: false,
+            key_page: 0,
         });
     }
     pub fn cancel_editor(&mut self) {
@@ -41,6 +47,10 @@ impl TouchControls {
             return false;
         };
         self.clicked |= started;
+        if self.edit_custom(&mut e, id, p, started, ended) {
+            self.editor = Some(e);
+            return false;
+        }
         if started {
             if layout::contains([0.02, 0.04, 0.105, 0.075], p) {
                 match self.settings.save() {
@@ -58,9 +68,16 @@ impl TouchControls {
                 self.settings.layouts[self.settings.mode.index()] =
                     Settings::default().layouts[self.settings.mode.index()];
                 self.settings.button_visibility = [0; 12];
+                for (i, button) in self.settings.custom_buttons.iter_mut().enumerate() {
+                    button.layouts[self.settings.mode.index()] =
+                        CustomButton::new(button.key.clone(), i).layouts
+                            [self.settings.mode.index()];
+                }
             } else if layout::contains([0.37, 0.04, 0.19, 0.075], p) {
                 e.palette = !e.palette;
                 e.selected = None;
+                e.selected_custom = None;
+                e.key_picker = false;
                 e.drag = None;
             } else if e.palette {
                 for (index, control) in Control::ALL.into_iter().enumerate() {
@@ -115,7 +132,9 @@ impl TouchControls {
                     // Match the displayed size on narrow portrait surfaces.
                     // A stored button may be wider than the screen; its raw
                     // size would otherwise produce inverted clamp bounds.
-                    let size = place.size.min(aspect).min(1.0);
+                    let size = (place.size * self.settings.button_scale)
+                        .min(aspect)
+                        .min(1.0);
                     place.center = [
                         center[0].clamp(size / aspect / 2.0, 1.0 - size / aspect / 2.0),
                         center[1].clamp(size / 2.0, 1.0 - size / 2.0),
@@ -244,6 +263,7 @@ impl TouchControls {
                 );
             }
         }
+        self.draw_custom_editor(b, a, e);
         if e.error.is_some() {
             b.text(
                 a,
@@ -309,4 +329,270 @@ fn plate(b: &mut HudBatch, a: &HudAtlas, [x, y, w, h]: [f32; 4], label: &str, on
             false,
         );
     }
+}
+
+impl TouchControls {
+    fn edit_custom(
+        &mut self,
+        e: &mut Editor,
+        id: u64,
+        p: [f32; 2],
+        started: bool,
+        ended: bool,
+    ) -> bool {
+        if p[1] < 0.13 && started {
+            return false;
+        }
+        if e.key_picker {
+            if started {
+                if layout::contains([0.2, 0.84, 0.18, 0.07], p) {
+                    e.key_page = e.key_page.saturating_sub(1);
+                } else if layout::contains([0.41, 0.84, 0.18, 0.07], p) {
+                    e.key_picker = false;
+                } else if layout::contains([0.62, 0.84, 0.18, 0.07], p) {
+                    e.key_page =
+                        (e.key_page + 1).min((crate::keybinds::available_keys().len() - 1) / 24);
+                } else {
+                    for (i, (name, _)) in crate::keybinds::available_keys()
+                        .iter()
+                        .skip(e.key_page * 24)
+                        .take(24)
+                        .enumerate()
+                    {
+                        if layout::contains(key_rect(i), p)
+                            && let Some(index) = e.selected_custom
+                        {
+                            self.settings.custom_buttons[index].key = (*name).into();
+                            e.key_picker = false;
+                            break;
+                        }
+                    }
+                }
+            }
+            return true;
+        }
+        if e.palette && started && layout::contains([0.22, 0.84, 0.56, 0.07], p) {
+            if self.settings.custom_buttons.len() < 32 {
+                let index = self.settings.custom_buttons.len();
+                self.settings
+                    .custom_buttons
+                    .push(CustomButton::new("key.keyboard.z".into(), index));
+                e.selected = None;
+                e.selected_custom = Some(index);
+                e.palette = false;
+                e.option = None;
+                e.drag = None;
+            }
+            return true;
+        }
+        if e.palette {
+            return false;
+        }
+        if started && e.selected_custom.is_some() {
+            if layout::contains([0.32, 0.54, 0.36, 0.07], p) {
+                e.key_picker = true;
+                e.key_page = 0;
+                e.drag = None;
+                return true;
+            }
+            if layout::contains([0.32, 0.88, 0.36, 0.07], p) {
+                self.settings
+                    .custom_buttons
+                    .remove(e.selected_custom.unwrap());
+                e.selected_custom = None;
+                e.drag = None;
+                return true;
+            }
+            if layout::contains([0.32, 0.79, 0.17, 0.07], p) {
+                e.option = Some(1);
+                return true;
+            }
+            if layout::contains([0.51, 0.79, 0.17, 0.07], p) {
+                e.option = Some(0);
+                return true;
+            }
+            if layout::contains([0.32, 0.68, 0.36, 0.07], p)
+                && let Some(option) = e.option
+            {
+                e.drag = Some((id, Drag::Slider(option)));
+            } else {
+                e.selected_custom = None;
+                e.drag = None;
+            }
+        }
+        if started
+            && e.drag.is_none()
+            && let Some(index) = self.custom_at(p)
+        {
+            let center = self.custom_placement(index).center;
+            e.selected = None;
+            e.selected_custom = Some(index);
+            e.option = None;
+            e.apply_all = false;
+            e.drag = Some((id, Drag::Control([p[0] - center[0], p[1] - center[1]])));
+        }
+        let Some(index) = e.selected_custom else {
+            return false;
+        };
+        if let Some((owner, drag)) = &e.drag
+            && *owner == id
+        {
+            let aspect = self.aspect();
+            let scale = self.settings.button_scale;
+            let mirror = self.settings.left_handed;
+            let place =
+                &mut self.settings.custom_buttons[index].layouts[self.settings.mode.index()];
+            match drag {
+                Drag::Control(offset) => {
+                    let mut center = [p[0] - offset[0], p[1] - offset[1]];
+                    if mirror {
+                        center[0] = 1.0 - center[0];
+                    }
+                    let size = (place.size * scale).min(aspect).min(1.0);
+                    place.center = [
+                        center[0].clamp(size / aspect / 2.0, 1.0 - size / aspect / 2.0),
+                        center[1].clamp(size / 2.0, 1.0 - size / 2.0),
+                    ];
+                }
+                Drag::Slider(option) => {
+                    let value = ((p[0] - 0.335) / 0.33).clamp(0.0, 1.0);
+                    if *option == 0 {
+                        place.size = 0.045 + value * 0.405;
+                    } else {
+                        place.opacity = value;
+                    }
+                }
+            }
+            if ended {
+                e.drag = None;
+            }
+        }
+        true
+    }
+    pub fn capture_custom_key(&mut self, name: &str) -> bool {
+        if crate::keybinds::key_code(name).is_none() {
+            return false;
+        }
+        if let Some(e) = &mut self.editor
+            && e.key_picker
+            && let Some(i) = e.selected_custom
+        {
+            self.settings.custom_buttons[i].key = name.into();
+            e.key_picker = false;
+            true
+        } else {
+            false
+        }
+    }
+    fn draw_custom_editor(&self, b: &mut HudBatch, a: &HudAtlas, e: &Editor) {
+        let (w, h) = (b.width, b.height);
+        if e.palette {
+            plate(b, a, [0.22, 0.84, 0.56, 0.07], "Add custom key...", false);
+        }
+        if let Some(i) = e.selected_custom
+            && !e.palette
+            && !e.key_picker
+        {
+            let p = self.settings.custom_buttons[i].layouts[self.settings.mode.index()];
+            plate(
+                b,
+                a,
+                [0.32, 0.54, 0.36, 0.07],
+                &format!("Action: {}", self.settings.custom_buttons[i].label()),
+                false,
+            );
+            plate(
+                b,
+                a,
+                [0.32, 0.79, 0.17, 0.07],
+                "Opacity",
+                e.option == Some(1),
+            );
+            plate(b, a, [0.51, 0.79, 0.17, 0.07], "Size", e.option == Some(0));
+            plate(b, a, [0.32, 0.88, 0.36, 0.07], "Remove button", false);
+            if let Some(option) = e.option {
+                let value = if option == 0 {
+                    (p.size - 0.045) / 0.405
+                } else {
+                    p.opacity
+                };
+                b.fill(
+                    a,
+                    w * 0.3,
+                    h * 0.66,
+                    w * 0.4,
+                    h * 0.11,
+                    rgba(15, 15, 15, 235),
+                );
+                let percent = if option == 0 {
+                    p.size * 100.0
+                } else {
+                    p.opacity * 100.0
+                };
+                b.text(
+                    a,
+                    &format!(
+                        "{} {:.0}%",
+                        if option == 0 { "Size" } else { "Opacity" },
+                        percent
+                    ),
+                    w * 0.325,
+                    h * 0.68,
+                    rgba(245, 245, 245, 255),
+                    true,
+                );
+                nine(
+                    b,
+                    a,
+                    "ui/slider_background",
+                    1.0,
+                    [w * 0.335, h * 0.72, w * 0.33, h * 0.025],
+                    rgba(255, 255, 255, 255),
+                );
+                nine(
+                    b,
+                    a,
+                    "ui/slider_button_default",
+                    2.0,
+                    [w * (0.335 + value * 0.33) - 3.0, h * 0.707, 6.0, h * 0.05],
+                    rgba(255, 255, 255, 255),
+                );
+            }
+        }
+        if e.key_picker {
+            b.fill(
+                a,
+                w * 0.12,
+                h * 0.14,
+                w * 0.76,
+                h * 0.81,
+                rgba(15, 15, 15, 250),
+            );
+            for (i, (name, _)) in crate::keybinds::available_keys()
+                .iter()
+                .skip(e.key_page * 24)
+                .take(24)
+                .enumerate()
+            {
+                plate(
+                    b,
+                    a,
+                    key_rect(i),
+                    &crate::keybinds::display_name(name).plain(),
+                    false,
+                );
+            }
+            plate(b, a, [0.2, 0.84, 0.18, 0.07], "Previous", false);
+            plate(b, a, [0.41, 0.84, 0.18, 0.07], "Back", false);
+            plate(b, a, [0.62, 0.84, 0.18, 0.07], "Next", false);
+        }
+    }
+}
+fn key_rect(i: usize) -> [f32; 4] {
+    [
+        0.15 + (i % 4) as f32 * 0.175,
+        0.18 + (i / 4) as f32 * 0.105,
+        0.16,
+        0.085,
+    ]
 }

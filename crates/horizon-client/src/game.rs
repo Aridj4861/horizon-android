@@ -1867,7 +1867,7 @@ impl Game<'_> {
     fn interaction_crosshair(&self) -> bool {
         #[cfg(target_os = "android")]
         {
-            self.pad.touch.settings.crosshair()
+            crate::NATIVE_HOST || self.pad.touch.settings.crosshair()
         }
         #[cfg(not(target_os = "android"))]
         {
@@ -9970,6 +9970,8 @@ impl Game<'_> {
         #[cfg(target_os = "android")]
         {
             self.pad.touch.settings = self.settings.touch.clone();
+            self.pad.touch.force_crosshair = crate::NATIVE_HOST;
+            horizon_client::android_runtime::configure_keypad_settings(&self.settings.keypad);
         }
         // LocalPlayer.refreshChatAbilities: the chat shows what the Chat option allows.
         let abilities = self.chat_abilities();
@@ -11791,6 +11793,38 @@ impl ApplicationHandler for Game<'_> {
             return;
         }
         #[cfg(target_os = "android")]
+        let mut event = event;
+        #[cfg(target_os = "android")]
+        if let WindowEvent::KeyboardInput { event, .. } = &mut event
+            && !matches!(event.physical_key, PhysicalKey::Code(_))
+            && let Some(code) =
+                horizon_client::keypad::resolve_key(event.physical_key, &event.logical_key)
+        {
+            event.physical_key = PhysicalKey::Code(code);
+        }
+        #[cfg(target_os = "android")]
+        if let WindowEvent::KeyboardInput { event, .. } = &event
+            && event.state == ElementState::Pressed
+            && let PhysicalKey::Code(key) = event.physical_key
+            && let Some(name) = horizon_client::keybinds::key_name(key)
+            && self.pad.touch.capture_custom_key(name)
+        {
+            return;
+        }
+        #[cfg(target_os = "android")]
+        if let WindowEvent::KeyboardInput { event, .. } = &event
+            && let PhysicalKey::Code(key) = event.physical_key
+        {
+            if event.state == ElementState::Pressed {
+                self.pad.hardware_keys.insert(key);
+            } else {
+                self.pad.hardware_keys.remove(&key);
+            }
+            if self.pad.custom_keys.contains(&key) {
+                return;
+            }
+        }
+        #[cfg(target_os = "android")]
         match &event {
             WindowEvent::Touch(_) => crate::touch_input(true),
             WindowEvent::MouseInput { .. }
@@ -11892,6 +11926,14 @@ impl ApplicationHandler for Game<'_> {
                     ];
                     if let Some(slot) =
                         horizon_client::touch::hotbar_slot(batch.width, batch.height, point)
+                        && self
+                            .pad
+                            .touch
+                            .custom_at([
+                                touch.location.x as f32 / size.width.max(1) as f32,
+                                touch.location.y as f32 / size.height.max(1) as f32,
+                            ])
+                            .is_none()
                     {
                         self.selected = slot;
                         self.pad.touch.ignore(touch.id);
@@ -11908,6 +11950,7 @@ impl ApplicationHandler for Game<'_> {
                     touch.phase == TouchPhase::Started,
                     matches!(touch.phase, TouchPhase::Ended | TouchPhase::Cancelled),
                 );
+                self.android_custom_events();
                 let sensitivity = self.pad.touch.settings.sensitivity;
                 self.yaw += delta[0] * 180.0 * sensitivity;
                 self.pitch = (self.pitch + delta[1] * 180.0 * sensitivity).clamp(-90.0, 90.0);
@@ -12832,6 +12875,8 @@ impl ApplicationHandler for Game<'_> {
             && let DeviceEvent::MouseMotion { delta: (x, y) } = event
         {
             // MouseHandler.onMove with the pointer grabbed; applied once per frame.
+            #[cfg(target_os = "android")]
+            crate::touch_input(false);
             self.mouse.on_move(0.0, 0.0, x, y, true, true);
             self.last_input = Instant::now();
         }

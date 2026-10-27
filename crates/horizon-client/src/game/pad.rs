@@ -26,6 +26,10 @@ pub(super) const HELP: &[&str] = &[
 #[derive(Default)]
 pub(super) struct Pads {
     #[cfg(target_os = "android")]
+    pub(super) custom_keys: std::collections::HashSet<KeyCode>,
+    #[cfg(target_os = "android")]
+    pub(super) hardware_keys: std::collections::HashSet<KeyCode>,
+    #[cfg(target_os = "android")]
     pub(super) touch: horizon_client::touch::TouchControls,
     /// Keep a released tap's ray until the tick consumed its queued click.
     #[cfg(target_os = "android")]
