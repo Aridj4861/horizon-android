@@ -52,3 +52,6 @@
 
 /horizon-keypad.json
 /horizon-keypad.json.tmp
+
+# Local artwork workspace and original reference images.
+/art/

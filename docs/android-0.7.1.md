@@ -12,9 +12,8 @@ Changes relative to the published Android 0.7.0:
   with skyline packing; reduce panorama faces separately on the GLES path.
 - Create an empty custom touch button, then select its game action or keyboard
   key from a paged list.
-- Add optional resource-pack hooks and original editable button-frame templates
-  in [art/android-touch](../art/android-touch/README.md). Existing artwork remains
-  the default.
+- Add optional resource-pack hooks for touch button artwork. Existing artwork
+  remains the default.
 - Accept reissued official version metadata when both pinned game JAR hashes
   match; retain catalogue and downloaded-content verification.
 - Merge 68 reviewed upstream commits through `1feb28c0`, including input-crate
