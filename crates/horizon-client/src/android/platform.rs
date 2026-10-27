@@ -145,7 +145,7 @@ pub fn cancel_vibration() {
     });
 }
 
-fn with_context<R>(
+pub(crate) fn with_context<R>(
     f: impl FnOnce(&mut JNIEnv<'_>, &JObject<'_>) -> jni::errors::Result<R>,
 ) -> Option<R> {
     crate::APP.with(|slot| {

@@ -1,7 +1,8 @@
 //! Android's native entry point. The simulation and renderer are shared with desktop.
 #![cfg(target_os = "android")]
 
-#[allow(dead_code, clippy::collapsible_match)] // Shared vanilla match structure and desktop harnesses.
+#[allow(dead_code, clippy::collapsible_match)]
+// Shared vanilla match structure and desktop harnesses.
 mod game;
 #[path = "android/launcher.rs"]
 mod launcher;
@@ -15,6 +16,8 @@ mod account;
 mod browser;
 #[path = "android/catalog.rs"]
 mod catalog;
+#[path = "android/gallery.rs"]
+mod gallery;
 #[path = "android/platform.rs"]
 mod platform;
 #[allow(dead_code)]
@@ -24,7 +27,11 @@ mod proxy;
 mod secure_store;
 // The shared account protocol needs only the launcher's version and data path.
 mod backend {
-    pub const VERSION: &str = "0.6.10";
+    pub const VERSION: &str = if crate::PUBLIC_BUILD {
+        "0.7.0"
+    } else {
+        "0.7.0-dev"
+    };
     static HOME: std::sync::OnceLock<std::path::PathBuf> = std::sync::OnceLock::new();
     pub fn initialize(home: std::path::PathBuf) {
         let _ = HOME.set(home);
@@ -32,7 +39,9 @@ mod backend {
     pub fn game_home() -> std::path::PathBuf {
         data_dir()
     }
-    pub fn game_mod_api_level() -> Option<u32> { Some(horizon_mods::api_level::LEVEL) }
+    pub fn game_mod_api_level() -> Option<u32> {
+        Some(horizon_mods::api_level::LEVEL)
+    }
     pub fn data_dir() -> std::path::PathBuf {
         HOME.get().expect("android_main sets account home").clone()
     }

@@ -133,6 +133,11 @@ impl Game<'_> {
         crate::platform::show(&initial);
     }
     pub(super) fn android_poll_keyboard(&mut self) {
+        for result in crate::gallery::poll() {
+            self.system_message(horizon_client::text::Text::literal(
+                result.unwrap_or_else(|e| format!("Screenshot export failed: {e}")),
+            ));
+        }
         for out in crate::platform::poll() {
             let done = matches!(out, Output::Enter | Output::Close);
             self.pad_osk_output(out);

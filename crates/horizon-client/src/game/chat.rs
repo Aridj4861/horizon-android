@@ -931,6 +931,13 @@ impl Game<'_> {
         let Some(path) = self.ui.screenshot_message.take() else {
             return;
         };
+        #[cfg(target_os = "android")]
+        if result.is_ok() {
+            if let Err(error) = crate::gallery::save(&path) {
+                self.system_message(Text::literal(error));
+            }
+            return;
+        }
         let message = match result {
             Ok(_) => {
                 let name = path.file_name().unwrap_or_default().to_string_lossy();
