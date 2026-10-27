@@ -110,7 +110,8 @@ impl Game<'_> {
 
     /// Focus mode is on for the open screen.
     fn pad_focus_mode(&self) -> bool {
-        (self.settings.controller.menu_nav == MenuNav::Focus) != self.pad.menu.swapped
+        (cfg!(target_os = "android") && self.settings.keypad.enabled)
+            || ((self.settings.controller.menu_nav == MenuNav::Focus) != self.pad.menu.swapped)
     }
 
     /// Where focus can land: buttons drawn last frame, every registered
@@ -631,7 +632,9 @@ impl Game<'_> {
             .last_poll
             .map_or(0.0, |t| now.duration_since(t).as_secs_f32().min(0.05));
         self.pad.menu.last_poll = Some(now);
-        let in_menu = self.pad_in_menu() && self.settings.controller.enabled;
+        let in_menu = self.pad_in_menu()
+            && (self.settings.controller.enabled
+                || (cfg!(target_os = "android") && self.settings.keypad.enabled));
         if !in_menu {
             let menu = &mut self.pad.menu;
             menu.open_polls = 0;
@@ -868,6 +871,11 @@ impl Game<'_> {
     /// Steam's on a Steam Deck (`steam://open/keyboard`, which types into
     /// the window like a real keyboard).
     fn pad_open_keyboard(&mut self) {
+        #[cfg(target_os = "android")]
+        if self.settings.keypad.enabled {
+            self.android_show_keyboard();
+            return;
+        }
         // Without xdg-open (macOS, Windows), Horizon's keyboard instead.
         if gamepad::steam_keyboard(self.settings.controller.keyboard)
             && std::process::Command::new("xdg-open")

@@ -88,6 +88,41 @@ impl Settings {
                 .map_or_else(Vec::new, |a| a.2.iter().map(|s| (*s).into()).collect())
         })
     }
+    /// Menu navigation reuses the editable profile, plus standard UI keys.
+    pub fn menu_button(&self, key: KeyCode) -> Option<Button> {
+        match key {
+            KeyCode::ArrowUp => return Some(Button::DPadUp),
+            KeyCode::ArrowDown => return Some(Button::DPadDown),
+            KeyCode::ArrowLeft => return Some(Button::DPadLeft),
+            KeyCode::ArrowRight => return Some(Button::DPadRight),
+            KeyCode::Enter | KeyCode::NumpadEnter | KeyCode::Space => return Some(Button::South),
+            KeyCode::Escape => return Some(Button::East),
+            _ => {}
+        }
+        let name = crate::keybinds::key_name(key)?;
+        [
+            ("key.keypad.forward", Button::DPadUp),
+            ("key.keypad.look_up", Button::DPadUp),
+            ("key.keypad.back", Button::DPadDown),
+            ("key.keypad.look_down", Button::DPadDown),
+            ("key.keypad.left", Button::DPadLeft),
+            ("key.keypad.look_left", Button::DPadLeft),
+            ("key.keypad.right", Button::DPadRight),
+            ("key.keypad.look_right", Button::DPadRight),
+            ("key.keypad.jump", Button::South),
+            ("key.keypad.use", Button::South),
+            ("key.keypad.inventory", Button::East),
+            ("key.keypad.sneak", Button::East),
+            ("key.keypad.next_slot", Button::RightBumper),
+        ]
+        .into_iter()
+        .find_map(|(action, button)| {
+            self.keys(action)
+                .iter()
+                .any(|k| k == name)
+                .then_some(button)
+        })
+    }
     pub fn set(&mut self, name: &str, value: String) {
         self.bindings.insert(name.into(), vec![value]);
     }
@@ -214,6 +249,17 @@ impl Keypad {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn menu_navigation_uses_profile_rebindings_and_standard_ui_keys() {
+        let mut s = Settings::default();
+        assert_eq!(s.menu_button(KeyCode::Digit5), Some(Button::South));
+        assert_eq!(s.menu_button(KeyCode::Digit2), Some(Button::DPadUp));
+        s.set("key.keypad.forward", "key.keyboard.z".into());
+        assert_eq!(s.menu_button(KeyCode::KeyZ), Some(Button::DPadUp));
+        assert_eq!(s.menu_button(KeyCode::ArrowUp), Some(Button::DPadUp));
+        assert_eq!(s.menu_button(KeyCode::Escape), Some(Button::East));
+        assert_eq!(s.menu_button(KeyCode::F3), None);
+    }
     #[test]
     fn rebinding_and_overlapping_aliases_keep_normalized_eight_way_motion() {
         let mut k = Keypad::default();

@@ -8,6 +8,88 @@ use horizon_client::{
 use winit::event::{Touch, TouchPhase};
 
 impl Game<'_> {
+    pub(super) fn android_keypad_menu_key(
+        &mut self,
+        events: &ActiveEventLoop,
+        event: &winit::event::KeyEvent,
+    ) -> Result<bool> {
+        if !self.settings.keypad.enabled
+            || !self.pad_in_menu()
+            || crate::platform::active()
+            || self.ui.options.selected_key.is_some()
+        {
+            return Ok(false);
+        }
+        let Some(key) = horizon_client::keypad::resolve_key(event.physical_key, &event.logical_key)
+        else {
+            return Ok(false);
+        };
+        let Some(button) = self.settings.keypad.menu_button(key) else {
+            return Ok(false);
+        };
+        if !event.repeat {
+            self.pad.in_use = true;
+            self.pad_menu_button(events, button, event.state == ElementState::Pressed)?;
+        }
+        Ok(true)
+    }
+    /// A freely moving physical pointer can use the same utility buttons as touch.
+    pub(super) fn android_aux_mouse(
+        &mut self,
+        events: &ActiveEventLoop,
+        id: WindowId,
+        event: &WindowEvent,
+    ) -> bool {
+        const POINTER: u64 = u64::MAX - 2;
+        if !self.settings.keypad.enabled || (self.captured && crate::keyboard_mouse_input()) {
+            return false;
+        }
+        let WindowEvent::MouseInput {
+            device_id,
+            state,
+            button: MouseButton::Left,
+            ..
+        } = event
+        else {
+            return false;
+        };
+        if *device_id == DeviceId::dummy() {
+            return false;
+        }
+        let Some(batch) = self.gui_scale() else {
+            return false;
+        };
+        let point = [self.cursor.0, self.cursor.1];
+        let normalized = [point[0] / batch.width, point[1] / batch.height];
+        let utility = self
+            .pad
+            .touch_ui
+            .action(batch.width, point, self.pad_in_menu())
+            .is_some()
+            || self.pad.touch_ui.owns_key(POINTER)
+            || self.pad.touch.owns_pointer(POINTER)
+            || (!self.pad_in_menu() && self.pad.touch.auxiliary_at(normalized));
+        if !utility {
+            return false;
+        }
+        let touch = Touch {
+            device_id: *device_id,
+            phase: if *state == ElementState::Pressed {
+                TouchPhase::Started
+            } else {
+                TouchPhase::Ended
+            },
+            location: winit::dpi::PhysicalPosition::new(
+                f64::from(point[0] * batch.scale),
+                f64::from(point[1] * batch.scale),
+            ),
+            force: None,
+            id: POINTER,
+        };
+        self.window_event(events, id, WindowEvent::Touch(touch));
+        true
+    }
+
     pub(super) fn android_custom_events(&mut self) {
         for (name, down) in self.pad.touch.key_events() {
             let Some(key) = horizon_client::keybinds::key_code(&name) else {

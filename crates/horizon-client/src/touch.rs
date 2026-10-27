@@ -63,6 +63,8 @@ enum Role {
 pub struct TouchControls {
     pub settings: Settings,
     pub force_crosshair: bool,
+    /// Physical keypad profiles keep utility controls without a movement overlay.
+    pub auxiliary_only: bool,
     pub editor: Option<editor::Editor>,
     fingers: BTreeMap<u64, (Role, [f32; 2])>,
     custom_fingers: BTreeMap<u64, String>,
@@ -109,6 +111,27 @@ impl TouchControls {
             16.0 / 9.0
         }
     }
+    fn auxiliary_control(c: Control) -> bool {
+        matches!(
+            c,
+            Control::Debug
+                | Control::Chat
+                | Control::Pause
+                | Control::Settings
+                | Control::Perspective
+        )
+    }
+    pub fn auxiliary_at(&self, point: [f32; 2]) -> bool {
+        self.custom_at(point).is_some()
+            || Control::ALL.into_iter().any(|c| {
+                Self::auxiliary_control(c)
+                    && self.visible(c)
+                    && layout::contains(self.placement(c).rect(self.aspect()), point)
+            })
+    }
+    pub fn owns_pointer(&self, id: u64) -> bool {
+        self.fingers.contains_key(&id) || self.custom_fingers.contains_key(&id)
+    }
     pub fn ignore(&mut self, id: u64) {
         self.fingers.insert(id, (Role::Ignore, [0.0; 2]));
     }
@@ -116,6 +139,9 @@ impl TouchControls {
         self.pending.set(button, true);
     }
     fn visible(&self, c: Control) -> bool {
+        if self.auxiliary_only && !Self::auxiliary_control(c) {
+            return false;
+        }
         if self.force_crosshair
             && matches!(c, Control::Attack | Control::Use)
             && self.settings.button_visibility[c as usize] == 0
@@ -853,6 +879,21 @@ mod tests {
     }
 
     use super::*;
+    #[test]
+    fn keypad_utility_overlay_keeps_buttons_without_movement_targets() {
+        let mut t = TouchControls::default();
+        t.viewport(1920, 1080);
+        t.auxiliary_only = true;
+        assert!(!t.visible(Control::Move));
+        assert!(!t.visible(Control::Jump));
+        assert!(t.visible(Control::Debug));
+        let at = t.placement(Control::Debug).center;
+        assert!(t.auxiliary_at(at));
+        t.update(77, at, true, false);
+        assert!(t.debug_requested);
+        t.update(77, at, false, true);
+        assert!(!t.owns_pointer(77));
+    }
     #[test]
     fn attack_gauge_survives_tap_modes_and_respects_off() {
         assert_eq!(attack_indicator(0, false), 0);

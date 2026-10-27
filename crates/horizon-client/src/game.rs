@@ -11438,8 +11438,15 @@ impl Game<'_> {
         };
         let mut hud = horizon_client::spans::time("hud", || self.hud(size));
         #[cfg(target_os = "android")]
+        {
+            self.pad.touch.auxiliary_only =
+                self.settings.keypad.enabled && self.pad.touch.editor.is_none();
+        }
+        #[cfg(target_os = "android")]
         if self.pad.touch.editor.is_some()
-            || (crate::touch_visible() && self.title.is_none() && self.screen == Screen::Playing)
+            || ((crate::touch_visible() || self.settings.keypad.enabled)
+                && self.title.is_none()
+                && self.screen == Screen::Playing)
         {
             self.pad.touch.context_use =
                 self.pad.touch.settings.contextual_interact && self.touch_context_use();
@@ -11452,7 +11459,9 @@ impl Game<'_> {
         }
         #[cfg(target_os = "android")]
         {
-            if crate::touch_visible() && self.pad.touch.editor.is_none() {
+            if (crate::touch_visible() || self.settings.keypad.enabled)
+                && self.pad.touch.editor.is_none()
+            {
                 self.pad
                     .touch_ui
                     .draw(&mut hud, &self.gui.atlas, self.pad_in_menu());
@@ -12366,6 +12375,21 @@ impl ApplicationHandler for Game<'_> {
             | WindowEvent::CursorMoved { .. }
             | WindowEvent::KeyboardInput { .. } => crate::touch_input(false),
             _ => {}
+        }
+        #[cfg(target_os = "android")]
+        if let WindowEvent::KeyboardInput { event, .. } = &event {
+            match self.android_keypad_menu_key(event_loop, event) {
+                Ok(true) => return,
+                Ok(false) => {}
+                Err(error) => {
+                    log::warn!("Keypad menu: {error}");
+                    return;
+                }
+            }
+        }
+        #[cfg(target_os = "android")]
+        if self.android_aux_mouse(event_loop, id, &event) {
+            return;
         }
         #[cfg(target_os = "android")]
         if let WindowEvent::KeyboardInput { event, .. } = &event
