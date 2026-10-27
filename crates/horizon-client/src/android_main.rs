@@ -134,11 +134,22 @@ fn android_main(app: AndroidApp) {
     ] {
         app.enable_motion_axis(axis);
     }
-    android_logger::init_once(
-        android_logger::Config::default()
-            .with_max_level(log::LevelFilter::Info)
-            .with_tag("Horizon"),
-    );
+    let trace_gles = !PUBLIC_BUILD && std::env::var_os("HORIZON_GLES_TRACE").is_some();
+    let mut logger = android_logger::Config::default()
+        .with_max_level(if trace_gles {
+            log::LevelFilter::Trace
+        } else {
+            log::LevelFilter::Info
+        })
+        .with_tag("Horizon");
+    if trace_gles {
+        logger = logger.with_filter(
+            android_logger::FilterBuilder::new()
+                .parse("info,wgpu_hal::gles=trace,wgpu_core::device=debug")
+                .build(),
+        );
+    }
+    android_logger::init_once(logger);
     let Some(home) = app.internal_data_path() else {
         log::error!("Android supplied no application data directory");
         return;
