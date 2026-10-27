@@ -359,7 +359,7 @@ impl HudAtlas {
             width = (width * 2).min(max);
         }
     }
-    /// Fit static sprites to a small adapter without shrinking glyphs or dynamic
+    /// Fit static sprites to a small adapter without shrinking pixel icons, glyphs or dynamic
     /// map/skin/GUI slots. Terrain uses separate texture arrays and is unchanged.
     #[cfg(any(target_os = "android", test))]
     fn fit_mobile_atlas(
@@ -388,7 +388,7 @@ impl HudAtlas {
                     for (name, w, h, rgba) in images.iter_mut() {
                         if name.starts_with("font/")
                             || name.starts_with("horizon/")
-                            || (*w == 1 && *h == 1)
+                            || (*w <= 32 && *h <= 32)
                         {
                             continue;
                         }
@@ -1663,6 +1663,7 @@ mod tests {
         let mut images = vec![
             ("gui/large".into(), 600, 600, vec![255; 600 * 600 * 4]),
             ("font/test".into(), 8, 8, vec![123; 8 * 8 * 4]),
+            ("gui/crosshair".into(), 15, 15, vec![177; 15 * 15 * 4]),
             ("horizon/map0".into(), 128, 128, vec![0; 128 * 128 * 4]),
         ];
         let mut sizes = HashMap::new();
@@ -1670,7 +1671,8 @@ mod tests {
         assert_eq!(sizes["gui/large"], (600, 600));
         assert_eq!((images[0].1, images[0].2), (300, 300));
         assert_eq!((images[1].1, images[1].2, images[1].3[0]), (8, 8, 123));
-        assert_eq!((images[2].1, images[2].2), (128, 128));
+        assert_eq!((images[2].1, images[2].2, images[2].3[0]), (15, 15, 177));
+        assert_eq!((images[3].1, images[3].2), (128, 128));
     }
 
     /// A synthetic default font: two 8x8 glyphs, 3 and 5 pixels wide.
