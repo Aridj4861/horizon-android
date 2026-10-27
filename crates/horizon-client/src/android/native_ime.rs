@@ -10,7 +10,7 @@ use std::{
     os::{fd::AsRawFd, unix::net::UnixStream},
     sync::{
         Arc, Mutex, OnceLock,
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicBool, AtomicI32, Ordering},
     },
 };
 
@@ -31,6 +31,7 @@ enum Command {
     Hide,
     Poll,
     Capture(bool),
+    Bounds,
 }
 struct Ui {
     vm: JavaVM,
@@ -44,6 +45,8 @@ struct Ui {
     polling: AtomicBool,
     active: AtomicBool,
     ready: AtomicBool,
+    bounds_pending: AtomicBool,
+    bottom: AtomicI32,
     failed: AtomicBool,
 }
 static UI: OnceLock<Arc<Ui>> = OnceLock::new();
@@ -113,6 +116,12 @@ pub unsafe fn initialize(
                     &[JValue::Object(&service)],
                 )?
                 .l()?;
+            env.call_method(
+                &native,
+                "setFocusableInTouchMode",
+                "(Z)V",
+                &[JValue::Bool(1)],
+            )?;
             env.call_method(&native, "requestFocus", "()Z", &[])?;
             Ok((
                 env.new_global_ref(edit)?,
@@ -140,6 +149,8 @@ pub unsafe fn initialize(
         polling: AtomicBool::new(false),
         active: AtomicBool::new(false),
         ready: AtomicBool::new(false),
+        bounds_pending: AtomicBool::new(false),
+        bottom: AtomicI32::new(0),
         failed: AtomicBool::new(false),
     });
     let looper = unsafe { ALooper_forThread() };
@@ -236,6 +247,18 @@ impl Ui {
                     .text
                     .lock()
                     .unwrap_or_else(std::sync::PoisonError::into_inner) = text;
+            }
+            Command::Bounds => {
+                self.bounds_pending.store(false, Ordering::Release);
+                let rect = env.new_object("android/graphics/Rect", "()V", &[])?;
+                env.call_method(
+                    &self.native,
+                    "getWindowVisibleDisplayFrame",
+                    "(Landroid/graphics/Rect;)V",
+                    &[JValue::Object(&rect)],
+                )?;
+                self.bottom
+                    .store(env.get_field(rect, "bottom", "I")?.i()?, Ordering::Release);
             }
             Command::Capture(capture) => {
                 env.call_method(
@@ -346,4 +369,14 @@ pub fn capture_mouse(capture: bool) -> bool {
     } else {
         false
     }
+}
+
+/// Launcher-only safe bounds; View geometry is read on the Android UI thread.
+pub fn viewport_bottom() -> Option<u32> {
+    let ui = UI.get().filter(|ui| !ui.failed.load(Ordering::Acquire))?;
+    if !ui.bounds_pending.swap(true, Ordering::AcqRel) {
+        ui.enqueue(Command::Bounds);
+    }
+    let bottom = ui.bottom.load(Ordering::Acquire);
+    (bottom > 0).then_some(bottom as u32)
 }

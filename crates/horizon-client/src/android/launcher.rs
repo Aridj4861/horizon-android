@@ -100,6 +100,9 @@ impl Launcher {
         self.catalog.refresh(&self.home);
         self.login.refresh_status();
         self.catalog.page = Page::Play;
+        if let Ok(message) = std::fs::read_to_string(self.home.join("android-error.txt")) {
+            self.error = Some(message);
+        }
         if let Err(error) = self.open(events) {
             self.fail(error);
             events.exit();
@@ -202,6 +205,8 @@ impl Launcher {
             std::fs::create_dir_all(&game_home)?;
             std::env::set_current_dir(game_home)?;
             self.audio = None;
+            self.error = None;
+            let _ = std::fs::remove_file(self.home.join("android-error.txt"));
             let game = game::android_game()?;
             // Android has one native window; release its surface before handing it over.
             self.renderer = None;

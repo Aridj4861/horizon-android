@@ -151,6 +151,9 @@ impl Launcher {
                 ui.h = ui.h.min(bottom as f32 / ui.density);
             }
         }
+        if let Some(bottom) = crate::native_ime::viewport_bottom() {
+            ui.h = ui.h.min(bottom as f32 / ui.density);
+        }
         let (w, h) = (ui.w, ui.h);
         let scale = ui.density / ui.batch.scale;
         ui.batch
