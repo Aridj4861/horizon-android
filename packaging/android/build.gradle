@@ -7,8 +7,8 @@ android {
         applicationId providers.gradleProperty('appId').getOrElse('dev.horizon.android')
         minSdk providers.gradleProperty('minSdk').getOrElse('28').toInteger()
         targetSdk 35
-        versionCode 19
-        versionName '0.6.10'
+        versionCode 20
+        versionName '0.7.0'
         ndk { abiFilters providers.gradleProperty('abi').get() }
     }
     signingConfigs {
@@ -20,7 +20,11 @@ android {
         }
     }
     buildTypes {
-        debug { signingConfig signingConfigs.development }
+        debug {
+            signingConfig signingConfigs.development
+            versionNameSuffix '-dev.' + providers.gradleProperty('devBuild').getOrElse('local')
+            if (!providers.gradleProperty('appId').isPresent()) { applicationIdSuffix '.dev' }
+        }
         release {
             debuggable false
             jniDebuggable false

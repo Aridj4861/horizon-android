@@ -162,20 +162,62 @@ impl Login {
         accounts.save()?;
         Ok(Some((a, secrets)))
     }
-    pub fn draw(&self, ui: &mut Ui, targets: &mut Vec<([f32; 4], Action)>) {
+    pub fn draw(
+        &self,
+        ui: &mut Ui,
+        targets: &mut Vec<([f32; 4], Action)>,
+        offline_name: &str,
+        editing_name: bool,
+    ) {
         targets.clear();
         let w = (ui.w - 32.0).min(720.0);
-        let h = (ui.h - 24.0).min(490.0);
+        let h = (ui.h - 24.0).min(550.0);
         let x = (ui.w - w) / 2.0;
         let y = (ui.h - h) / 2.0;
         ui.rounded(x, y, w, h, 8.0, color::BG);
+        if editing_name {
+            ui.text(
+                Face::Medium,
+                24.0,
+                x + 20.0,
+                y + 20.0,
+                color::TEXT,
+                "Offline player name",
+            );
+            ui.text(
+                Face::Regular,
+                16.0,
+                x + 20.0,
+                y + 66.0,
+                color::MUTED,
+                "Used when signed out of Microsoft.",
+            );
+            button(
+                ui,
+                targets,
+                [x + 20.0, y + 100.0, w - 40.0, 44.0],
+                offline_name,
+                Action::Field("name"),
+                false,
+            );
+            button(
+                ui,
+                targets,
+                [x + 20.0, y + h - 56.0, w - 40.0, 36.0],
+                "Done",
+                Action::FinishNameEdit,
+                true,
+            );
+            return;
+        }
+
         ui.text(
             Face::Medium,
             24.0,
             x + 20.0,
             y + 18.0,
             color::TEXT,
-            "Microsoft / Xbox",
+            "Accounts",
         );
         ui.text(
             Face::Medium,
@@ -250,12 +292,34 @@ impl Login {
                 &line,
             );
         }
+        if !self.pending() {
+            ui.text(
+                Face::Regular,
+                14.0,
+                x + 20.0,
+                y + h - 247.0,
+                color::MUTED,
+                "Offline player name",
+            );
+            button(
+                ui,
+                targets,
+                [x + 20.0, y + h - 226.0, w - 40.0, 38.0],
+                if offline_name.is_empty() {
+                    "Enter an offline name"
+                } else {
+                    offline_name
+                },
+                Action::Field("name"),
+                false,
+            );
+        }
         let half = (w - 52.0) / 2.0;
         if self.message.contains("not approved by Mojang") {
             button(
                 ui,
                 targets,
-                [x + 20.0, y + h - 196.0, w - 40.0, 38.0],
+                [x + 20.0, y + h - 183.0, w - 40.0, 30.0],
                 "Request Minecraft API approval",
                 Action::ReviewApp,
                 false,

@@ -168,7 +168,23 @@ impl Launcher {
             horizon_client::android_runtime::configure_gpu(
                 self.catalog.config.renderer == crate::catalog::RendererMode::Vulkan,
             );
-            horizon_client::android_runtime::configure_keypad(self.catalog.config.keypad_controls);
+            // Migrate the earlier launcher preset once; subsequent edits belong to Key Binds.
+            let keypad_path = self
+                .catalog
+                .config
+                .game_home(&self.home)
+                .join("horizon-keypad.json");
+            if self.catalog.config.keypad_controls && !keypad_path.exists() {
+                if let Some(dir) = keypad_path.parent() {
+                    std::fs::create_dir_all(dir)?;
+                }
+                horizon_client::keypad::Settings {
+                    enabled: true,
+                    ..Default::default()
+                }
+                .save(&keypad_path)?;
+            }
+            self.catalog.config.keypad_controls = false;
             let game_home = self.catalog.config.game_home(&self.home);
             if !self.session_ready && crate::account::Accounts::load().selected().is_some() {
                 let id = self.catalog.config.microsoft_client_id.clone();

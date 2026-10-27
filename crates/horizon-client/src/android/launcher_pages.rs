@@ -12,6 +12,7 @@ pub(super) enum Action {
     Play,
     Search,
     Field(&'static str),
+    FinishNameEdit,
     Install(usize),
     Remove(usize),
     Toggle(usize),
@@ -30,7 +31,6 @@ pub(super) enum Action {
     CloseLogin,
     Renderer,
     Orientation,
-    Keypad,
     InputHost,
     ChooseInputHost(crate::catalog::InputHost),
     ChooseOrientation(crate::catalog::Orientation),
@@ -347,20 +347,6 @@ impl Launcher {
                     Action::Play,
                     true,
                 );
-                if self.session_worker.is_none() && !self.login.pending() {
-                    button(
-                        &mut ui,
-                        &mut self.targets,
-                        if compact {
-                            [32.0, h - 156.0, w - 64.0, 44.0]
-                        } else {
-                            [372.0, h - 92.0, w - 404.0, 44.0]
-                        },
-                        self.catalog.config.input_host.label(),
-                        Action::InputHost,
-                        false,
-                    );
-                }
             }
         } else if page == Page::Mods {
             ui.text(
@@ -592,25 +578,7 @@ impl Launcher {
                     c.orientation.label().to_owned(),
                     Action::Orientation,
                 ),
-                (
-                    "Physical keypad",
-                    if c.keypad_controls {
-                        "On (D-pad + numbers)"
-                    } else {
-                        "Off"
-                    }
-                    .into(),
-                    Action::Keypad,
-                ),
-                (
-                    "Player name",
-                    if c.name.is_empty() {
-                        "Tap to enter".into()
-                    } else {
-                        c.name.clone()
-                    },
-                    Action::Field("name"),
-                ),
+                ("Input", c.input_host.label().to_owned(), Action::InputHost),
                 (
                     "Server",
                     if c.server.is_empty() {
@@ -647,7 +615,10 @@ impl Launcher {
                         value,
                         if matches!(
                             action,
-                            Action::Renderer | Action::Profile | Action::Orientation
+                            Action::Renderer
+                                | Action::Profile
+                                | Action::Orientation
+                                | Action::InputHost
                         ) {
                             "v"
                         } else {
@@ -701,7 +672,12 @@ impl Launcher {
             );
         }
         if self.login.visible {
-            self.login.draw(&mut ui, &mut self.targets);
+            self.login.draw(
+                &mut ui,
+                &mut self.targets,
+                &self.catalog.config.name,
+                self.catalog.editing == Some("name"),
+            );
         }
         if let Some(chooser) = &mut self.chooser {
             chooser.draw(&mut ui, &mut self.targets);
@@ -805,6 +781,11 @@ impl Launcher {
                 self.catalog.offset = 0;
                 self.catalog.search(&self.home);
             }
+            Some(Action::FinishNameEdit) => {
+                self.catalog.editing = None;
+                crate::platform::hide();
+                self.catalog.config.save(&self.home)?;
+            }
             Some(Action::Field(name)) => {
                 self.catalog.editing = Some(name);
                 let initial = match name {
@@ -835,10 +816,6 @@ impl Launcher {
                 self.catalog.config.save(&self.home)?;
                 self.chooser = None;
                 // Host changes occur only when Play is pressed, never during a download/login.
-            }
-            Some(Action::Keypad) => {
-                self.catalog.config.keypad_controls ^= true;
-                self.catalog.config.save(&self.home)?;
             }
             Some(Action::ChooseOrientation(mode)) => {
                 self.catalog.config.orientation = mode;

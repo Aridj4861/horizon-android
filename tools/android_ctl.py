@@ -12,13 +12,15 @@ import subprocess
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--package', default='dev.horizon.android.dev', help='Isolated development package')
+    parser.add_argument('--adb', default='adb', help='ADB executable')
     parser.add_argument('--serial', required=True, help='Explicit test device serial')
     parser.add_argument('command', nargs=argparse.REMAINDER)
     args = parser.parse_args()
     if not args.command:
         parser.error('Specify a command, for example state, ui, or status')
-    adb = ['adb', '-s', args.serial]
-    descriptor = json.loads(subprocess.check_output([*adb, 'shell', 'run-as', 'dev.horizon.android', 'cat', 'files/control.json']))
+    adb = [args.adb, '-s', args.serial]
+    descriptor = json.loads(subprocess.check_output([*adb, 'shell', 'run-as', args.package, 'cat', 'files/control.json']))
     port = subprocess.check_output([*adb, 'forward', 'tcp:0', f"tcp:{int(descriptor['port'])}"], text=True).strip()
     try:
         with socket.create_connection(('127.0.0.1', int(port)), timeout=60) as connection:
