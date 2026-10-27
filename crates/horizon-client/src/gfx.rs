@@ -86,6 +86,8 @@ mod arena;
 mod cull;
 mod end_sky;
 mod flat;
+#[cfg(target_os = "android")]
+mod frame_scale;
 mod hdr;
 pub mod lightning;
 mod lod;
@@ -549,6 +551,8 @@ pub struct Renderer {
     occlusion: occlusion::Occlusion,
     /// Resolution scale and FXAA (Horizon settings).
     world_post: world_post::Post,
+    #[cfg(target_os = "android")]
+    frame_scale: Option<frame_scale::FrameScale>,
     /// HDR output (Horizon setting): `Some` while the swapchain is HDR.
     hdr: Option<hdr::Hdr>,
     /// The HDR output the window's surface can present.
@@ -1173,7 +1177,16 @@ impl Renderer {
                     config.width, config.height, config.format, config.present_mode
                 ));
             }
-            surface.configure(&device, &config);
+            let presentation = config.clone();
+            #[cfg(target_os = "android")]
+            let presentation = {
+                let mut presentation = presentation;
+                let physical = window.outer_size();
+                presentation.width = physical.width.max(1);
+                presentation.height = physical.height.max(1);
+                presentation
+            };
+            surface.configure(&device, &presentation);
             (config, caps.present_modes.clone(), hdr::output(&caps))
         } else {
             let format = wgpu::TextureFormat::Bgra8Unorm;
@@ -2714,6 +2727,8 @@ impl Renderer {
             block_entity_revision: next_block_entity_revision(),
             occlusion: occlusion::Occlusion::new(crate::chunk::MIN_Y, crate::chunk::HEIGHT / 16),
             world_post,
+            #[cfg(target_os = "android")]
+            frame_scale: None,
             hdr: None,
             hdr_output,
             pack_post: None,
@@ -3300,6 +3315,12 @@ impl Renderer {
     /// HDR10 or scRGB while HDR output is on.
     fn surface_config(&self) -> wgpu::SurfaceConfiguration {
         let mut config = self.config.clone();
+        #[cfg(target_os = "android")]
+        if self.offscreen.is_none() {
+            let physical = self.window.outer_size();
+            config.width = physical.width.max(1);
+            config.height = physical.height.max(1);
+        }
         if let Some(hdr) = &self.hdr {
             config.format = hdr.output.format();
             config.view_formats = vec![hdr.output.format()];
@@ -3686,6 +3707,24 @@ impl Renderer {
             (Some(_), Some(hdr)) => hdr.frame(&self.device, size),
             (Some(f), None) => f.texture.clone(),
             (None, _) => self.offscreen.clone().ok_or("no offscreen target")?,
+        };
+        #[cfg(target_os = "android")]
+        let target_texture = if self.hdr.is_none()
+            && surface_frame
+                .as_ref()
+                .is_some_and(|f| [f.texture.width(), f.texture.height()] != size)
+        {
+            self.frame_scale
+                .get_or_insert_with(|| {
+                    frame_scale::FrameScale::new(
+                        &self.device,
+                        self.config.format.remove_srgb_suffix(),
+                    )
+                })
+                .frame(&self.device, size)
+        } else {
+            self.frame_scale = None;
+            target_texture
         };
         // One command buffer for the frame, after the section copies staged
         // since the last one: Metal commits every command buffer wgpu-core
@@ -5305,6 +5344,10 @@ impl Renderer {
         }
         if let (Some(hdr), Some(f)) = (&self.hdr, &surface_frame) {
             hdr.present(&self.queue, &mut encoder, &f.texture, !frame.title);
+        }
+        #[cfg(target_os = "android")]
+        if let (Some(scale), Some(frame)) = (&self.frame_scale, &surface_frame) {
+            scale.present(&mut encoder, &frame.texture);
         }
         let commands = crate::spans::time("encode", || encoder.finish());
         let first_frame = self.first_frame == FirstFrame::Submit;

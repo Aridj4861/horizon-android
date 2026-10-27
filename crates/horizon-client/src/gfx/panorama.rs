@@ -15,13 +15,53 @@ pub struct Faces {
 
 impl Faces {
     pub fn load(root: &Path) -> Self {
-        Self::try_load(root).unwrap_or_else(|error| {
+        let faces = Self::try_load(root).unwrap_or_else(|error| {
             log::warn!("Horizon: title panorama unavailable ({error})");
             Self {
                 size: 1,
                 pixels: [96, 110, 111, 255].repeat(6),
             }
-        })
+        });
+        #[cfg(target_os = "android")]
+        let faces =
+            if crate::android_runtime::graphics_api() == crate::graphics::GraphicsApi::OpenGl {
+                faces.reduced(256)
+            } else {
+                faces
+            };
+        faces
+    }
+
+    #[cfg(any(target_os = "android", test))]
+    fn reduced(mut self, maximum: u32) -> Self {
+        let side = self.size.min(maximum.max(1));
+        if side == self.size {
+            return self;
+        }
+        let face_bytes = (self.size * self.size * 4) as usize;
+        let mut pixels = Vec::with_capacity((side * side * 4 * 6) as usize);
+        for face in self.pixels.chunks_exact(face_bytes) {
+            for y in 0..side {
+                let (y0, y1) = (y * self.size / side, (y + 1) * self.size / side);
+                for x in 0..side {
+                    let (x0, x1) = (x * self.size / side, (x + 1) * self.size / side);
+                    let mut sum = [0u64; 4];
+                    for sy in y0..y1 {
+                        for sx in x0..x1 {
+                            let at = ((sy * self.size + sx) * 4) as usize;
+                            for channel in 0..4 {
+                                sum[channel] += u64::from(face[at + channel]);
+                            }
+                        }
+                    }
+                    let count = u64::from((x1 - x0) * (y1 - y0));
+                    pixels.extend(sum.map(|value| ((value + count / 2) / count) as u8));
+                }
+            }
+        }
+        self.size = side;
+        self.pixels = pixels;
+        self
     }
 
     fn try_load(root: &Path) -> Result<Self> {
@@ -350,6 +390,26 @@ mod tests {
         assert_eq!(rotation.update(10.0, 0.0), -10.0);
         assert_eq!(rotation.update(12.0, 0.5), -12.0);
         assert_eq!(rotation.update(13.0, 1.0), -14.0);
+    }
+
+    #[test]
+    fn reduced_panorama_preserves_face_order_and_colours() {
+        let faces = Faces {
+            size: 4,
+            pixels: (0..6u8)
+                .flat_map(|face| [face, face + 10, face + 20, 255].repeat(16))
+                .collect(),
+        }
+        .reduced(2);
+        assert_eq!(faces.size, 2);
+        assert_eq!(faces.pixels.len(), 6 * 2 * 2 * 4);
+        for (face, pixels) in faces.pixels.chunks_exact(16).enumerate() {
+            assert!(
+                pixels
+                    .chunks_exact(4)
+                    .all(|rgba| rgba == [face as u8, face as u8 + 10, face as u8 + 20, 255])
+            );
+        }
     }
 
     #[test]

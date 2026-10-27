@@ -353,6 +353,10 @@ impl HudAtlas {
     /// 32768 rows); vanilla's stitcher fails the reload when its atlases don't
     /// fit, and the packs are then turned off (`Minecraft.clearResourcePacksOnError`).
     fn layout(images: &[PackedImage], max: u32) -> Result<(u32, Vec<(u32, u32)>, u32)> {
+        #[cfg(any(target_os = "android", test))]
+        if max <= 4096 {
+            return Self::mobile_layout(images, max);
+        }
         let mut width = 4096.min(max);
         loop {
             let mut placements = Vec::with_capacity(images.len());
@@ -383,6 +387,70 @@ impl HudAtlas {
             width = (width * 2).min(max);
         }
     }
+    /// Pack against a skyline so space below shorter neighbours stays usable.
+    /// Pixel UI must not be reduced merely because tall shelves leave gaps.
+    #[cfg(any(target_os = "android", test))]
+    fn mobile_layout(images: &[PackedImage], maximum: u32) -> Result<(u32, Vec<(u32, u32)>, u32)> {
+        let width = maximum.min(4096);
+        // [x, occupied height, segment width]. Segments cover the complete width.
+        let mut skyline = vec![[0u32, 0, width]];
+        let mut placements = Vec::with_capacity(images.len());
+        let mut bottom = 0;
+        for (_, w, h, _) in images {
+            let (rw, rh) = (w + 1, h + 1);
+            let mut best: Option<(u32, u32, usize, u32)> = None;
+            for (i, node) in skyline.iter().enumerate() {
+                let x = node[0];
+                if x + rw > width {
+                    continue;
+                }
+                let (mut left, mut y, mut j) = (rw, 0, i);
+                while left > 0 {
+                    y = y.max(skyline[j][1]);
+                    left = left.saturating_sub(skyline[j][2]);
+                    j += 1;
+                }
+                let candidate = (y + rh, x, i, y);
+                if best.is_none_or(|previous| candidate < previous) {
+                    best = Some(candidate);
+                }
+            }
+            let Some((top, x, index, y)) = best else {
+                return Err("A GUI texture exceeds the mobile atlas width".into());
+            };
+            if top + GLYPH_ROWS > maximum {
+                return Err(format!(
+                    "GUI atlas needs {} rows; adapter permits {maximum}",
+                    top + GLYPH_ROWS
+                )
+                .into());
+            }
+            placements.push((x, y));
+            bottom = bottom.max(top);
+            let end = x + rw;
+            skyline.insert(index, [x, top, rw]);
+            let j = index + 1;
+            while j < skyline.len() && skyline[j][0] < end {
+                let covered = end - skyline[j][0];
+                if covered < skyline[j][2] {
+                    skyline[j][0] += covered;
+                    skyline[j][2] -= covered;
+                    break;
+                }
+                skyline.remove(j);
+            }
+            let mut j = 0;
+            while j + 1 < skyline.len() {
+                if skyline[j][1] == skyline[j + 1][1] {
+                    skyline[j][2] += skyline[j + 1][2];
+                    skyline.remove(j + 1);
+                } else {
+                    j += 1;
+                }
+            }
+        }
+        Ok((width, placements, bottom))
+    }
     /// Fit static sprites to a small adapter without shrinking pixel icons, glyphs or dynamic
     /// map/skin/GUI slots. Terrain uses separate texture arrays and is unchanged.
     #[cfg(any(target_os = "android", test))]
@@ -411,6 +479,8 @@ impl HudAtlas {
                     let mut changed = false;
                     for (name, w, h, rgba) in images.iter_mut() {
                         if name.starts_with("font/")
+                            || name.starts_with("gui/")
+                            || name.starts_with("ui/")
                             || name.starts_with("horizon/")
                             || (*w <= 32 && *h <= 32)
                         {
@@ -436,7 +506,7 @@ impl HudAtlas {
                         return Err(error);
                     }
                     log::info!(
-                        "Reduced static atlas sprites to fit the adapter's {limit}px texture limit"
+                        "Reduced non-UI atlas sprites to fit the adapter's {limit}px texture limit"
                     );
                 }
             }
@@ -1876,20 +1946,72 @@ mod tests {
     }
 
     #[test]
+    fn mobile_layout_places_varied_rectangles_without_overlap() {
+        let mut seed = 0x5a17u32;
+        let mut images = Vec::new();
+        for i in 0..160 {
+            seed = seed.wrapping_mul(1664525).wrapping_add(1013904223);
+            let w = 4 + seed % 53;
+            seed = seed.wrapping_mul(1664525).wrapping_add(1013904223);
+            let h = 4 + seed % 53;
+            images.push((format!("sprite{i}"), w, h, vec![]));
+        }
+        images.sort_by_key(|image| std::cmp::Reverse((image.2, image.1)));
+        let (width, positions, bottom) = HudAtlas::mobile_layout(&images, 1024).unwrap();
+        for (i, &(x, y)) in positions.iter().enumerate() {
+            let (_, w, h, _) = &images[i];
+            assert!(x + w < width && y + h < bottom);
+            for (j, &(other_x, other_y)) in positions.iter().enumerate().take(i) {
+                assert!(
+                    x + w < other_x
+                        || other_x + images[j].1 < x
+                        || y + h < other_y
+                        || other_y + images[j].2 < y
+                );
+            }
+        }
+        assert!(bottom + GLYPH_ROWS <= 1024);
+    }
+
+    #[test]
+    fn mobile_layout_uses_the_gap_below_a_short_neighbour() {
+        let images = vec![
+            ("tall".into(), 512, 500, vec![]),
+            ("short".into(), 500, 250, vec![]),
+            ("below".into(), 250, 240, vec![]),
+        ];
+        let (_, positions, bottom) = HudAtlas::mobile_layout(&images, 1024).unwrap();
+        assert_eq!(positions, [(0, 0), (513, 0), (513, 251)]);
+        assert_eq!(bottom, 501);
+        assert!(bottom + GLYPH_ROWS <= 1024);
+    }
+
+    #[test]
     fn mobile_atlas_retains_font_and_dynamic_slots() {
         let mut images = vec![
-            ("gui/large".into(), 600, 600, vec![255; 600 * 600 * 4]),
+            ("entity/large".into(), 600, 600, vec![255; 600 * 600 * 4]),
             ("font/test".into(), 8, 8, vec![123; 8 * 8 * 4]),
             ("gui/crosshair".into(), 15, 15, vec![177; 15 * 15 * 4]),
             ("horizon/map0".into(), 128, 128, vec![0; 128 * 128 * 4]),
+            (
+                "gui/sprites/hud/experience_bar_background".into(),
+                182,
+                5,
+                vec![77; 182 * 5 * 4],
+            ),
+            ("gui/bedrock/gui".into(), 256, 256, vec![133; 256 * 256 * 4]),
         ];
         let mut sizes = HashMap::new();
         HudAtlas::fit_mobile_atlas(&mut images, &mut sizes, &HashMap::new(), 1024).unwrap();
-        assert_eq!(sizes["gui/large"], (600, 600));
+        assert_eq!(sizes["entity/large"], (600, 600));
         assert_eq!((images[0].1, images[0].2), (300, 300));
         assert_eq!((images[1].1, images[1].2, images[1].3[0]), (8, 8, 123));
         assert_eq!((images[2].1, images[2].2, images[2].3[0]), (15, 15, 177));
         assert_eq!((images[3].1, images[3].2), (128, 128));
+        assert_eq!((images[4].1, images[4].2), (182, 5));
+        assert!(images[4].3.iter().all(|p| *p == 77));
+        assert_eq!((images[5].1, images[5].2), (256, 256));
+        assert!(images[5].3.iter().all(|p| *p == 133));
     }
 
     /// A synthetic default font: two 8x8 glyphs, 3 and 5 pixels wide.
