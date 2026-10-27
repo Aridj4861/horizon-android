@@ -211,6 +211,23 @@ pub fn install(home: &Path, progress: impl Fn(u64, u64) + Sync) -> Result<()> {
         }
     })
 }
+/// Metadata may be reissued, but the engine's game version and JARs must match.
+fn validate_manifest(bytes: &[u8], checksum: &str, version: &str, pins: &Value) -> Result<Value> {
+    if format!("{:x}", Sha1::digest(bytes)) != checksum {
+        return Err("Version metadata checksum mismatch".into());
+    }
+    let manifest: Value = serde_json::from_slice(bytes)?;
+    if manifest["id"].as_str() != Some(version)
+        || ["client", "server"].iter().any(|side| {
+            let pinned = pins[format!("{side}_sha1")].as_str();
+            pinned.is_none() || manifest["downloads"][side]["sha1"].as_str() != pinned
+        })
+    {
+        return Err("Minecraft game files differ from this engine's pinned version".into());
+    }
+    Ok(manifest)
+}
+
 pub fn install_with_progress(home: &Path, progress: impl Fn(InstallProgress) + Sync) -> Result<()> {
     let report = |stage, done, total| progress(InstallProgress { stage, done, total });
     report(InstallStage::Metadata, 0, 0);
@@ -241,16 +258,7 @@ pub fn install_with_progress(home: &Path, progress: impl Fn(InstallProgress) + S
         .into_reader()
         .take(16 * 1024 * 1024)
         .read_to_end(&mut bytes)?;
-    if format!("{:x}", Sha1::digest(&bytes)) != checksum {
-        return Err("Version metadata checksum mismatch".into());
-    }
-    let manifest: Value = serde_json::from_slice(&bytes)?;
-    if manifest["id"] != version
-        || manifest["downloads"]["client"]["sha1"] != pins["client_sha1"]
-        || manifest["downloads"]["server"]["sha1"] != pins["server_sha1"]
-    {
-        return Err("Minecraft game files differ from this engine's pinned version".into());
-    }
+    let manifest = validate_manifest(&bytes, checksum, version, pins)?;
     let index = Download::from(&manifest["assetIndex"], cache.join("asset-index.json"))?;
     index.get()?;
     let index: Value = serde_json::from_reader(fs::File::open(&index.path)?)?;
@@ -393,6 +401,58 @@ pub fn install_with_progress(home: &Path, progress: impl Fn(InstallProgress) + S
 #[cfg(test)]
 mod tests {
     use super::*;
+    fn manifest_fixture() -> (Value, Value) {
+        let pins = serde_json::json!({
+            "manifest_sha1": "old-metadata-hash",
+            "client_sha1": "client-jar-hash",
+            "server_sha1": "server-jar-hash"
+        });
+        let manifest = serde_json::json!({
+            "id": "test-version",
+            "downloads": {
+                "client": {"sha1": "client-jar-hash"},
+                "server": {"sha1": "server-jar-hash"}
+            },
+            "releaseTime": "new-metadata"
+        });
+        (manifest, pins)
+    }
+    fn check_manifest(manifest: &Value, pins: &Value) -> Result<Value> {
+        let bytes = serde_json::to_vec(manifest)?;
+        let checksum = format!("{:x}", Sha1::digest(&bytes));
+        validate_manifest(&bytes, &checksum, "test-version", pins)
+    }
+    #[test]
+    fn republished_metadata_keeps_the_pinned_game_usable() {
+        let (manifest, pins) = manifest_fixture();
+        assert!(check_manifest(&manifest, &pins).is_ok());
+        let mut tampered = serde_json::to_vec(&manifest).unwrap();
+        let checksum = format!("{:x}", Sha1::digest(&tampered));
+        tampered.push(b' ');
+        assert!(validate_manifest(&tampered, &checksum, "test-version", &pins).is_err());
+    }
+    #[test]
+    fn metadata_cannot_replace_either_jar_or_the_game_version() {
+        let (manifest, pins) = manifest_fixture();
+        for side in ["client", "server"] {
+            let mut changed = manifest.clone();
+            changed["downloads"][side]["sha1"] = Value::String("other-jar".into());
+            assert!(check_manifest(&changed, &pins).is_err());
+            let mut missing = pins.clone();
+            missing
+                .as_object_mut()
+                .unwrap()
+                .remove(&format!("{side}_sha1"));
+            changed["downloads"][side]
+                .as_object_mut()
+                .unwrap()
+                .remove("sha1");
+            assert!(check_manifest(&changed, &missing).is_err());
+        }
+        let mut changed = manifest;
+        changed["id"] = Value::String("other-version".into());
+        assert!(check_manifest(&changed, &pins).is_err());
+    }
     #[test]
     fn only_mojang_https_is_accepted() {
         assert!(official_url("https://piston-data.mojang.com/objects/game.jar").is_ok());
