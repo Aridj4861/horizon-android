@@ -7,10 +7,10 @@
   "compared_source_files": 3147,
   "modified_existing_files": 41,
   "branch": "android",
-  "merged_upstream_commit": "795490271d26b1ccc5b0dbd04c64dfb413b6128a",
-  "merged_upstream_commits": 2811,
+  "merged_upstream_commit": "b6c936f82b08798057161bdfa577e3aac53fb91e",
+  "merged_upstream_commits": 2880,
   "last_reviewed_date": "2026-10-28",
-  "last_update_commits": 4,
-  "latest_fetched_commit": "795490271d26b1ccc5b0dbd04c64dfb413b6128a",
-  "review": "Reviewed four additional main-branch commits after 1feb28c0: shared identifier/NBT helpers and dependency-layer extraction for providers, vaults, command blocks, brewing, sculk and POIs. No Android platform changes or deployment workflows were introduced. Existing Android module paths and launcher changes are preserved. ARMv7 Clippy and Android source checks validate this integration; upstream gameplay parity harnesses were not rerun on Android."
+  "last_update_commits": 69,
+  "latest_fetched_commit": "b6c936f82b08798057161bdfa577e3aac53fb91e",
+  "review": "0.7.2 integration: 69 reviewed stable main-branch commits after 79549027. Includes first-tick loot loading avoidance for clients, lazy minecart comparator evaluation, sprite allocation reduction, TLS dependency updates, skin models, remote eating/subtitles, mouse options, creative inventory and resource-pack prompt fixes. Resolved the HUD conflict by preserving Android safe-area margins and upstream prompt visibility. Deployment workflows remain inactive. See android-upstream-review-0.7.2.md for validation scope."
 }
