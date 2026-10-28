@@ -404,10 +404,22 @@ impl Launcher {
                 );
             }
         } else if page.is_catalog() {
+            ui.text(
+                Face::Medium,
+                18.0,
+                32.0,
+                142.0,
+                color::TEXT,
+                if page == Page::Mods {
+                    "Horizon Mods"
+                } else {
+                    "Resource Packs"
+                },
+            );
             button(
                 &mut ui,
                 &mut self.targets,
-                [32.0, 150.0, w - 240.0, 44.0],
+                [32.0, 174.0, w - 240.0, 44.0],
                 &format!("Search: {}", self.catalog.query),
                 Action::Field("search"),
                 false,
@@ -415,8 +427,12 @@ impl Launcher {
             button(
                 &mut ui,
                 &mut self.targets,
-                [w - 190.0, 150.0, 158.0, 44.0],
-                "Search",
+                [w - 190.0, 174.0, 158.0, 44.0],
+                if page == Page::Mods && self.catalog.query.starts_with("https://") {
+                    "Import .hmod"
+                } else {
+                    "Search"
+                },
                 Action::Search,
                 true,
             );
@@ -424,15 +440,15 @@ impl Launcher {
                 Face::Regular,
                 14.0,
                 32.0,
-                206.0,
+                230.0,
                 color::MUTED,
                 if page == Page::Mods {
-                    "Reviewed Horizon .hmod mods. Runtime requires a 64-bit build."
+                    "Search Horizon Mods or paste an HTTPS .hmod URL. Runtime requires 64-bit."
                 } else {
                     "Resource packs download with checksum verification. Enable them in Installed."
                 },
             );
-            let top = 242.0;
+            let top = 266.0;
             let bottom = h - 112.0;
             self.catalog.scroll = self.catalog.scroll.clamp(
                 0.0,

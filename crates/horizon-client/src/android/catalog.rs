@@ -164,7 +164,7 @@ impl Page {
     pub fn name(self) -> &'static str {
         match self {
             Self::Play => "Play",
-            Self::Mods => ".hmod",
+            Self::Mods => "Mods",
             Self::Packs => "Packs",
             Self::Installed => "Installed",
             Self::Settings => "Settings",
