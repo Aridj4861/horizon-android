@@ -433,7 +433,15 @@ impl Launcher {
                 &mut ui,
                 &mut self.targets,
                 [32.0, 174.0, w - 240.0, 44.0],
-                &format!("Search: {}", self.catalog.query),
+                &format!(
+                    "{}{}",
+                    if page == Page::Mods {
+                        "Search / .hmod URL: "
+                    } else {
+                        "Search: "
+                    },
+                    self.catalog.query
+                ),
                 Action::Field("search"),
                 false,
             );
@@ -441,7 +449,7 @@ impl Launcher {
                 &mut ui,
                 &mut self.targets,
                 [w - 190.0, 174.0, 158.0, 44.0],
-                if page == Page::Mods && self.catalog.query.starts_with("https://") {
+                if page == Page::Mods && self.catalog.query.trim().starts_with("https://") {
                     "Import .hmod"
                 } else {
                     "Search"
@@ -450,7 +458,7 @@ impl Launcher {
                 true,
             );
             let hint = match page {
-                Page::Mods => "Horizon .hmod / runtime needs 64-bit",
+                Page::Mods => "Search Horizon mods or paste an HTTPS .hmod link",
                 Page::Shaders => "Horizon catalog / ZIP support is experimental",
                 _ => "Verified downloads / enable in Installed",
             };

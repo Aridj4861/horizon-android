@@ -6,7 +6,7 @@ use horizon_client::{
 };
 use jni::{
     JNIEnv,
-    objects::{JObject, JString, JValue},
+    objects::{JObject, JString},
 };
 use std::{
     path::PathBuf,
@@ -104,8 +104,7 @@ pub fn picker_failed(error: &str) {
     notice(error, false);
 }
 /// Called by the approved Activity result bridge, never from a game tick.
-#[unsafe(no_mangle)]
-pub extern "system" fn Java_dev_horizon_android_HorizonActivity_nativeDocumentResult(
+pub extern "system" fn document_result(
     mut env: JNIEnv<'_>,
     activity: JObject<'_>,
     request: i32,
@@ -142,35 +141,29 @@ pub extern "system" fn Java_dev_horizon_android_HorizonActivity_nativeDocumentRe
         return;
     }
     STATE.lock().unwrap_or_else(|e| e.into_inner()).working = true;
-    let spawned=std::thread::Builder::new().name("Content import".into()).spawn(move|| {
-        let result=(||->Result<()> {
-            let mut env=vm.attach_current_thread()?;
-            let resolver=env.call_method(activity.as_obj(),"getContentResolver","()Landroid/content/ContentResolver;",&[])?.l()?;
-            let text=JObject::from(env.new_string(uri)?);
-            let uri=env.call_static_method("android/net/Uri","parse","(Ljava/lang/String;)Landroid/net/Uri;",&[JValue::Object(&text)])?.l()?;
-            let projection=env.new_object_array(1,"java/lang/String",JObject::null())?;
-            env.set_object_array_element(&projection,0,env.new_string("_display_name")?)?;
-            let cursor=env.call_method(&resolver,"query","(Landroid/net/Uri;[Ljava/lang/String;Ljava/lang/String;[Ljava/lang/String;Ljava/lang/String;)Landroid/database/Cursor;",&[JValue::Object(&uri),JValue::Object(projection.as_ref()),JValue::Object(&JObject::null()),JValue::Object(&JObject::null()),JValue::Object(&JObject::null())])?.l()?;
-            let name=if !cursor.is_null() {
-                let name=if env.call_method(&cursor,"moveToFirst","()Z",&[])?.z()? {
-                    let value=env.call_method(&cursor,"getString","(I)Ljava/lang/String;",&[JValue::Int(0)])?.l()?;
-                    Some(env.get_string((&value).into())?.into())
-                } else {None};
-                env.call_method(&cursor,"close","()V",&[])?;
-                name
-            } else {None};
-            let name:String=name.unwrap_or_else(||if pending.kind==Kind::Mods {"import.hmod".into()} else {"import.zip".into()});
-            let mode=JObject::from(env.new_string("r")?);
-            let fd=env.call_method(&resolver,"openFileDescriptor","(Landroid/net/Uri;Ljava/lang/String;)Landroid/os/ParcelFileDescriptor;",&[JValue::Object(&uri),JValue::Object(&mode)])?.l()?;
-            let raw=env.call_method(&fd,"detachFd","()I",&[])?.i()?;
-            if raw<0 { return Err("The document provider did not return a readable file".into()); }
-            use std::os::fd::FromRawFd;
-            let input=unsafe{std::fs::File::from_raw_fd(raw)};
-            stage(pending,input,name)
-        })();
-        STATE.lock().unwrap_or_else(|e|e.into_inner()).working=false;
-        if let Err(error)=result { notice(format!("Import failed: {error}"),false); }
-    });
+    let spawned = std::thread::Builder::new()
+        .name("Content import".into())
+        .spawn(move || {
+            let result = (|| -> Result<()> {
+                let mut env = vm.attach_current_thread()?;
+                let fallback = if pending.kind == Kind::Mods {
+                    "import.hmod"
+                } else {
+                    "import.zip"
+                };
+                let opened =
+                    crate::document_bridge::open(&mut env, activity.as_obj(), &uri, fallback);
+                if opened.is_err() {
+                    let _ = env.exception_clear();
+                }
+                let (input, name) = opened.map_err(|e| e.to_string())?;
+                stage(pending, input, name)
+            })();
+            STATE.lock().unwrap_or_else(|e| e.into_inner()).working = false;
+            if let Err(error) = result {
+                notice(format!("Import failed: {error}"), false);
+            }
+        });
     if let Err(error) = spawned {
         STATE.lock().unwrap_or_else(|e| e.into_inner()).working = false;
         notice(format!("Import failed: {error}"), false);

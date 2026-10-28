@@ -21,6 +21,9 @@ Changes after the published 0.7.2:
 - Stage imports in Android's cache, validate archives on a background thread,
   support cancellation, and ask before replacing an existing file. Keep both
   renames pack files; native mods require unique manifest IDs.
+- Explicitly register the Activity result callback with JNI. This fixes a crash
+  on file selection and Back caused by Java not finding a library loaded by
+  NativeActivity. The isolated Rust document probe checks selection and cancellation.
 
 The only project Java runtime class is the explicitly approved
 `HorizonActivity.onActivityResult` bridge. It forwards the selected URI or cancel

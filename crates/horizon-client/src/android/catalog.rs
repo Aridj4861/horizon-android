@@ -410,7 +410,7 @@ impl Catalog {
         }
         if self.page == Page::Mods {
             self.results.clear();
-            if self.query.starts_with("https://") {
+            if self.query.trim().starts_with("https://") {
                 self.import_native(home);
             } else {
                 let query = Query::new(&self.query, Kind::Mod);
@@ -436,7 +436,7 @@ impl Catalog {
         });
     }
     pub fn import_native(&mut self, home: &Path) {
-        let url = self.query.clone();
+        let url = self.query.trim().to_owned();
         let game = self.config.game_home(home);
         self.job("Downloading native .hmod over HTTPS...",move||{
             use std::io::Read;

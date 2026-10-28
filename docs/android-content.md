@@ -4,6 +4,10 @@ Use **Mods**, **Packs** or **Shaders → Import file**, or open **Installed** an
 press Import beside the desired group. Select a file in Android's document picker.
 The in-game Open Mod/Resource Pack/Shader Pack Folder buttons start the same flow.
 
+To download a `.hmod` from a link, paste its HTTPS URL in the Mods search field
+and press **Import .hmod** (the Search button changes when a URL is entered).
+File import and link import are both available.
+
 Supported files:
 
 - Mods: native `.hmod` archives; Java `.jar` mods are not accepted. Executing

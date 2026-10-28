@@ -18,6 +18,8 @@ mod browser;
 mod catalog;
 #[path = "android/display.rs"]
 mod display;
+#[path = "android/document_bridge.rs"]
+mod document_bridge;
 #[path = "android/documents.rs"]
 mod documents;
 #[path = "android/gallery.rs"]

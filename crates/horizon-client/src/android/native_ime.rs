@@ -71,6 +71,7 @@ pub unsafe fn initialize(
     let (edit, input, native, activity) = env
         .with_local_frame(32, |env| -> jni::errors::Result<_> {
             let activity = unsafe { JObject::from_raw(activity) };
+            crate::document_bridge::register(env, &activity, crate::documents::document_result)?;
             let content = env
                 .call_method(
                     &activity,
