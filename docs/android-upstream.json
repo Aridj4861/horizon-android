@@ -7,10 +7,10 @@
   "compared_source_files": 3147,
   "modified_existing_files": 41,
   "branch": "android",
-  "merged_upstream_commit": "1feb28c0452cde2587375357f56ac606c5de7276",
-  "merged_upstream_commits": 2807,
+  "merged_upstream_commit": "795490271d26b1ccc5b0dbd04c64dfb413b6128a",
+  "merged_upstream_commits": 2811,
   "last_reviewed_date": "2026-10-28",
-  "last_update_commits": 68,
-  "latest_fetched_commit": "1feb28c0452cde2587375357f56ac606c5de7276",
-  "review": "0.7.1 integration: 68 main-branch commits after the published 0.7.0 cutoff. Input modules moved to horizon-client-input; Android clipboard callbacks follow the move, and desktop keychain tests stay isolated. Mob sound/state, fishing, campfire and bundle fixes are included. Upstream triage/deployment workflows remain inactive. ARM64 Clippy and 10 Android export/audit tests passed. An isolated harness passed 31 input/account/installer/skin tests (one real keychain test ignored). New APK runtime validation remains pending."
+  "last_update_commits": 4,
+  "latest_fetched_commit": "795490271d26b1ccc5b0dbd04c64dfb413b6128a",
+  "review": "Reviewed four additional main-branch commits after 1feb28c0: shared identifier/NBT helpers and dependency-layer extraction for providers, vaults, command blocks, brewing, sculk and POIs. No Android platform changes or deployment workflows were introduced. Existing Android module paths and launcher changes are preserved. ARMv7 Clippy and Android source checks validate this integration; upstream gameplay parity harnesses were not rerun on Android."
 }
