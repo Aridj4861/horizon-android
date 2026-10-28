@@ -25,6 +25,10 @@ Changes after the published 0.7.2:
 - Explicitly register the Activity result callback with JNI. This fixes a crash
   on file selection and Back caused by Java not finding a library loaded by
   NativeActivity. The isolated Rust document probe checks selection and cancellation.
+- Use the bundled UI font for import notifications and dialogs, and open the
+  matching Installed group after successful launcher imports/downloads.
+- Add detailed buffer creation/error-scope/growth timings and source/movement
+  metadata to performance reports. These diagnostics do not establish an FPS gain.
 
 The only project Java runtime class is the explicitly approved
 `HorizonActivity.onActivityResult` bridge. It forwards the selected URI or cancel

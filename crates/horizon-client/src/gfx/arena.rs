@@ -301,7 +301,9 @@ impl Arena {
         };
         let old = self.pages[page].as_mut().expect("live arena page");
         // Copies recorded for the old buffer run before this one.
-        encoder.copy_buffer_to_buffer(&old.buffer, 0, &buffer, 0, old.capacity * self.stride);
+        crate::spans::time("arena_grow_copy", || {
+            encoder.copy_buffer_to_buffer(&old.buffer, 0, &buffer, 0, old.capacity * self.stride);
+        });
         let previous = old.capacity;
         old.buffer = buffer;
         old.capacity = capacity;
@@ -332,14 +334,18 @@ impl Arena {
 /// (raised errors are fatal).
 fn try_create(device: &wgpu::Device, size: u64, usage: wgpu::BufferUsages) -> Option<wgpu::Buffer> {
     let scope = device.push_error_scope(wgpu::ErrorFilter::OutOfMemory);
-    let buffer = device.create_buffer(&wgpu::BufferDescriptor {
-        label: Some("Section buffer arena"),
-        size,
-        usage,
-        mapped_at_creation: false,
+    let buffer = crate::spans::time("arena_buffer_create", || {
+        device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Section buffer arena"),
+            size,
+            usage,
+            mapped_at_creation: false,
+        })
     });
     // Native error scopes resolve at once.
-    pollster::block_on(scope.pop()).is_none().then_some(buffer)
+    crate::spans::time("arena_error_scope", || pollster::block_on(scope.pop()))
+        .is_none()
+        .then_some(buffer)
 }
 
 #[cfg(test)]

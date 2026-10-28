@@ -946,8 +946,8 @@ impl Launcher {
                 horizon_client::hud::rgba(255, 255, 255, 48),
             );
         }
+        crate::documents::draw_ui(&mut ui);
         ui.finish();
-        crate::documents::draw(&mut b, &gui.atlas);
 
         r.render(&game::loading_frame(&b))?;
         Ok(())

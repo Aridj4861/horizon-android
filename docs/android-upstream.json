@@ -11,7 +11,8 @@
   "merged_upstream_commits": 2954,
   "last_reviewed_date": "2026-10-28",
   "last_update_commits": 19,
-  "latest_fetched_commit": "f66f66c3b49ee9842009266279239cc5ba036d27",
+  "latest_fetched_commit": "3ccbba76dfbb35e265f7f9d8681c70085b1deeea",
   "review": "0.7.3 follow-up: 19 stable commits including merge history after d0b6e489. Bound ZIP allocation/decompression calculations against untrusted entry sizes, centre stored mouse position when grab changes and open world creation after the last world is deleted. Includes regression coverage for shulker body/head rotation, entity view distance and remote mining sounds. Android callback registration, touch paths and inactive deployment workflows are preserved. See android-upstream-review-0.7.3.md.",
-  "pending_review_commits": 0
+  "pending_review_commits": 43,
+  "pending_review": "Fetched during allocation profiling. The renderer delta concerns HDR recovery/Metal, alongside gameplay fixes; no direct fix for the measured Vulkan allocation stalls was found in that renderer delta. Full Android integration review is still pending; these commits have not been merged."
 }

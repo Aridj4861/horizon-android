@@ -385,6 +385,8 @@ impl Game<'_> {
             "focused":self.focused,"paused":self.pause,"in_world":self.player.is_some(),
             "playing_screen":self.screen == Screen::Playing,
             "idle_seconds":self.last_input.elapsed().as_secs(),
+            "camera_angles":[self.yaw, self.pitch],
+            "player_velocity":self.player.as_ref().map(|p|[p.velocity.x,p.velocity.y,p.velocity.z]),
             "underwater":self.ambience.was_underwater(),"mobs":self.mobs.len(),
             "particles":self.particles.len(),"chunks":self.world.chunks.len(),
             "dirty_light":self.world.dirty_light.len(),"pending_uploads":self.pending_uploads.len(),

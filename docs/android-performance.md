@@ -21,6 +21,11 @@ The report contains:
 - Terrain draw calls, resident sections, GPU allocation counters where available,
   resolution, render/simulation distances, presentation mode and effective FPS cap.
 - Focus/pause/idle state, underwater state and entity/particle counts.
+- Camera yaw/pitch and player velocity for distinguishing a changed view or movement
+  from a stationary scene. Player coordinates remain excluded.
+- Buffer creation, error-scope resolution and arena growth-copy CPU timings.
+- The source commit and tracked-change flag when built with `android_build.py`,
+  so reports from different builds with the same version can be distinguished.
 - Android power-saving mode and reported thermal status (Android 10+), without
   root or access to device identifiers. A thermal status of 0 means none, 1 light,
   2 moderate, 3 severe, 4 critical, 5 emergency, 6 shutdown; unavailable is null.

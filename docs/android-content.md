@@ -8,6 +8,10 @@ To download a `.hmod` from a link, paste its HTTPS URL in the Mods search field
 and press **Import .hmod** (the Search button changes when a URL is entered).
 File import and link import are both available.
 
+Successful imports and catalog installs in the launcher open Installed with the
+matching group expanded. Errors and cancellation keep the current page. Import
+notifications and conflict dialogs use the launcher's bundled font.
+
 Supported files:
 
 - Mods: native `.hmod` archives; Java `.jar` mods are not accepted. Executing

@@ -118,6 +118,16 @@ def main():
     environment[f'CARGO_TARGET_{triple.upper()}_LINKER'] = str(clang)
     environment['CARGO_PROFILE_DEV_DEBUG'] = '0'
     environment['HORIZON_ANDROID_PUBLIC'] = '1' if args.public else '0'
+    try:
+        environment['HORIZON_ANDROID_BUILD_COMMIT'] = subprocess.check_output(
+            ['git', 'rev-parse', '--short=12', 'HEAD'], cwd=ROOT,
+            stderr=subprocess.DEVNULL, text=True).strip()
+        environment['HORIZON_ANDROID_BUILD_DIRTY'] = str(bool(subprocess.check_output(
+            ['git', 'status', '--porcelain', '--untracked-files=no'], cwd=ROOT,
+            stderr=subprocess.DEVNULL, text=True).strip())).lower()
+    except (OSError, subprocess.CalledProcessError):
+        environment['HORIZON_ANDROID_BUILD_COMMIT'] = 'source-export'
+        environment['HORIZON_ANDROID_BUILD_DIRTY'] = 'unknown'
     if args.release_candidate:
         flags = environment.get('CARGO_ENCODED_RUSTFLAGS', '').split('\x1f') if environment.get('CARGO_ENCODED_RUSTFLAGS') else environment.get('RUSTFLAGS', '').split()
         for original, replacement in [(Path.home(), '/build'), (ROOT, '/horizon')]:

@@ -180,7 +180,7 @@ impl Page {
 }
 enum Reply {
     Search(Vec<Project>),
-    Done(String),
+    Done(String, horizon_client::content_files::Kind),
 }
 pub struct Catalog {
     pub local: Vec<LocalItem>,
@@ -239,6 +239,18 @@ impl Catalog {
         };
         result.refresh(home);
         result
+    }
+    pub fn show_installed(&mut self, kind: Option<horizon_client::content_files::Kind>) {
+        self.page = Page::Installed;
+        self.scroll = 0.0;
+        self.editing = None;
+        self.sections = [false; 3];
+        if let Some(i) = horizon_client::content_files::Kind::ALL
+            .iter()
+            .position(|k| Some(*k) == kind)
+        {
+            self.sections[i] = true;
+        }
     }
     pub fn refresh(&mut self, home: &Path) {
         let game = self.config.game_home(home);
@@ -392,7 +404,10 @@ impl Catalog {
                     };
                     self.results = items;
                 }
-                Ok(Reply::Done(s)) => self.status = s,
+                Ok(Reply::Done(s, kind)) => {
+                    self.status = s;
+                    self.show_installed(Some(kind));
+                }
                 Err(e) => self.status = e,
             }
             self.refresh(home);
@@ -450,7 +465,7 @@ impl Catalog {
                 let destination=dir.join(format!("{}.hmod",package.manifest.id));
                 if destination.exists(){std::fs::copy(&destination,destination.with_extension("hmod.previous")).map_err(|e|e.to_string())?;}
                 std::fs::rename(&stage,destination).map_err(|e|e.to_string())?;
-                Ok(Reply::Done(format!("Installed {}. Enable it in Installed after reviewing its capabilities in game Mods.",package.manifest.name)))
+                Ok(Reply::Done(format!("Installed {}. Enable it in Installed after reviewing its capabilities in game Mods.",package.manifest.name), horizon_client::content_files::Kind::Mods))
             })();
             let _=std::fs::remove_file(stage);result
         });
@@ -489,10 +504,17 @@ impl Catalog {
                     }
                 },
             )?;
-            Ok(Reply::Done(format!(
-                "Installed {} item(s). Open Play to load this profile.",
-                entries.len()
-            )))
+            Ok(Reply::Done(
+                format!(
+                    "Installed {} item(s). Open Play to load this profile.",
+                    entries.len()
+                ),
+                match project.kind {
+                    Kind::Mod => horizon_client::content_files::Kind::Mods,
+                    Kind::Shader => horizon_client::content_files::Kind::Shaders,
+                    _ => horizon_client::content_files::Kind::Packs,
+                },
+            ))
         });
     }
     pub fn toggle_local(&mut self, home: &Path, index: usize) {

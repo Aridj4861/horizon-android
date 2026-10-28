@@ -3,6 +3,7 @@ use horizon_client::{
     Result,
     content_files::{self, Kind},
     hud::{HudAtlas, HudBatch, rgba},
+    ui_theme::{Face, Ui, color},
 };
 use jni::{
     JNIEnv,
@@ -31,6 +32,7 @@ struct Conflict {
 pub struct Notice {
     pub text: String,
     pub changed: bool,
+    pub kind: Option<Kind>,
 }
 #[derive(Default)]
 struct State {
@@ -73,7 +75,21 @@ fn notice(text: impl Into<String>, changed: bool) {
     let text = text.into();
     let mut s = STATE.lock().unwrap_or_else(|e| e.into_inner());
     s.toast = Some((text.clone(), std::time::Instant::now()));
-    s.notice = Some(Notice { text, changed });
+    s.notice = Some(Notice {
+        text,
+        changed,
+        kind: None,
+    });
+}
+fn imported(text: impl Into<String>, kind: Kind) {
+    let text = text.into();
+    let mut s = STATE.lock().unwrap_or_else(|e| e.into_inner());
+    s.toast = Some((text.clone(), std::time::Instant::now()));
+    s.notice = Some(Notice {
+        text,
+        changed: true,
+        kind: Some(kind),
+    });
 }
 pub fn poll() -> Option<Notice> {
     STATE
@@ -241,13 +257,13 @@ fn stage(request: Request, mut input: std::fs::File, name: String) -> Result<()>
             );
         } else {
             std::fs::rename(&staged, &target)?;
-            notice(
+            imported(
                 format!(
                     "Imported {} into {}. Enable it in game settings.",
                     target.file_name().unwrap_or_default().to_string_lossy(),
                     request.kind.label()
                 ),
-                true,
+                request.kind,
             );
         }
         Ok(())
@@ -319,9 +335,9 @@ pub fn resolve(choice: Choice) {
         Ok(())
     })();
     match result {
-        Ok(()) => notice(
-            "Import completed. Enable the addition in game settings.",
-            true,
+        Ok(()) => imported(
+            "Import completed. Enable it in Installed or game settings.",
+            c.kind,
         ),
         Err(e) => {
             let _ = std::fs::remove_file(c.staged);
@@ -359,28 +375,21 @@ pub fn tap(x: f32, y: f32) -> bool {
     true
 }
 pub fn draw(batch: &mut HudBatch, atlas: &HudAtlas) {
+    let mut ui = Ui::mobile(atlas, batch, (0.0, 0.0));
+    draw_ui(&mut ui);
+    ui.finish();
+}
+/// Launcher overlays must use its bundled font, including before game fonts exist.
+pub fn draw_ui(ui: &mut Ui<'_>) {
     let mut s = STATE.lock().unwrap_or_else(|e| e.into_inner());
+    s.hits.clear();
     if s.conflict.is_none() && !s.working {
         if let Some((message, time)) = &s.toast
             && time.elapsed().as_secs() < 5
         {
-            let text = fit(atlas, message, batch.width - 16.0);
-            batch.fill(
-                atlas,
-                4.0,
-                batch.height - 28.0,
-                batch.width - 8.0,
-                24.0,
-                rgba(24, 27, 32, 235),
-            );
-            batch.text(
-                atlas,
-                &text,
-                8.0,
-                batch.height - 20.0,
-                rgba(255, 255, 255, 255),
-                false,
-            );
+            let text = ui.fit_text(Face::Regular, 16.0, message, ui.w - 40.0);
+            ui.rounded(8.0, ui.h - 48.0, ui.w - 16.0, 40.0, 2.0, color::RAISED);
+            ui.text(Face::Regular, 16.0, 20.0, ui.h - 40.0, color::TEXT, &text);
         }
         return;
     }
@@ -390,9 +399,7 @@ pub fn draw(batch: &mut HudBatch, atlas: &HudAtlas) {
                 .file_name()
                 .unwrap_or_default()
                 .to_string_lossy()
-                .chars()
-                .take(42)
-                .collect::<String>(),
+                .into_owned(),
             if c.kind == Kind::Mods {
                 vec![("Replace", Choice::Replace), ("Cancel", Choice::Cancel)]
             } else {
@@ -405,92 +412,61 @@ pub fn draw(batch: &mut HudBatch, atlas: &HudAtlas) {
         )
     } else {
         (
-            s.toast
-                .as_ref()
-                .map(|v| v.0.chars().take(42).collect())
-                .unwrap_or_default(),
+            s.toast.as_ref().map(|v| v.0.clone()).unwrap_or_default(),
             vec![("Cancel", Choice::Cancel)],
         )
     };
-    let w = 300.0f32.min(batch.width - 8.0);
-    let vertical = w < 240.0;
+    let w = 440.0f32.min(ui.w - 24.0);
+    let vertical = w < 320.0;
     let height = if vertical {
-        62.0 + choices.len() as f32 * 30.0
+        92.0 + choices.len() as f32 * 44.0
     } else {
-        100.0
+        144.0
     };
-    let x = (batch.width - w) / 2.0;
-    let y = ((batch.height - height) / 2.0).max(0.0);
-    batch.fill(
-        atlas,
-        0.0,
-        0.0,
-        batch.width,
-        batch.height,
-        rgba(0, 0, 0, 180),
-    );
-    batch.fill(atlas, x, y, w, height, rgba(24, 27, 32, 255));
-    batch.text(
-        atlas,
+    let x = (ui.w - w) / 2.0;
+    let y = ((ui.h - height) / 2.0).max(0.0);
+    ui.rounded(0.0, 0.0, ui.w, ui.h, 0.0, rgba(0, 0, 0, 180));
+    ui.rounded(x, y, w, height, 2.0, color::BG);
+    ui.text(
+        Face::Medium,
+        20.0,
+        x + 12.0,
+        y + 12.0,
+        color::TEXT,
         if s.conflict.is_some() {
             "File exists"
         } else {
             "Importing file"
         },
-        x + 8.0,
-        y + 10.0,
-        rgba(255, 255, 255, 255),
-        false,
     );
-    batch.text(
-        atlas,
-        &fit(atlas, &name, w - 16.0),
-        x + 8.0,
-        y + 30.0,
-        rgba(215, 215, 215, 255),
-        false,
-    );
-    s.hits.clear();
-    let width = (w - 16.0) / choices.len() as f32;
+    let name = ui.fit_text(Face::Regular, 16.0, &name, w - 24.0);
+    ui.text(Face::Regular, 16.0, x + 12.0, y + 46.0, color::MUTED, &name);
+    let width = (w - 24.0) / choices.len() as f32;
     for (i, (label, choice)) in choices.into_iter().enumerate() {
         let rect = if vertical {
-            [x + 8.0, y + 54.0 + i as f32 * 30.0, w - 16.0, 26.0]
+            [x + 12.0, y + 86.0 + i as f32 * 44.0, w - 24.0, 38.0]
         } else {
-            [x + 8.0 + i as f32 * width, y + 62.0, width - 4.0, 26.0]
+            [x + 12.0 + i as f32 * width, y + 92.0, width - 4.0, 38.0]
         };
-        batch.fill(
-            atlas,
-            rect[0],
-            rect[1],
-            rect[2],
-            rect[3],
-            rgba(65, 70, 80, 255),
-        );
-        batch.text(
-            atlas,
+        ui.rounded(rect[0], rect[1], rect[2], rect[3], 2.0, color::RAISED);
+        ui.text(
+            Face::Medium,
+            16.0,
+            rect[0] + 8.0,
+            rect[1] + 7.0,
+            color::TEXT,
             label,
-            rect[0] + 4.0,
-            rect[1] + 8.0,
-            rgba(255, 255, 255, 255),
-            false,
         );
         s.hits.push((
             [
-                rect[0] * batch.scale,
-                rect[1] * batch.scale,
-                rect[2] * batch.scale,
-                rect[3] * batch.scale,
+                rect[0] * ui.density,
+                rect[1] * ui.density,
+                rect[2] * ui.density,
+                rect[3] * ui.density,
             ],
             choice,
         ));
     }
-}
-fn fit(atlas: &HudAtlas, text: &str, width: f32) -> String {
-    let mut text = text.chars().take(120).collect::<String>();
-    while !text.is_empty() && atlas.font.width(&text) > width {
-        text.pop();
-    }
-    text
 }
 pub fn handle_event(event: &winit::event::WindowEvent) -> bool {
     use winit::{

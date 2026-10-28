@@ -240,6 +240,8 @@ impl Launcher {
                     serde_json::json!({
                         "renderer": self.catalog.config.renderer.label(),
                         "resolution_percent": self.catalog.config.render_scale.percent(),
+                        "source_commit": option_env!("HORIZON_ANDROID_BUILD_COMMIT"),
+                        "source_dirty": option_env!("HORIZON_ANDROID_BUILD_DIRTY"),
                     }),
                 )?;
             }
@@ -437,6 +439,7 @@ impl ApplicationHandler for Launcher {
             self.catalog.status = notice.text;
             if notice.changed {
                 self.catalog.refresh(&self.home);
+                self.catalog.show_installed(notice.kind);
             }
         }
         for result in crate::gallery::poll() {
