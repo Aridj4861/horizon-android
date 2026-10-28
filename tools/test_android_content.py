@@ -29,6 +29,7 @@ pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + S
 #[path = "../../../../crates/horizon-client/src/content_files.rs"] mod content_files;
 #[path = "../../../../crates/horizon-client/src/gfx/upload_budget.rs"] mod upload_budget;
 #[path = "../../../../crates/horizon-client/src/zip.rs"] mod archive_reader;
+#[path = "../../../../crates/horizon-client/src/android/search_queue.rs"] mod search_queue;
 ''', encoding='utf-8')
     subprocess.run(['cargo', 'test', '--manifest-path', str(root / 'Cargo.toml')],
                    cwd=ROOT, check=True)

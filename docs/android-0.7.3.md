@@ -27,6 +27,8 @@ Changes after the published 0.7.2:
   NativeActivity. The isolated Rust document probe checks selection and cancellation.
 - Use the bundled UI font for import notifications and dialogs, and open the
   matching Installed group after successful launcher imports/downloads.
+- Keep catalog tabs responsive during searches, cache recent query pages and
+  avoid unpacking installed mod code when browsing tabs or receiving search results.
 - Add detailed buffer creation/error-scope/growth timings and source/movement
   metadata to performance reports. These diagnostics do not establish an FPS gain.
 

@@ -179,7 +179,6 @@ impl Page {
     }
 }
 enum Reply {
-    Search(Vec<Project>),
     Done(String, horizon_client::content_files::Kind),
 }
 pub struct Catalog {
@@ -190,19 +189,18 @@ pub struct Catalog {
     downloading: Option<(browser::SourceId, String)>,
     progress: Arc<Mutex<f32>>,
     failed: Option<(browser::SourceId, String)>,
-    pub native: Vec<(String, String, bool)>,
     pub page: Page,
     pub query: String,
     pub results: Vec<Project>,
     pub status: String,
     pub offset: usize,
     pub scroll: f32,
-    pub installed: Installed,
     pub config: Config,
-    pub enabled: Vec<bool>,
     pub editing: Option<&'static str>,
     pub render_scale_text: String,
     worker: Option<mpsc::Receiver<Result<Reply, String>>>,
+    search_worker: Option<mpsc::Receiver<Result<Vec<Project>, String>>>,
+    searches: crate::search_queue::Queue<(Page, String, usize), Vec<Project>>,
 }
 #[derive(Clone)]
 pub struct LocalItem {
@@ -214,7 +212,6 @@ pub struct LocalItem {
 impl Catalog {
     pub fn new(home: &Path) -> Self {
         let config = Config::load(home);
-        let installed = Installed::load(&config.game_home(home));
         let mut result = Self {
             local: vec![],
             sections: [false, false, false],
@@ -223,24 +220,24 @@ impl Catalog {
             downloading: None,
             progress: Arc::new(Mutex::new(0.0)),
             failed: None,
-            native: vec![],
-            enabled: vec![],
             page: Page::Play,
             query: String::new(),
             results: vec![],
             status: String::new(),
             offset: 0,
             scroll: 0.0,
-            installed,
             config,
             editing: None,
             render_scale_text: String::new(),
             worker: None,
+            search_worker: None,
+            searches: crate::search_queue::Queue::new(),
         };
         result.refresh(home);
         result
     }
     pub fn show_installed(&mut self, kind: Option<horizon_client::content_files::Kind>) {
+        self.searches.cancel_interest();
         self.page = Page::Installed;
         self.scroll = 0.0;
         self.editing = None;
@@ -254,51 +251,15 @@ impl Catalog {
     }
     pub fn refresh(&mut self, home: &Path) {
         let game = self.config.game_home(home);
-        self.installed = Installed::load(&game);
-        self.downloaded = self
-            .installed
+        let installed = Installed::load(&game);
+        self.downloaded = installed
             .entries
             .iter()
             .filter(|e| game.join(&e.file).is_file())
             .map(|e| (e.source, e.project.clone()))
             .collect();
-        self.installed
-            .entries
-            .retain(|entry| entry.kind == Kind::ResourcePack);
         let on = horizon_client::mod_list::ModList::load(&game);
         let settings = horizon_client::settings::Settings::load(&game.join("options.txt"));
-        self.enabled = self
-            .installed
-            .entries
-            .iter()
-            .map(|e| match e.kind {
-                Kind::Mod => e
-                    .file
-                    .strip_prefix("horizon-mods/")
-                    .is_some_and(|id| on.enabled.contains(id)),
-                Kind::ResourcePack => settings.resource_packs.contains(&format!(
-                    "file/{}",
-                    Path::new(&e.file)
-                        .file_name()
-                        .unwrap_or_default()
-                        .to_string_lossy()
-                )),
-                _ => false,
-            })
-            .collect();
-        self.native = horizon_mods::find(&game.join("horizon-mods"))
-            .into_iter()
-            .filter(|p| p.is_file())
-            .filter_map(|p| horizon_mods::Package::read(&p).ok())
-            .map(|p| {
-                let m = p.manifest;
-                let enabled = on.enabled.contains(&m.id);
-                (m.id, m.name, enabled)
-            })
-            .collect();
-        if !cfg!(feature = "mods") {
-            self.native.clear();
-        }
         self.local.clear();
         for kind in horizon_client::content_files::Kind::ALL {
             let dir = game.join(kind.folder());
@@ -352,7 +313,11 @@ impl Catalog {
             .downloaded
             .iter()
             .any(|(source, id)| *source == project.source && *id == project.id)
-            || (project.kind == Kind::Mod && self.native.iter().any(|(id, _, _)| *id == project.id))
+            || (project.kind == Kind::Mod
+                && self.local.iter().any(|item| {
+                    item.kind == horizon_client::content_files::Kind::Mods
+                        && item.file == format!("{}.hmod", project.id)
+                }))
         {
             return Some("Installed".into());
         }
@@ -393,17 +358,6 @@ impl Catalog {
                 self.failed = downloading;
             }
             match reply {
-                Ok(Reply::Search(items)) => {
-                    self.status = if self.page == Page::Shaders && items.is_empty() {
-                        "No native shader packs published yet. Import a .hshader or experimental shaders ZIP.".into()
-                    } else {
-                        format!(
-                            "{} results - select Install to check compatibility",
-                            items.len()
-                        )
-                    };
-                    self.results = items;
-                }
                 Ok(Reply::Done(s, kind)) => {
                     self.status = s;
                     self.show_installed(Some(kind));
@@ -412,42 +366,96 @@ impl Catalog {
             }
             self.refresh(home);
         }
+        let result = self
+            .search_worker
+            .as_ref()
+            .and_then(|rx| match rx.try_recv() {
+                Ok(v) => Some(v),
+                Err(mpsc::TryRecvError::Disconnected) => Some(Err("Search worker stopped".into())),
+                Err(_) => None,
+            });
+        if let Some(result) = result {
+            self.search_worker = None;
+            let visible = self.searches.finish(result.as_ref().ok().cloned());
+            if visible && self.page.is_catalog() && !self.busy() {
+                match result {
+                    Ok(items) => self.show_results(items),
+                    Err(error) => self.status = error,
+                }
+            }
+        }
+        self.start_search();
     }
     pub fn search(&mut self, home: &Path) {
-        if self.page == Page::Shaders {
-            self.results.clear();
-            self.scroll = 0.0;
-            let query = Query::new(&self.query, Kind::Shader);
-            self.job("Searching Horizon shader packs...", move || {
-                browser::horizon::Registry.search(&query).map(Reply::Search)
-            });
-            return;
+        self.request_search(home, true);
+    }
+    pub fn browse(&mut self, home: &Path) {
+        self.searches.cancel_interest();
+        if self.page.is_catalog() {
+            self.request_search(home, false);
         }
-        if self.page == Page::Mods {
-            self.results.clear();
-            if self.query.trim().starts_with("https://") {
-                self.import_native(home);
-            } else {
-                let query = Query::new(&self.query, Kind::Mod);
-                self.scroll = 0.0;
-                self.job("Searching reviewed Horizon mods...", move || {
-                    browser::horizon::Registry.search(&query).map(Reply::Search)
-                });
-            }
-            return;
-        }
+    }
+    fn request_search(&mut self, home: &Path, refresh: bool) {
         if !self.page.is_catalog() {
             return;
         }
-        let mut query = Query::new(&self.query, Kind::ResourcePack);
-        query.everything = true;
-        query.offset = self.offset;
-        query.limit = 12;
+        if self.page == Page::Mods && self.query.trim().starts_with("https://") {
+            self.searches.cancel_interest();
+            if refresh {
+                self.import_native(home);
+            } else {
+                self.results.clear();
+                self.status = "Press Import .hmod to download this HTTPS link".into();
+            }
+            return;
+        }
         self.scroll = 0.0;
-        self.job("Searching Modrinth...", move || {
-            browser::modrinth::Modrinth
-                .search(&query)
-                .map(Reply::Search)
+        let key = (self.page, self.query.trim().to_owned(), self.offset);
+        if let Some(items) = self.searches.request(key, refresh) {
+            self.show_results(items);
+        } else {
+            self.results.clear();
+            self.status = "Searching... You can switch tabs while results load.".into();
+        }
+        self.start_search();
+    }
+    fn show_results(&mut self, items: Vec<Project>) {
+        self.status = if self.page == Page::Shaders && items.is_empty() {
+            "No native shader packs published yet. Import a .hshader or experimental shaders ZIP."
+                .into()
+        } else {
+            format!(
+                "{} results - select Install to check compatibility",
+                items.len()
+            )
+        };
+        self.results = items;
+    }
+    fn start_search(&mut self) {
+        if self.busy() || self.search_worker.is_some() {
+            return;
+        }
+        let Some((page, text, offset)) = self.searches.take_next() else {
+            return;
+        };
+        let (tx, rx) = mpsc::channel();
+        self.search_worker = Some(rx);
+        std::thread::spawn(move || {
+            let kind = match page {
+                Page::Mods => Kind::Mod,
+                Page::Shaders => Kind::Shader,
+                _ => Kind::ResourcePack,
+            };
+            let mut query = Query::new(&text, kind);
+            query.offset = offset;
+            query.limit = 12;
+            let result = if page == Page::Packs {
+                query.everything = true;
+                browser::modrinth::Modrinth.search(&query)
+            } else {
+                browser::horizon::Registry.search(&query)
+            };
+            let _ = tx.send(result);
         });
     }
     pub fn import_native(&mut self, home: &Path) {

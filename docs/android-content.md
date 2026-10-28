@@ -12,6 +12,12 @@ Successful imports and catalog installs in the launcher open Installed with the
 matching group expanded. Errors and cancellation keep the current page. Import
 notifications and conflict dialogs use the launcher's bundled font.
 
+Catalog searches run separately from installation jobs, so switching tabs does
+not wait for a network response. At most one search runs at once; rapid changes
+replace the pending request, and replies for an old tab cannot replace the current
+list. The last eight query pages are cached for 30 seconds; Search explicitly
+refreshes its query. Changing tabs does not unpack installed `.hmod` WASM files.
+
 Supported files:
 
 - Mods: native `.hmod` archives; Java `.jar` mods are not accepted. Executing

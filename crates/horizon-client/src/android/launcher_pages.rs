@@ -1055,11 +1055,8 @@ impl Launcher {
                 self.catalog.page = page;
                 self.catalog.scroll = 0.0;
                 self.error = None;
-                self.catalog.refresh(&self.home);
-                if page.is_catalog() {
-                    self.catalog.offset = 0;
-                    self.catalog.search(&self.home);
-                }
+                self.catalog.offset = 0;
+                self.catalog.browse(&self.home);
             }
             Some(Action::Play) => self.action(events)?,
             Some(Action::Search) => {

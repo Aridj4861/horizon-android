@@ -33,6 +33,8 @@ mod platform;
 #[allow(dead_code)]
 #[path = "../../../launcher/src/proxy.rs"]
 mod proxy;
+#[path = "android/search_queue.rs"]
+mod search_queue;
 #[path = "android/secure_store.rs"]
 mod secure_store;
 #[allow(dead_code)]
