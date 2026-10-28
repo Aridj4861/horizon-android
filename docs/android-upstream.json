@@ -7,12 +7,11 @@
   "compared_source_files": 3147,
   "modified_existing_files": 41,
   "branch": "android",
-  "merged_upstream_commit": "b6c936f82b08798057161bdfa577e3aac53fb91e",
-  "merged_upstream_commits": 2880,
+  "merged_upstream_commit": "e1b2b0b2fdf5962a30fb5de31b0c1bd6829d9083",
+  "merged_upstream_commits": 2931,
   "last_reviewed_date": "2026-10-28",
-  "last_update_commits": 69,
-  "latest_fetched_commit": "6d3489d30b8cd6220917943fde8d63624fd7a0de",
-  "review": "0.7.2 integration: 69 reviewed stable main-branch commits after 79549027. Includes first-tick loot loading avoidance for clients, lazy minecart comparator evaluation, sprite allocation reduction, TLS dependency updates, skin models, remote eating/subtitles, mouse options, creative inventory and resource-pack prompt fixes. Resolved the HUD conflict by preserving Android safe-area margins and upstream prompt visibility. Deployment workflows remain inactive. See android-upstream-review-0.7.2.md for validation scope.",
-  "pending_review_commits": 34,
-  "pending_review": "Fetched for 0.7.3 development. Main changes concern desktop native-source mod builds, furnace/spawn refactors and nightly workflows. Not merged into this import/performance change; Android integration and checks remain required before a release build."
+  "last_update_commits": 51,
+  "latest_fetched_commit": "e1b2b0b2fdf5962a30fb5de31b0c1bd6829d9083",
+  "review": "0.7.3 integration: 51 stable main-branch commits after b6c936f8. Includes server chunk-worker pumping between ticks during world entry, trial spawner egg fixes, furnace/biome refactors, chat log de-duplication and desktop native-source mod tooling. Android keeps .hmod support, filters unsupported .hnmod projects and rejects their installation. Upstream deployment workflows remain inactive. See android-upstream-review-0.7.3.md for validation scope.",
+  "pending_review_commits": 0
 }

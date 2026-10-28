@@ -41,3 +41,14 @@ Developer checks: `python tools/test_android_content.py` covers the shared impor
 validator, streamed copy cancellation/limits and upload scheduling without starting
 the game. Test the complete APK on Android for picker cancellation, file-provider
 permissions, duplicate-name choices, deletion and keyboard/background recovery.
+
+For a native shader smoke test, package Horizon's included Golden Hour example:
+
+```sh
+cargo run -p horizon-shader-api --bin horizon-shader -- pack crates/horizon-shader-api/packs/golden_hour --out .local/golden_hour-1.0.0.hshader
+```
+
+Transfer the resulting file to the phone, import it under Shaders, then enable it
+in Installed before Play, or in the game's Shader Packs settings. It changes the
+sky and adds two post-processing passes; it is a functional example, not an
+Android performance benchmark.
