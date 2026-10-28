@@ -52,7 +52,7 @@ Fujitsu F-03L · Portrait mode
 
 | **Main menu** | **In-game** |
 | --- | --- |
-| ![Horizon main menu on a Fujitsu F-03L flip phone in portrait mode](docs/media/android/fujitsu-f03l-menu.png) | ![Minecraft world running on a Fujitsu F-03L flip phone in portrait mode](docs/media/android/fujitsu-f03l-gameplay.png) |
+| <img src="docs/media/android/fujitsu-f03l-menu.png" alt="Horizon main menu on a Fujitsu F-03L flip phone in portrait mode" width="220"> | <img src="docs/media/android/fujitsu-f03l-gameplay.png" alt="Minecraft world running on a Fujitsu F-03L flip phone in portrait mode" width="220"> |
 
 ## Help build it
 
