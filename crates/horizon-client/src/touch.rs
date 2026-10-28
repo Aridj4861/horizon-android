@@ -204,6 +204,9 @@ impl TouchControls {
     }
     pub fn draw(&self, b: &mut HudBatch, a: &HudAtlas) {
         let (w, h) = (b.width, b.height);
+        if self.editor.is_some() {
+            self.draw_editor_toolbar(b, a);
+        }
         let state = self.state();
         for control in Control::ALL {
             if !self.visible(control) {
@@ -952,6 +955,20 @@ mod tests {
     }
 
     use super::*;
+    #[test]
+    fn editor_add_row_creates_a_button_without_closing_the_editor() {
+        let mut touch = TouchControls::default();
+        touch.viewport(1920, 1080);
+        touch.open_editor();
+        assert!(!touch.edit_touch(1, [0.15, 0.165], true, true));
+        assert!(!touch.edit_touch(2, [0.5, 0.875], true, true));
+        assert!(touch.editor.is_some());
+        assert_eq!(touch.settings.custom_buttons.len(), 1);
+        assert_eq!(touch.settings.custom_buttons[0].key, "key.keyboard.unknown");
+        touch.cancel_editor();
+        assert!(touch.settings.custom_buttons.is_empty());
+    }
+
     #[test]
     fn keypad_utility_overlay_keeps_buttons_without_movement_targets() {
         let mut t = TouchControls::default();

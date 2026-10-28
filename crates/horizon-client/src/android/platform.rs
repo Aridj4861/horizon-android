@@ -189,6 +189,34 @@ pub fn cache_dir() -> Option<std::path::PathBuf> {
         Ok(std::path::PathBuf::from(text))
     })
 }
+
+pub fn open_repository() -> bool {
+    with_context(|env, activity| {
+        let address = JObject::from(env.new_string("https://github.com/Vasysik/horizon-android")?);
+        let uri = env
+            .call_static_method(
+                "android/net/Uri",
+                "parse",
+                "(Ljava/lang/String;)Landroid/net/Uri;",
+                &[JValue::Object(&address)],
+            )?
+            .l()?;
+        let action = JObject::from(env.new_string("android.intent.action.VIEW")?);
+        let intent = env.new_object(
+            "android/content/Intent",
+            "(Ljava/lang/String;Landroid/net/Uri;)V",
+            &[JValue::Object(&action), JValue::Object(&uri)],
+        )?;
+        env.call_method(
+            activity,
+            "startActivity",
+            "(Landroid/content/Intent;)V",
+            &[JValue::Object(&intent)],
+        )?;
+        Ok(())
+    })
+    .is_some()
+}
 pub fn clipboard_set(text: &str) {
     let _ = clipboard_write(text, false);
 }

@@ -75,7 +75,7 @@ impl TouchControls {
                         CustomButton::new(button.key.clone(), i).layouts
                             [self.settings.mode.index()];
                 }
-            } else if layout::contains([0.37, 0.04, 0.19, 0.075], p) {
+            } else if layout::contains([0.02, 0.13, 0.335, 0.075], p) {
                 e.palette = !e.palette;
                 e.selected = None;
                 e.selected_custom = None;
@@ -166,6 +166,17 @@ impl TouchControls {
         self.editor = Some(e);
         false
     }
+    pub(super) fn draw_editor_toolbar(&self, b: &mut HudBatch, a: &HudAtlas) {
+        for (rect, label) in [
+            ([0.02, 0.04, 0.105, 0.075], "Done"),
+            ([0.135, 0.04, 0.105, 0.075], "Cancel"),
+            ([0.25, 0.04, 0.105, 0.075], "Reset"),
+            ([0.02, 0.13, 0.335, 0.075], "Add buttons..."),
+        ] {
+            plate(b, a, rect, label, false);
+        }
+    }
+
     pub(super) fn draw_editor(&self, b: &mut HudBatch, a: &HudAtlas) {
         let e = self.editor.as_ref().unwrap();
         let (w, h) = (b.width, b.height);
@@ -236,14 +247,6 @@ impl TouchControls {
                     rgba(255, 255, 255, 255),
                 );
             }
-        }
-        for (rect, label) in [
-            ([0.02, 0.04, 0.105, 0.075], "Done"),
-            ([0.135, 0.04, 0.105, 0.075], "Cancel"),
-            ([0.25, 0.04, 0.105, 0.075], "Reset"),
-            ([0.37, 0.04, 0.19, 0.075], "Add buttons..."),
-        ] {
-            plate(b, a, rect, label, false);
         }
         if e.palette {
             b.fill(

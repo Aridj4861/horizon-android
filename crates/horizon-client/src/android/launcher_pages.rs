@@ -26,6 +26,7 @@ pub(super) enum Action {
     CopyLoginCode,
     CancelLogin,
     ReviewApp,
+    Repository,
     SignOut,
     LoginLink,
     CloseLogin,
@@ -196,11 +197,17 @@ impl Launcher {
             .fill(&gui.atlas, 0.0, 0.0, w * scale, h * scale, color::BG);
         ui.text(
             Face::Medium,
-            if w < 700.0 { 24.0 } else { 32.0 },
+            if w < 400.0 {
+                20.0
+            } else if w < 700.0 {
+                24.0
+            } else {
+                32.0
+            },
             32.0,
             if w < 700.0 { 12.0 } else { 28.0 },
             color::TEXT,
-            "Horizon Android",
+            &format!("Horizon Android {}", crate::backend::VERSION),
         );
         button(
             &mut ui,
@@ -738,9 +745,22 @@ impl Launcher {
                 32.0,
                 h - 47.0 + i as f32 * 18.0,
                 color::MUTED,
-                &line.iter().collect::<String>(),
+                &ui.fit_text(
+                    Face::Regular,
+                    14.0,
+                    &line.iter().collect::<String>(),
+                    (w - 210.0).max(40.0),
+                ),
             );
         }
+        button(
+            &mut ui,
+            &mut self.targets,
+            [w - 142.0, h - 52.0, 110.0, 32.0],
+            "GitHub",
+            Action::Repository,
+            false,
+        );
         if self.login.visible {
             self.list_targets.clear();
             self.list_view = None;
@@ -859,6 +879,14 @@ impl Launcher {
             audio.play_button_click();
         }
         match action {
+            Some(Action::Repository) => {
+                self.catalog.status = if crate::platform::open_repository() {
+                    "Repository opened in browser."
+                } else {
+                    "No browser available to open the repository."
+                }
+                .into();
+            }
             Some(Action::Account) => {
                 self.login.visible = true;
             }

@@ -5784,6 +5784,12 @@ impl Game<'_> {
     fn capture_loaded_world(&mut self) {
         // Loading may finish after focus was lost or another screen opened.
         if self.title.is_none() && self.screen == Screen::Playing {
+            // Resource/chunk loading is not player inactivity. In particular,
+            // do not enter the world already under the one-minute AFK limit.
+            #[cfg(target_os = "android")]
+            {
+                self.last_input = Instant::now();
+            }
             self.capture(true);
         }
     }
