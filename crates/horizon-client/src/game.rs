@@ -15477,6 +15477,8 @@ impl Loading {
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
         #[cfg(target_os = "android")]
         self.menu_android_keyboard();
+        #[cfg(target_os = "android")]
+        self.tick_menu_audio();
         if horizon_threads::stop_requests() > 0 {
             // No world is open yet: nothing to save.
             crate::game::exit_app(event_loop);
@@ -15504,6 +15506,12 @@ impl Loading {
         else {
             return;
         };
+        let now = Instant::now();
+        let frame_ms = self
+            .menu
+            .last_frame
+            .replace(now)
+            .map(|last| now.duration_since(last).as_secs_f32() * 1000.0);
         let mut batch = HudBatch::new(size);
         self.draw_menu(&mut batch);
         let mut frame = loading_frame(&batch);
@@ -15518,6 +15526,17 @@ impl Loading {
                 }
                 Ok(_) => {}
                 Err(e) => log::warn!("Horizon: loading screen frame failed: {e}"),
+            }
+            if let Some(frame_ms) = frame_ms {
+                let cpu = now
+                    .elapsed()
+                    .saturating_sub(renderer.last_wait)
+                    .as_secs_f32()
+                    * 1000.0;
+                self.menu
+                    .frame_graph
+                    .record(frame_ms, cpu, renderer.gpu_times.last().copied());
+                renderer.gpu_times.clear();
             }
         }
         if !self.shown {
@@ -15560,6 +15579,14 @@ impl Loading {
         let audio = if !options.execution_role.is_client() {
             Audio::silent(&options.resources)
         } else {
+            #[cfg(target_os = "android")]
+            {
+                self.menu
+                    .audio
+                    .take()
+                    .unwrap_or_else(|| Audio::new(&options.resources))
+            }
+            #[cfg(not(target_os = "android"))]
             Audio::new(&options.resources)
         };
         let pack_error = loaded.pack_error.or_else(|| self.pack_error.take());

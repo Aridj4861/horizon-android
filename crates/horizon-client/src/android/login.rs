@@ -37,11 +37,12 @@ impl Login {
                 .is_some_and(|s| serde_json::from_str::<Secrets>(&s).is_ok())
         });
     }
-    pub fn status(&self) -> String {
+    pub fn status(&self, offline_name: &str) -> String {
         match (&self.profile, self.signed_in) {
             (Some(name), true) => format!("Signed in: {name}"),
             (Some(name), false) => format!("Sign in required: {name}"),
             _ if self.pending() => "Signing in...".into(),
+            _ if !offline_name.trim().is_empty() => format!("Offline: {offline_name}"),
             _ => "Offline / Sign in".into(),
         }
     }
@@ -229,7 +230,7 @@ impl Login {
             } else {
                 color::MUTED
             },
-            &self.status(),
+            &self.status(offline_name),
         );
         if let Some(SignInState::Code(code)) = &self.state {
             button(

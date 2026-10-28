@@ -456,7 +456,7 @@ impl<'a> Ui<'a> {
 
     // ---- text ----
     /// The advance of `text` in dp.
-    pub(crate) fn measure(&self, face: Face, size: f32, text: &str) -> f32 {
+    pub fn measure(&self, face: Face, size: f32, text: &str) -> f32 {
         let px = (size * self.density * 4.0).round() / 4.0;
         with_cache(self.atlas, |c| {
             let font = c.fonts.face(face);

@@ -1071,6 +1071,11 @@ impl Game<'_> {
         // A replacement LocalPlayer has a fresh sendPosition baseline.
         r.position_sender = Default::default();
         r.predictions.clear();
+        // Login/respawn replaces LocalPlayer even when the dimension name is
+        // unchanged (for example a proxy transferring between lobbies).
+        r.ghast_dismount = None;
+        self.riding = None;
+        self.mount = Default::default();
         self.set_mode_id(spawn.game_type);
         self.dim = Dim::from_id(&spawn.dimension);
         // ClientPacketListener.handleLogin / handleRespawn: the server's
@@ -3500,6 +3505,12 @@ impl Game<'_> {
                 player.spectator = self.spectator();
                 player.velocity = delta;
                 self.player = Some(player);
+                // Loading can exceed the AFK timeout on phones. A newly
+                // spawned player must not inherit that loading-time idle cap.
+                #[cfg(target_os = "android")]
+                {
+                    self.last_input = Instant::now();
+                }
                 self.pad.player_replaced();
                 self.sway = Default::default();
                 self.eye = 1.62;

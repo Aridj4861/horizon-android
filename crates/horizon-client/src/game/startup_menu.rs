@@ -14,7 +14,13 @@ pub(super) struct StartupMenu {
     #[cfg(target_os = "android")]
     controls: horizon_client::touch::TouchControls,
     #[cfg(target_os = "android")]
-    audio: Option<horizon_client::audio::Audio>,
+    pub(super) audio: Option<horizon_client::audio::Audio>,
+    #[cfg(target_os = "android")]
+    music: horizon_client::music::MusicManager,
+    #[cfg(target_os = "android")]
+    audio_tick: Option<Instant>,
+    pub(super) frame_graph: horizon_client::perf_overlay::FrameGraph,
+    pub(super) last_frame: Option<Instant>,
     title: Option<Title>,
     options: OptionsUi,
     options_open: bool,
@@ -76,6 +82,10 @@ impl StartupMenu {
             &settings.language,
         ));
         self.root = root;
+        #[cfg(target_os = "android")]
+        if self.audio.is_none() {
+            self.audio = Some(horizon_client::audio::Audio::new(&self.root));
+        }
         if self.title.is_none() {
             let mut title = Title::new(
                 std::env::current_dir().unwrap_or_default().join("saves"),
@@ -94,7 +104,9 @@ impl StartupMenu {
         #[cfg(target_os = "android")]
         {
             self.audio = None;
+            game.music = std::mem::take(&mut self.music);
         }
+        game.frame_graph = std::mem::take(&mut self.frame_graph);
         game.title = self.title.take();
         game.pending_entry = self.pending.take();
         game.cursor = self.cursor;
@@ -457,6 +469,10 @@ impl Loading {
     }
 
     fn menu_action(&mut self, event_loop: &ActiveEventLoop, action: Action) {
+        #[cfg(target_os = "android")]
+        if !matches!(action, Action::None) {
+            self.menu.click_sound(self.settings.volumes);
+        }
         match action {
             Action::Quit => crate::game::exit_app(event_loop),
             Action::Options => self.open_menu_options(Page::Main),
@@ -896,6 +912,36 @@ impl Loading {
         {
             self.menu.touch.draw(batch, &gui.atlas, true);
         }
+        self.menu
+            .frame_graph
+            .draw(self.settings.horizon.overlay, batch, &gui.atlas);
+    }
+
+    #[cfg(target_os = "android")]
+    pub(super) fn tick_menu_audio(&mut self) {
+        let now = Instant::now();
+        let last = self.menu.audio_tick.get_or_insert(now);
+        if now.duration_since(*last) < Duration::from_millis(50) {
+            return;
+        }
+        *last = now;
+        if let Some(audio) = &mut self.menu.audio {
+            audio.master = self.settings.volumes[0];
+            let mut volumes = self.settings.volumes;
+            volumes[0] = 1.0;
+            horizon_client::settings::set_source_volumes(volumes);
+            let music = horizon_client::music::Music::menu();
+            let frequency = horizon_client::music::MusicFrequency::parse(
+                &self.settings.file.name("musicFrequency"),
+            );
+            if self.menu.music.frequency != frequency {
+                self.menu.music.set_frequency(frequency, Some(&music));
+            }
+            self.menu
+                .music
+                .tick(Some(&music), 1.0, self.menu.pending.is_some(), audio);
+            audio.tick(false, &Default::default());
+        }
     }
 
     pub(super) fn restart_menu_resources(&mut self) -> Result<()> {
@@ -968,6 +1014,20 @@ mod tests {
             menu: StartupMenu::default(),
             error: None,
         }
+    }
+
+    #[test]
+    fn performance_overlay_is_available_before_the_core_finishes() {
+        let (_sender, receiver) = std::sync::mpsc::channel();
+        let mut loading = loading(receiver);
+        let root = std::env::temp_dir().join("horizon-early-overlay-no-world-data");
+        loading.gui = Some(gui(&root));
+        loading.settings.horizon.overlay = horizon_client::graphics::Overlay::Fps;
+        loading.menu.frame_graph.record(20.0, 4.0, None);
+        let mut batch = HudBatch::new([1280, 720]);
+        loading.draw_menu(&mut batch);
+        assert!(!batch.vertices.is_empty());
+        assert!(loading.loaded.is_none());
     }
 
     #[test]

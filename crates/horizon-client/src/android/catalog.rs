@@ -171,7 +171,7 @@ impl Page {
         }
     }
     pub fn is_catalog(self) -> bool {
-        self == Self::Packs
+        matches!(self, Self::Packs | Self::Mods)
     }
 }
 enum Reply {
@@ -298,7 +298,11 @@ impl Catalog {
             if self.query.starts_with("https://") {
                 self.import_native(home);
             } else {
-                self.status = "Enter a direct HTTPS URL to a native .hmod package.".into();
+                let query = Query::new(&self.query, Kind::Mod);
+                self.scroll = 0.0;
+                self.job("Searching reviewed Horizon mods...", move || {
+                    browser::horizon::Registry.search(&query).map(Reply::Search)
+                });
             }
             return;
         }
@@ -355,14 +359,18 @@ impl Catalog {
             return;
         };
         let game = self.config.game_home(home);
-        if project.kind != Kind::ResourcePack {
+        if project.kind != Kind::ResourcePack
+            && !(cfg!(feature = "mods")
+                && project.kind == Kind::Mod
+                && project.source == browser::SourceId::Horizon)
+        {
             return;
         }
         self.job("Checking compatibility and downloading...", move || {
             std::fs::create_dir_all(&game).map_err(|e| e.to_string())?;
-            let source = browser::modrinth::Modrinth;
+            let source = browser::source(project.source).ok_or("Unsupported download source")?;
             let entries =
-                browser::installed::install(&source, &project, true, &game, &|name, p| {
+                browser::installed::install(source.as_ref(), &project, true, &game, &|name, p| {
                     log::info!("{name}: {:.0}%", p * 100.0)
                 })?;
             Ok(Reply::Done(format!(

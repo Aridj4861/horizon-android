@@ -58,11 +58,13 @@ pub(super) fn button(
         2.0,
         if accent { color::ACCENT } else { color::RAISED },
     );
-    let label = ui.fit_text(Face::Medium, 16.0, label, w - 24.0);
+    let padding = (w * 0.12).clamp(4.0, 12.0);
+    let font = if w < 80.0 { 13.0 } else { 16.0 };
+    let label = ui.fit_text(Face::Medium, font, label, w - 2.0 * padding);
     ui.text(
         Face::Medium,
-        16.0,
-        x + 12.0,
+        font,
+        x + padding,
         y + 11.0,
         if accent {
             color::ON_ACCENT
@@ -176,9 +178,13 @@ impl Launcher {
         // Inset the launcher layout only; keep surface and input coordinates intact.
         if let Some(window) = &self.window {
             use winit::platform::android::WindowExtAndroid;
-            let bottom = window.content_rect().bottom;
-            if bottom > 0 {
-                ui.h = ui.h.min(bottom as f32 / ui.density);
+            let rect = window.content_rect();
+            let input = winit::platform::android::native_input_scale();
+            if rect.bottom > 0 {
+                ui.h = ui.h.min(rect.bottom as f32 * input[1] as f32 / ui.density);
+            }
+            if rect.right > 0 {
+                ui.w = ui.w.min(rect.right as f32 * input[0] as f32 / ui.density);
             }
         }
         if let Some(bottom) = crate::native_ime::viewport_bottom() {
@@ -205,7 +211,7 @@ impl Launcher {
                 if w < 700.0 { w - 64.0 } else { 288.0 },
                 if w < 700.0 { 34.0 } else { 46.0 },
             ],
-            &self.login.status(),
+            &self.login.status(&self.catalog.config.name),
             Action::Account,
             self.login.signed_in,
         );
@@ -390,57 +396,6 @@ impl Launcher {
                     true,
                 );
             }
-        } else if page == Page::Mods {
-            ui.text(
-                Face::Medium,
-                24.0,
-                32.0,
-                160.0,
-                color::TEXT,
-                if cfg!(feature = "mods") {
-                    "Native Horizon mods (.hmod)"
-                } else {
-                    "Native mods need a 64-bit build"
-                },
-            );
-            ui.text(
-                Face::Regular,
-                16.0,
-                32.0,
-                205.0,
-                color::MUTED,
-                if cfg!(feature = "mods") {
-                    "Use native .hmod files; Java loaders are unsupported."
-                } else {
-                    "This 32-bit build runs without the native mod runtime."
-                },
-            );
-            if cfg!(feature = "mods") {
-                button(
-                    &mut ui,
-                    &mut self.targets,
-                    [32.0, 250.0, w - 64.0, 46.0],
-                    &format!("HTTPS .hmod URL: {}", self.catalog.query),
-                    Action::Field("search"),
-                    false,
-                );
-                button(
-                    &mut ui,
-                    &mut self.targets,
-                    [32.0, 320.0, 240.0, 46.0],
-                    "Import .hmod",
-                    Action::Search,
-                    true,
-                );
-                ui.text(
-                    Face::Regular,
-                    16.0,
-                    32.0,
-                    390.0,
-                    color::MUTED,
-                    "Enable installed native mods on the Installed page.",
-                );
-            }
         } else if page.is_catalog() {
             button(
                 &mut ui,
@@ -464,7 +419,11 @@ impl Launcher {
                 32.0,
                 206.0,
                 color::MUTED,
-                "Resource packs download with checksum verification. Enable them in Installed.",
+                if page == Page::Mods {
+                    "Reviewed Horizon .hmod mods. Runtime requires a 64-bit build."
+                } else {
+                    "Resource packs download with checksum verification. Enable them in Installed."
+                },
             );
             let top = 242.0;
             let bottom = h - 112.0;
@@ -488,14 +447,25 @@ impl Launcher {
                 }
                 ui.text(Face::Medium, 19.0, 32.0, y, color::TEXT, &title);
                 ui.text(Face::Regular, 14.0, 32.0, y + 29.0, color::MUTED, &summary);
-                button(
-                    &mut ui,
-                    &mut self.targets,
-                    [w - 150.0, y, 118.0, 42.0],
-                    "Install",
-                    Action::Install(i),
-                    false,
-                );
+                if p.kind == crate::browser::Kind::Mod && !cfg!(feature = "mods") {
+                    ui.text(
+                        Face::Regular,
+                        14.0,
+                        w - 150.0,
+                        y + 12.0,
+                        color::MUTED,
+                        "64-bit required",
+                    );
+                } else {
+                    button(
+                        &mut ui,
+                        &mut self.targets,
+                        [w - 150.0, y, 118.0, 42.0],
+                        "Install",
+                        Action::Install(i),
+                        false,
+                    );
+                }
             }
             button(
                 &mut ui,
@@ -642,11 +612,11 @@ impl Launcher {
             self.catalog.scroll = self
                 .catalog
                 .scroll
-                .clamp(0.0, (6.0 * row_height - (h - 80.0 - 195.0)).max(0.0));
+                .clamp(0.0, (6.0 * row_height - (h - 130.0 - 195.0)).max(0.0));
             self.list_view = Some([
                 195.0,
-                h - 60.0,
-                (6.0 * row_height - (h - 80.0 - 195.0)).max(0.0),
+                h - 130.0,
+                (6.0 * row_height - (h - 130.0 - 195.0)).max(0.0),
             ]);
             for (i, (title, value, action)) in [
                 ("Rendering", c.renderer.label().to_owned(), Action::Renderer),
@@ -689,7 +659,7 @@ impl Launcher {
                     ],
                     action,
                 ));
-                if y < 185.0 || y + if compact { 70.0 } else { 46.0 } > h - 60.0 {
+                if y < 185.0 || y + if compact { 70.0 } else { 46.0 } > h - 130.0 {
                     continue;
                 }
                 ui.text(
@@ -799,6 +769,33 @@ impl Launcher {
             let y = top + (height - thumb) * (scroll / maximum).clamp(0.0, 1.0);
             ui.rounded(w - 12.0, top, 4.0, height, 2.0, color::BORDER);
             ui.rounded(w - 12.0, y, 4.0, thumb, 2.0, color::MUTED);
+        }
+        let caret_visible = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .is_ok_and(|t| t.as_millis() % 1000 < 500);
+        if caret_visible && let Some(name) = self.catalog.editing {
+            let value = match name {
+                "name" => self.catalog.config.name.clone(),
+                "server" => self.catalog.config.server.clone(),
+                "render_scale" => self.catalog.render_scale_text.clone(),
+                _ => format!("Search: {}", self.catalog.query),
+            };
+            for ([x, y, w, _], action) in &self.targets {
+                if *action == Action::Field(name)
+                    || (name == "render_scale" && *action == Action::RenderScale)
+                {
+                    let text = ui.fit_text(Face::Medium, 16.0, &value, w - 24.0);
+                    let caret_x = x + 12.0 + ui.measure(Face::Medium, 16.0, &text);
+                    ui.rounded(
+                        caret_x.min(x + w - 10.0),
+                        y + 12.0,
+                        1.0,
+                        18.0,
+                        0.0,
+                        color::TEXT,
+                    );
+                }
+            }
         }
         if let Some(action) = self.pending_focus.take() {
             self.focus = self.targets.iter().position(|(_, a)| *a == action);
