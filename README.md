@@ -46,6 +46,14 @@ https://youtu.be/gWK01tGlyFI
 
 *Disasters gameplay recorded on Poco M8 Pro. FPS readings in the footage are not a controlled benchmark.*
 
+### On a flip phone
+
+Fujitsu F-03L · Portrait mode
+
+| **Main menu** | **In-game** |
+| --- | --- |
+| ![Horizon main menu on a Fujitsu F-03L flip phone in portrait mode](docs/media/android/fujitsu-f03l-menu.png) | ![Minecraft world running on a Fujitsu F-03L flip phone in portrait mode](docs/media/android/fujitsu-f03l-gameplay.png) |
+
 ## Help build it
 
 Try a developer build, send a reproducible bug report, or contribute a focused
