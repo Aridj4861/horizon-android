@@ -314,10 +314,12 @@ impl Game<'_> {
     }
     pub(super) fn android_show_keyboard(&mut self) {
         // The in-world keyboard button needs a real editor to receive text.
-        if self.title.is_none() && self.screen == Screen::Playing {
+        if !self.pad_in_menu() {
             self.open_chat("");
         }
-        let initial = if self.screen == Screen::Chat && self.title.is_none() {
+        let initial = if self.sign_edit.is_some() {
+            self.sign_current().unwrap_or_default()
+        } else if self.screen == Screen::Chat && self.title.is_none() {
             self.chat_key_code(KeyCode::End, None);
             self.ui
                 .chat_screen
@@ -352,15 +354,19 @@ impl Game<'_> {
             ));
         }
         for out in crate::platform::poll() {
-            let done = matches!(out, Output::Enter | Output::Close);
+            let next_sign_line = self.sign_edit.is_some() && matches!(out, Output::Enter);
+            let done =
+                matches!(out, Output::Close) || (matches!(out, Output::Enter) && !next_sign_line);
             self.pad_osk_output(out);
             if done {
                 crate::platform::hide();
+            } else if next_sign_line {
+                self.android_show_keyboard();
             }
         }
         // Title screens also use Playing: their focused text fields must keep
         // the IME until the user confirms or closes the editor.
-        if self.title.is_none() && self.screen == Screen::Playing && crate::platform::active() {
+        if !self.pad_in_menu() && crate::platform::active() {
             crate::platform::hide();
         }
     }
@@ -476,7 +482,7 @@ impl Game<'_> {
                         },
                     );
                 }
-                if field {
+                if field || self.sign_edit.is_some() {
                     self.android_show_keyboard();
                 }
             }

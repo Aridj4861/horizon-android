@@ -206,12 +206,18 @@ impl Game<'_> {
         self.keys.clear();
         self.right = false;
         self.capture(false);
+        #[cfg(target_os = "android")]
+        if self.window.is_some() && !crate::keyboard_mouse_input() {
+            self.android_show_keyboard();
+        }
     }
     /// `AbstractSignEditScreen.removed`: a server's client sends what it
     /// wrote (ServerboundSignUpdatePacket); the window's own world keeps it
     /// and sends it to its guests (`sendBlockUpdated`).
     pub(super) fn close_sign_editor(&mut self) {
         if let Some(edit) = self.sign_edit.take() {
+            #[cfg(target_os = "android")]
+            crate::platform::hide();
             if self.remote.is_some() {
                 self.send(S::SignUpdate(play::SignUpdate {
                     pos: [edit.pos.0, edit.pos.1, edit.pos.2],
@@ -349,7 +355,7 @@ impl Game<'_> {
         self.sign_load();
     }
     /// The edited line's text.
-    fn sign_current(&self) -> Option<String> {
+    pub(super) fn sign_current(&self) -> Option<String> {
         let edit = self.sign_edit.as_ref()?;
         let BlockEntity::Sign(sign) = self.world.block_entities.get(&edit.pos)? else {
             return None;

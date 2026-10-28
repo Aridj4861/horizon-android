@@ -42,7 +42,8 @@ def generated_engine_file(name):
                     'worldgen/biome_parameters/nether.json', 'worldgen/biome_parameters/overworld.json'}
             or (path.parts[:2] == ('worldgen', 'blocks') and path.name in {
                 'block-properties.nbt', 'cached-collision.nbt', 'cached-support.nbt',
-                'survival-rules.json', 'survival-extra-definitions.json', 'placement-definitions.json'}
+                'survival-rules.json', 'survival-extra-definitions.json', 'placement-definitions.json',
+                'structure-blocks.json'}
                 and len(path.parts) == 3)
             or name == 'worldgen/block_flags.json')
 

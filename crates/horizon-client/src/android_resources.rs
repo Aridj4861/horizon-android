@@ -91,6 +91,41 @@ pub fn rebuild(root: &Path) -> Result<()> {
     Ok(())
 }
 
+/// Repair the generated table omitted from earlier public APKs. Vanilla template
+/// NBT and JSON still come from the official download; only state transforms are
+/// read from this APK. Existing worlds and resource selections are untouched.
+pub fn repair_structure_transforms(engine: &Path, root: &Path) -> Result<()> {
+    let target = root.join("worldgen/blocks/structure-blocks.json");
+    if target.metadata().is_ok_and(|m| m.len() > 2) {
+        return Ok(());
+    }
+    let mut archive = zip::ZipArchive::new(fs::File::open(engine)?)?;
+    let mut entry = archive.by_name("worldgen/blocks/structure-blocks.json")?;
+    if entry.size() > 16 * 1024 * 1024 || entry.is_symlink() {
+        return Err("Invalid generated structure transform table".into());
+    }
+    use std::io::Read;
+    let mut bytes = Vec::new();
+    entry
+        .by_ref()
+        .take(16 * 1024 * 1024 + 1)
+        .read_to_end(&mut bytes)?;
+    if bytes.len() > 16 * 1024 * 1024 {
+        return Err("Generated structure transform table is too large".into());
+    }
+    let data: serde_json::Value = serde_json::from_slice(&bytes)?;
+    if data["rotate"].as_array().is_none_or(|v| v.is_empty())
+        || data["mirror"].as_array().is_none_or(|v| v.is_empty())
+    {
+        return Err("Generated structure transforms are missing".into());
+    }
+    fs::create_dir_all(target.parent().ok_or("Missing structure table directory")?)?;
+    let part = target.with_extension("partial");
+    fs::write(&part, bytes)?;
+    fs::rename(part, target)?;
+    Ok(())
+}
+
 /// The manifest contains only names, hashes and the pinned upstream revision.
 /// PNGs remain outside our APK and source repository.
 pub fn controls(root: &Path) -> Result<()> {
@@ -177,6 +212,32 @@ mod tests {
         ));
         fs::create_dir_all(&dir).unwrap();
         dir
+    }
+    #[test]
+    fn repairs_only_missing_generated_transforms() {
+        use std::io::Write;
+        let root = temporary();
+        let archive = root.join("engine.zip");
+        let data = br#"{"rotate":[[0,0,0]],"mirror":[[0,0]]}"#;
+        let mut zip = zip::ZipWriter::new(fs::File::create(&archive).unwrap());
+        zip.start_file(
+            "worldgen/blocks/structure-blocks.json",
+            zip::write::SimpleFileOptions::default(),
+        )
+        .unwrap();
+        zip.write_all(data).unwrap();
+        zip.finish().unwrap();
+        let installed = root.join("installed");
+        repair_structure_transforms(&archive, &installed).unwrap();
+        let target = installed.join("worldgen/blocks/structure-blocks.json");
+        assert_eq!(fs::read(&target).unwrap(), data);
+        // Repair is local and does not reopen the archive on subsequent launches.
+        fs::remove_file(&archive).unwrap();
+        repair_structure_transforms(&archive, &installed).unwrap();
+        assert_eq!(fs::read(&target).unwrap(), data);
+        fs::remove_file(target).unwrap();
+        assert!(repair_structure_transforms(&archive, &installed).is_err());
+        fs::remove_dir_all(root).unwrap();
     }
     #[test]
     fn reconstructs_namespaced_resources_and_nested_structures() {

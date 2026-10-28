@@ -11870,8 +11870,7 @@ impl Game<'_> {
         #[cfg(target_os = "android")]
         if self.pad.touch.editor.is_some()
             || ((crate::touch_visible() || self.settings.keypad.enabled)
-                && self.title.is_none()
-                && self.screen == Screen::Playing)
+                && !self.pad_in_menu())
         {
             self.pad.touch.context_use =
                 self.pad.touch.settings.contextual_interact && self.touch_context_use();

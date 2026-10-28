@@ -181,6 +181,13 @@ impl Launcher {
         }
         crate::configure_input_mode(self.catalog.config.input_host.keyboard_mouse());
         if horizon_client::official_install::ready(&self.home) {
+            horizon_client::android_resources::repair_structure_transforms(
+                &self.home.join("engine-data.zip"),
+                &self
+                    .home
+                    .join(".local/horizon-client")
+                    .join(horizon_core::VANILLA_VERSION),
+            )?;
             crate::platform::hide();
             self.catalog.config.save(&self.home)?;
             horizon_client::android_runtime::configure_graphics(
@@ -346,6 +353,10 @@ impl ApplicationHandler for Launcher {
             WindowEvent::Focused(false) => {
                 self.mouse_down = false;
                 self.drag = None;
+                Ok(())
+            }
+            WindowEvent::Focused(true) => {
+                self.catalog.refresh(&self.home);
                 Ok(())
             }
             WindowEvent::MouseInput {

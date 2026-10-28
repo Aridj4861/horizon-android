@@ -25,6 +25,8 @@ class ReleaseAuditTests(unittest.TestCase):
         build_spec = importlib.util.spec_from_file_location('android_build', Path(__file__).resolve().parents[1] / 'tools/android_build.py')
         build = importlib.util.module_from_spec(build_spec)
         build_spec.loader.exec_module(build)
+        self.assertTrue(build.generated_engine_file('worldgen/blocks/structure-blocks.json'))
+        self.assertFalse(build.generated_engine_file('worldgen/structure/minecraft/village/test.nbt'))
         with tempfile.TemporaryDirectory() as folder, patch.dict(sys.modules, {'android_build': build}):
             path = Path(folder) / 'public.apk'
             files = {'AndroidManifest.xml': b'test', 'assets/engine-data.zip': archive({'facts.json': b'{}'})}

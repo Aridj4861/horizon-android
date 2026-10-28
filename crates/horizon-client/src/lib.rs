@@ -66,6 +66,7 @@ pub mod extras;
 pub mod extras_hud;
 pub mod falling_block;
 pub mod fast_hash;
+pub mod file_lock;
 pub mod fire_render;
 pub mod first_person;
 pub mod flatgen;
