@@ -17,6 +17,7 @@ edition = "2024"
 [workspace]
 [dependencies]
 serde_json = "1"
+miniz_oxide = "0.8"
 zip = { version = "2", default-features = false, features = ["deflate"] }
 ''', encoding='utf-8')
     lock=tomllib.loads((ROOT / 'Cargo.lock').read_text(encoding='utf-8'))
@@ -27,6 +28,7 @@ zip = { version = "2", default-features = false, features = ["deflate"] }
 pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
 #[path = "../../../../crates/horizon-client/src/content_files.rs"] mod content_files;
 #[path = "../../../../crates/horizon-client/src/gfx/upload_budget.rs"] mod upload_budget;
+#[path = "../../../../crates/horizon-client/src/zip.rs"] mod archive_reader;
 ''', encoding='utf-8')
     subprocess.run(['cargo', 'test', '--manifest-path', str(root / 'Cargo.toml')],
                    cwd=ROOT, check=True)

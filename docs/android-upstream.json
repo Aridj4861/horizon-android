@@ -7,11 +7,11 @@
   "compared_source_files": 3147,
   "modified_existing_files": 41,
   "branch": "android",
-  "merged_upstream_commit": "d0b6e489212ff7e4d08f31c56ea7606a9ff4ae20",
-  "merged_upstream_commits": 2935,
+  "merged_upstream_commit": "f66f66c3b49ee9842009266279239cc5ba036d27",
+  "merged_upstream_commits": 2954,
   "last_reviewed_date": "2026-10-28",
-  "last_update_commits": 4,
-  "latest_fetched_commit": "d0b6e489212ff7e4d08f31c56ea7606a9ff4ae20",
-  "review": "0.7.3 follow-up: four stable commits after e1b2b0b2. Cache biome-source feature decoration in GeneratorData and preload it before world entry; bound supervisor HTTP request/header lines. Android module paths and inactive deployment workflows are preserved. See android-upstream-review-0.7.3.md.",
+  "last_update_commits": 19,
+  "latest_fetched_commit": "f66f66c3b49ee9842009266279239cc5ba036d27",
+  "review": "0.7.3 follow-up: 19 stable commits including merge history after d0b6e489. Bound ZIP allocation/decompression calculations against untrusted entry sizes, centre stored mouse position when grab changes and open world creation after the last world is deleted. Includes regression coverage for shulker body/head rotation, entity view distance and remote mining sounds. Android callback registration, touch paths and inactive deployment workflows are preserved. See android-upstream-review-0.7.3.md.",
   "pending_review_commits": 0
 }

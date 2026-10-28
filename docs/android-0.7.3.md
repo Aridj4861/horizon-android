@@ -2,7 +2,7 @@
 
 Changes after the published 0.7.2:
 
-- Integrate 55 upstream commits, including feeding server chunk workers between
+- Integrate 74 upstream commits, including feeding server chunk workers between
   ticks during world entry and caching biome-source feature decoration. See
   [integration review](android-upstream-review-0.7.3.md).
 - Spread completed terrain mesh uploads over frames on Android instead of

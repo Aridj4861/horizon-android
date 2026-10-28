@@ -35,3 +35,22 @@ The HTTP change affects the standalone supervisor, not the Android launcher.
 Follow-up validation: ARM64/ARMv7 release Clippy, Android source tests, and
 `horizon-world`'s `decoration_is_shared_by_biome_source` Rust test with prepared
 worldgen resources. No complete game APK was rebuilt for this check.
+
+## Follow-up through f66f66c3
+
+19 commits including merge history, after `d0b6e489`:
+
+- Bound ZIP raw allocation by archive length and use saturating, capped
+  decompression-budget arithmetic for untrusted declared sizes. The host content
+  test runner now includes the actual archive reader and its malformed ZIP64 test.
+- Store the cursor at the window centre when pointer grab changes, preserving
+  Android's existing physical-mouse capture and touch input paths.
+- Open Create New World after deleting the final world or refreshing an empty
+  world list. Cancelling returns to the title screen.
+- Add regression coverage for shulker rotation, entity view-scale calculation and
+  remote mining sound cadence; these net changes are chiefly tests.
+
+Validation: 12 archive/import/upload Rust tests, 10 Android source tests, the two
+capture tests and one remote-mining fixture test, plus ARM64/ARMv7 release Clippy.
+No full APK or game session is required for these checks. Deployment workflows
+remain inactive and the explicitly registered Android document callback remains.
