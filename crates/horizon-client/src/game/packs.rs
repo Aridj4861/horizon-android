@@ -34,17 +34,18 @@ pub fn packs_dir() -> PathBuf {
 pub fn open_folder(dir: &Path) {
     #[cfg(target_os = "android")]
     {
-        use horizon_client::content_files::Kind;
-        let kind = match dir.file_name().and_then(|s| s.to_str()) {
-            Some("resourcepacks") => Some(Kind::Packs),
-            Some("horizon-mods") => Some(Kind::Mods),
-            Some("shaderpacks") => Some(Kind::Shaders),
+        let folder = match dir.file_name().and_then(|s| s.to_str()) {
+            Some("resourcepacks") => Some("packs"),
+            Some("horizon-mods") => Some("mods"),
+            Some("shaderpacks") => Some("shaders"),
             _ => None,
         };
-        if let Some(kind) = kind {
-            let home = std::env::current_dir().unwrap_or_default();
-            if let Err(e) = crate::documents::begin(kind, home) {
-                log::warn!("Import: {e}");
+        if let Some(folder) = folder {
+            let home = crate::backend::data_dir();
+            let id =
+                crate::document_store::folder_id(crate::document_store::profile(&home), folder);
+            if !crate::platform::open_documents(&id) {
+                log::warn!("Open Files, then choose Horizon Android / {folder}");
             }
         }
     }

@@ -2,7 +2,17 @@
 
 Use **Mods**, **Packs** or **Shaders → Import file**, or open **Installed** and
 press Import beside the desired group. Select a file in Android's document picker.
-The in-game Open Mod/Resource Pack/Shader Pack Folder buttons start the same flow.
+**Open folder**, including the in-game Mod/Resource Pack/Shader Pack Folder
+buttons, browses that directory in a system file manager. If the phone shows an
+app chooser, select Files. Alternatively open the system Files app and select
+**Horizon Android** in its navigation drawer.
+
+The provider contains **Mods**, **Resource Packs**, **Shader Packs** for the
+selected launcher profile, and **Reports**. Files stay in app storage; no migration
+or second copy is needed. Android grants other apps access to documents you select.
+Account files, settings, prepared game resources and worlds are not exposed.
+Reports are read-only and can be copied or shared through Files. Screenshots
+continue to appear in **Pictures/HorizonAndroid**.
 
 To download a `.hmod` from a link, paste its HTTPS URL in the Mods search field
 and press **Import .hmod** (the Search button changes when a URL is entered).
@@ -10,7 +20,7 @@ File import and link import are both available.
 
 Successful imports and catalog installs in the launcher open Installed with the
 matching group expanded. Errors and cancellation keep the current page. Import
-notifications and conflict dialogs use the launcher's bundled font.
+results appear in the status line; progress and conflict dialogs use the bundled font.
 
 Catalog searches run separately from installation jobs, so switching tabs does
 not wait for a network response. At most one search runs at once; rapid changes
@@ -47,14 +57,24 @@ metadata are checked. Archives are kept as files, not extracted into arbitrary
 filesystem paths. Invalid imports and interrupted temporary files do not replace
 existing content. Original URI grants are not retained after copying.
 
-This does not expose the application's private folders to other apps. It does not
-require MANAGE_EXTERNAL_STORAGE. Worlds, external game-folder selection and a
-DocumentsProvider are outside this implementation.
+The allowlisted DocumentsProvider supports browsing, copying files in and out,
+editing, renaming files and deleting add-ons. Fixed directories cannot be removed;
+nonempty subdirectories must be emptied explicitly. Hidden paths, traversal and
+symlinks are rejected. It does not require MANAGE_EXTERNAL_STORAGE. World import/
+export and moving the game to an external folder remain separate tasks.
+
+Copying directly with a file manager bypasses the Import file validator; wait for
+the copy to finish before starting the game, and use the game's pack selection to
+reload changes. Import file remains the validated route with progress/cancellation
+and explicit conflict choices. A system file manager controls its own copy and
+overwrite dialogs. Deleting through Files removes the underlying add-on.
 
 Developer checks: `python tools/test_android_content.py` covers the shared import
 validator, streamed copy cancellation/limits and upload scheduling without starting
 the game. Test the complete APK on Android for picker cancellation, file-provider
 permissions, duplicate-name choices, deletion and keyboard/background recovery.
+`python tools/test_android_storage.py --serial DEVICE --browse` tests the actual
+provider and Bionic file lock in a separate small probe app with fresh app data.
 
 For a native shader smoke test, package Horizon's included Golden Hour example:
 

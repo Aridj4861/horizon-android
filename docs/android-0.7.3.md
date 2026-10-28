@@ -16,7 +16,8 @@ Changes after the published 0.7.2:
   packs are not fabricated. Classic shader ZIPs can be imported, with experimental
   compatibility checked by the game's existing loader.
 - Import `.hmod`, resource-pack ZIP and shader ZIP/`.hshader` files from Android's
-  system picker. The corresponding in-game Open Folder buttons launch import.
+  system picker. Open Folder separately browses the corresponding directory in
+  system Files through Horizon Android's DocumentsProvider.
 - Split Installed into three collapsible groups. Imported and downloaded add-on
   files can be selected or removed with confirmation.
 - Stage imports in Android's cache, validate archives on a background thread,
@@ -25,22 +26,34 @@ Changes after the published 0.7.2:
 - Explicitly register the Activity result callback with JNI. This fixes a crash
   on file selection and Back caused by Java not finding a library loaded by
   NativeActivity. The isolated Rust document probe checks selection and cancellation.
-- Use the bundled UI font for import notifications and dialogs, and open the
+- Remove duplicate import toasts, retain the status line and bundled-font dialogs, and open the
   matching Installed group after successful launcher imports/downloads.
 - Keep catalog tabs responsive during searches, cache recent query pages and
   avoid unpacking installed mod code when browsing tabs or receiving search results.
 - Add detailed buffer creation/error-scope/growth timings and source/movement
   metadata to performance reports. These diagnostics do not establish an FPS gain.
 
-The only project Java runtime class is the explicitly approved
-`HorizonActivity.onActivityResult` bridge. It forwards the selected URI or cancel
-result to Rust. Intent creation, ContentResolver access, validation, progress,
-selection, UI and file operations remain Rust. The NativeActivity host and single
-engine library are retained.
+- Expose Mods, Resource Packs, Shader Packs and read-only Reports in system Files.
+  Keep game files in app storage and screenshots in Pictures/HorizonAndroid.
+- Restore Android keyboard input when editing signs; hide gameplay touch controls
+  over the sign editor, retain the IME between lines and dismiss it on Done.
+- Use Bionic `flock` for resource-pack cache synchronization on Android instead
+  of the unsupported standard-library file lock.
+- Include the generated structure rotation/mirror table in public APKs and restore
+  it locally for existing installs. Its omission disabled structure generation.
+  Existing chunks are not regenerated; new structures require unexplored terrain.
 
-No world-folder migration, DocumentsProvider or general storage permission is
-included. World import/export remains a separate task. See
+Two explicitly approved Java platform adapters forward Activity results and
+DocumentsProvider callbacks to Rust. File operations, validation, game and UI
+remain Rust. The NativeActivity host and single engine library are retained.
+
+No world-folder migration or general storage permission is included.
+World import/export remains a separate task. See
 [Android add-on files](android-content.md).
+
+Issue #7 also reports a potion-pickup disconnect, without a packet/error log or
+reproduction fixture; that problem is not claimed fixed. Far terrain is currently
+disabled by the engine for external multiplayer servers, independently of Android.
 
 The package uses versionName `0.7.3` and versionCode `24`. Source checks do not
 establish a phone FPS improvement or replace an on-device picker/import test.

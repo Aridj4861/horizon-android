@@ -37,9 +37,6 @@ fn permission(env: &mut JNIEnv<'_>, activity: &JObject<'_>) -> jni::errors::Resu
 pub fn save(file: &Path) -> std::result::Result<(), String> {
     save_file(file, false)
 }
-pub fn save_report(file: &Path) -> std::result::Result<(), String> {
-    save_file(file, true)
-}
 fn save_file(file: &Path, report: bool) -> std::result::Result<(), String> {
     let request = crate::platform::with_context(|env, activity| {
         let sdk = env

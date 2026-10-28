@@ -175,10 +175,14 @@ fn reports(home: &Path) -> Vec<PathBuf> {
 }
 pub fn export(home: &Path) -> std::result::Result<(), String> {
     stop();
-    let path = reports(home)
+    reports(home)
         .pop()
         .ok_or("No performance report. Enable recording, then launch and play first.")?;
-    crate::gallery::save_report(&path)
+    if crate::platform::open_documents("reports") {
+        Ok(())
+    } else {
+        Err("Open the system Files app, then Horizon Android / Reports.".into())
+    }
 }
 
 #[cfg(test)]

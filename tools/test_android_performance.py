@@ -26,8 +26,8 @@ pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + S
 #[path = "../../../../crates/horizon-client/src/control.rs"] pub mod control;
 #[path = "../../../../crates/horizon-client/src/spans.rs"] pub mod spans;
 mod backend { pub const VERSION: &str = "0.7.2-test"; }
-mod gallery {
-    pub fn save_report(_: &std::path::Path) -> std::result::Result<(), String> { Ok(()) }
+mod platform {
+    pub fn open_documents(_: &str) -> bool { true }
 }
 #[path = "../../../../crates/horizon-client/src/android/performance.rs"] mod performance;
 ''', encoding='utf-8')

@@ -193,6 +193,52 @@ pub fn cache_dir() -> Option<std::path::PathBuf> {
 pub fn open_repository() -> bool {
     open_url("https://github.com/Vasysik/horizon-android")
 }
+/// Browse our SAF directory through the system file manager, never a private path.
+pub fn open_documents(id: &str) -> bool {
+    with_context(|env, activity| {
+        let package = env
+            .call_method(activity, "getPackageName", "()Ljava/lang/String;", &[])?
+            .l()?;
+        let package: String = env.get_string((&package).into())?.into();
+        let authority = JObject::from(env.new_string(format!("{package}.documents"))?);
+        let document = JObject::from(env.new_string(id)?);
+        let uri = env
+            .call_static_method(
+                "android/provider/DocumentsContract",
+                "buildDocumentUri",
+                "(Ljava/lang/String;Ljava/lang/String;)Landroid/net/Uri;",
+                &[JValue::Object(&authority), JValue::Object(&document)],
+            )?
+            .l()?;
+        let action = JObject::from(env.new_string("android.intent.action.VIEW")?);
+        let intent = env.new_object(
+            "android/content/Intent",
+            "(Ljava/lang/String;)V",
+            &[JValue::Object(&action)],
+        )?;
+        let mime = JObject::from(env.new_string("vnd.android.document/directory")?);
+        env.call_method(
+            &intent,
+            "setDataAndType",
+            "(Landroid/net/Uri;Ljava/lang/String;)Landroid/content/Intent;",
+            &[JValue::Object(&uri), JValue::Object(&mime)],
+        )?;
+        env.call_method(
+            &intent,
+            "addFlags",
+            "(I)Landroid/content/Intent;",
+            &[JValue::Int(3)],
+        )?;
+        env.call_method(
+            activity,
+            "startActivity",
+            "(Landroid/content/Intent;)V",
+            &[JValue::Object(&intent)],
+        )?;
+        Ok(())
+    })
+    .is_some()
+}
 pub fn open_url(url: &str) -> bool {
     if !url.starts_with("https://") && !url.starts_with("http://") {
         return false;

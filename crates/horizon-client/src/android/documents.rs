@@ -92,6 +92,13 @@ fn imported(text: impl Into<String>, kind: Kind) {
     });
 }
 pub fn poll() -> Option<Notice> {
+    if crate::document_provider::take_changes() {
+        return Some(Notice {
+            text: "Content files changed. Reload packs to apply.".into(),
+            changed: true,
+            kind: None,
+        });
+    }
     STATE
         .lock()
         .unwrap_or_else(|e| e.into_inner())
@@ -384,13 +391,8 @@ pub fn draw_ui(ui: &mut Ui<'_>) {
     let mut s = STATE.lock().unwrap_or_else(|e| e.into_inner());
     s.hits.clear();
     if s.conflict.is_none() && !s.working {
-        if let Some((message, time)) = &s.toast
-            && time.elapsed().as_secs() < 5
-        {
-            let text = ui.fit_text(Face::Regular, 16.0, message, ui.w - 40.0);
-            ui.rounded(8.0, ui.h - 48.0, ui.w - 16.0, 40.0, 2.0, color::RAISED);
-            ui.text(Face::Regular, 16.0, 20.0, ui.h - 40.0, color::TEXT, &text);
-        }
+        // The launcher already shows the result in its status line. Keep only
+        // actionable overlays (progress/cancel and a name-conflict choice).
         return;
     }
     let (name, choices) = if let Some(c) = &s.conflict {

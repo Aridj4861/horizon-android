@@ -17,19 +17,23 @@ edition = "2024"
 [workspace]
 [dependencies]
 serde_json = "1"
+sha2 = "0.10"
+ureq = { version = "2", default-features = false, features = ["tls"] }
 miniz_oxide = "0.8"
 zip = { version = "2", default-features = false, features = ["deflate"] }
 ''', encoding='utf-8')
     lock=tomllib.loads((ROOT / 'Cargo.lock').read_text(encoding='utf-8'))
     version=next(p['version'] for p in lock['package'] if p['name']=='zip' and p['version'].startswith('2.'))
     manifest=root / 'Cargo.toml'
-    manifest.write_text(manifest.read_text().replace('version = "2"',f'version = "={version}"'),encoding='utf-8')
+    manifest.write_text(manifest.read_text().replace('zip = { version = "2"', f'zip = {{ version = "={version}"'), encoding='utf-8')
     (root / 'src/lib.rs').write_text('''#![allow(dead_code)]
 pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
 #[path = "../../../../crates/horizon-client/src/content_files.rs"] mod content_files;
 #[path = "../../../../crates/horizon-client/src/gfx/upload_budget.rs"] mod upload_budget;
 #[path = "../../../../crates/horizon-client/src/zip.rs"] mod archive_reader;
 #[path = "../../../../crates/horizon-client/src/android/search_queue.rs"] mod search_queue;
+#[path = "../../../../crates/horizon-client/src/android/document_store.rs"] mod document_store;
+#[path = "../../../../crates/horizon-client/src/android_resources.rs"] mod android_resources;
 ''', encoding='utf-8')
     subprocess.run(['cargo', 'test', '--manifest-path', str(root / 'Cargo.toml')],
                    cwd=ROOT, check=True)

@@ -63,7 +63,7 @@ zip = { version = "2", default-features = false, features = ["deflate"] }
 # HTTPS to the Minecraft services (online-mode session join).
 
 [target.'cfg(unix)'.dependencies]
-rustix = { version = "1", default-features = false, features = ["std", "time"] }
+rustix = { version = "1", default-features = false, features = ["std", "time", "fs"] }
 
 [features]
 default = ["mods", "audio"]

@@ -14,6 +14,7 @@ pub(super) enum Action {
     FinishNameEdit,
     Install(usize),
     Import(horizon_client::content_files::Kind),
+    OpenFolder(horizon_client::content_files::Kind),
     ToggleSection(usize),
     ToggleLocal(usize),
     DeleteLocal(usize),
@@ -462,21 +463,31 @@ impl Launcher {
                 Page::Shaders => "Horizon catalog / ZIP support is experimental",
                 _ => "Verified downloads / enable in Installed",
             };
-            let hint = ui.fit_text(Face::Regular, 14.0, hint, (w - 240.0).max(30.0));
-            ui.text(Face::Regular, 14.0, 32.0, 230.0, color::MUTED, &hint);
+            let hint = ui.fit_text(Face::Regular, 14.0, hint, w - 64.0);
+            ui.text(Face::Regular, 14.0, 32.0, 270.0, color::MUTED, &hint);
+            let kind = match page {
+                Page::Mods => horizon_client::content_files::Kind::Mods,
+                Page::Shaders => horizon_client::content_files::Kind::Shaders,
+                _ => horizon_client::content_files::Kind::Packs,
+            };
+            let file_button_width = ((w - 72.0) / 2.0).min(158.0);
             button(
                 &mut ui,
                 &mut self.targets,
-                [w - 190.0, 222.0, 158.0, 32.0],
-                "Import file",
-                Action::Import(match page {
-                    Page::Mods => horizon_client::content_files::Kind::Mods,
-                    Page::Shaders => horizon_client::content_files::Kind::Shaders,
-                    _ => horizon_client::content_files::Kind::Packs,
-                }),
+                [32.0, 222.0, file_button_width, 38.0],
+                "Open folder",
+                Action::OpenFolder(kind),
                 false,
             );
-            let top = 266.0;
+            button(
+                &mut ui,
+                &mut self.targets,
+                [w - 32.0 - file_button_width, 222.0, file_button_width, 38.0],
+                "Import file",
+                Action::Import(kind),
+                false,
+            );
+            let top = 296.0;
             let bottom = h - 112.0;
             self.catalog.scroll = self.catalog.scroll.clamp(
                 0.0,
@@ -721,7 +732,7 @@ impl Launcher {
                 ),
                 (
                     "Performance report",
-                    "Save latest to Downloads".into(),
+                    "Open in Files / Reports".into(),
                     Action::ExportPerformance,
                 ),
                 (
@@ -998,6 +1009,20 @@ impl Launcher {
             audio.play_button_click();
         }
         match action {
+            Some(Action::OpenFolder(kind)) => {
+                crate::platform::hide();
+                let folder = match kind {
+                    horizon_client::content_files::Kind::Mods => "mods",
+                    horizon_client::content_files::Kind::Packs => "packs",
+                    horizon_client::content_files::Kind::Shaders => "shaders",
+                };
+                let id = crate::document_store::folder_id(self.catalog.config.profile, folder);
+                self.catalog.status = if crate::platform::open_documents(&id) {
+                    "Opened in Files. Return here after copying files.".into()
+                } else {
+                    "Open the system Files app and choose Horizon Android.".into()
+                };
+            }
             Some(Action::Import(kind)) => {
                 crate::platform::hide();
                 let home = self.catalog.config.game_home(&self.home);
@@ -1155,7 +1180,7 @@ impl Launcher {
             }
             Some(Action::ExportPerformance) => {
                 self.catalog.status = match crate::performance::export(&self.home) {
-                    Ok(()) => "Exporting performance report...".into(),
+                    Ok(()) => "Reports opened in Files. Copy or share a report from there.".into(),
                     Err(e) => e,
                 };
             }
