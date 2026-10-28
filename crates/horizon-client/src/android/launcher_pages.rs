@@ -465,14 +465,19 @@ impl Launcher {
                 let title = ui.fit_text(Face::Medium, 19.0, &p.title, w - 214.0);
                 let summary = ui.fit_text(Face::Regular, 14.0, &p.summary, w - 214.0);
                 let y = top + i as f32 * 78.0 - self.catalog.scroll;
-                self.list_targets
-                    .push(([w - 150.0, y, 118.0, 70.0], Action::Install(i)));
+                let download = self.catalog.download_label(p);
+                if download.is_none() {
+                    self.list_targets
+                        .push(([w - 150.0, y, 118.0, 70.0], Action::Install(i)));
+                }
                 if y < top || y + 70.0 > bottom {
                     continue;
                 }
                 ui.text(Face::Medium, 19.0, 32.0, y, color::TEXT, &title);
                 ui.text(Face::Regular, 14.0, 32.0, y + 29.0, color::MUTED, &summary);
-                if p.kind == crate::browser::Kind::Mod && !cfg!(feature = "mods") {
+                if let Some(state) = download {
+                    ui.text(Face::Medium, 16.0, w - 150.0, y + 12.0, color::TEXT, &state);
+                } else if p.kind == crate::browser::Kind::Mod && !cfg!(feature = "mods") {
                     ui.text(
                         Face::Regular,
                         14.0,
@@ -486,7 +491,7 @@ impl Launcher {
                         &mut ui,
                         &mut self.targets,
                         [w - 150.0, y, 118.0, 42.0],
-                        "Install",
+                        self.catalog.install_button(p),
                         Action::Install(i),
                         false,
                     );
@@ -862,6 +867,42 @@ impl Launcher {
                 f64::from((y + h / 2.0) * ui.density),
             );
         }
+        if self.mouse_down || self.drag.as_ref().is_some_and(|drag| !drag.moved) {
+            let point = [
+                self.cursor.0 as f32 / ui.density,
+                self.cursor.1 as f32 / ui.density,
+            ];
+            if let Some(([x, y, w, h], _)) = self.targets.iter().rev().find(|(rect, _)| {
+                point[0] >= rect[0]
+                    && point[0] <= rect[0] + rect[2]
+                    && point[1] >= rect[1]
+                    && point[1] <= rect[1] + rect[3]
+            }) {
+                ui.rounded(
+                    *x,
+                    *y,
+                    *w,
+                    *h,
+                    2.0,
+                    horizon_client::hud::rgba(255, 255, 255, 48),
+                );
+            }
+        }
+        if !self.mouse_down
+            && self.drag.is_none()
+            && let Some((action, time)) = self.feedback
+            && time.elapsed() < std::time::Duration::from_millis(160)
+            && let Some(([x, y, w, h], _)) = self.targets.iter().find(|(_, a)| *a == action)
+        {
+            ui.rounded(
+                *x,
+                *y,
+                *w,
+                *h,
+                2.0,
+                horizon_client::hud::rgba(255, 255, 255, 48),
+            );
+        }
         ui.finish();
 
         r.render(&game::loading_frame(&b))?;
@@ -893,6 +934,7 @@ impl Launcher {
         if self.catalog.busy() {
             return Ok(());
         }
+        self.feedback = action.map(|action| (action, std::time::Instant::now()));
         self.focus = None;
         if action.is_some() && horizon_client::official_install::ready(&self.home) {
             let audio = self.audio.get_or_insert_with(|| {

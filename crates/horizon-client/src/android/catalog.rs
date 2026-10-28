@@ -3,7 +3,7 @@ use crate::browser::{self, Kind, Project, Query, Source, installed::Installed};
 use serde::{Deserialize, Serialize};
 use std::{
     path::{Path, PathBuf},
-    sync::mpsc,
+    sync::{Arc, Mutex, mpsc},
 };
 
 /// Temporary dev registration published as Minecraft Nintendo Switch by PrismarineJS.
@@ -180,6 +180,10 @@ enum Reply {
     Done(String),
 }
 pub struct Catalog {
+    downloaded: Vec<(browser::SourceId, String)>,
+    downloading: Option<(browser::SourceId, String)>,
+    progress: Arc<Mutex<f32>>,
+    failed: Option<(browser::SourceId, String)>,
     pub native: Vec<(String, String, bool)>,
     pub page: Page,
     pub query: String,
@@ -199,6 +203,10 @@ impl Catalog {
         let config = Config::load(home);
         let installed = Installed::load(&config.game_home(home));
         let mut result = Self {
+            downloaded: vec![],
+            downloading: None,
+            progress: Arc::new(Mutex::new(0.0)),
+            failed: None,
             native: vec![],
             enabled: vec![],
             page: Page::Play,
@@ -219,6 +227,13 @@ impl Catalog {
     pub fn refresh(&mut self, home: &Path) {
         let game = self.config.game_home(home);
         self.installed = Installed::load(&game);
+        self.downloaded = self
+            .installed
+            .entries
+            .iter()
+            .filter(|e| game.join(&e.file).is_file())
+            .map(|e| (e.source, e.project.clone()))
+            .collect();
         self.installed
             .entries
             .retain(|entry| entry.kind == Kind::ResourcePack);
@@ -260,6 +275,38 @@ impl Catalog {
     pub fn busy(&self) -> bool {
         self.worker.is_some()
     }
+    pub fn download_label(&self, project: &Project) -> Option<String> {
+        if self
+            .downloading
+            .as_ref()
+            .is_some_and(|(source, id)| *source == project.source && *id == project.id)
+        {
+            return Some(format!(
+                "{:.0}%",
+                *self.progress.lock().unwrap_or_else(|e| e.into_inner()) * 100.0
+            ));
+        }
+        if self
+            .downloaded
+            .iter()
+            .any(|(source, id)| *source == project.source && *id == project.id)
+            || (project.kind == Kind::Mod && self.native.iter().any(|(id, _, _)| *id == project.id))
+        {
+            return Some("Installed".into());
+        }
+        None
+    }
+    pub fn install_button(&self, project: &Project) -> &'static str {
+        if self
+            .failed
+            .as_ref()
+            .is_some_and(|(source, id)| *source == project.source && *id == project.id)
+        {
+            "Retry"
+        } else {
+            "Install"
+        }
+    }
     fn job(&mut self, status: &str, job: impl FnOnce() -> Result<Reply, String> + Send + 'static) {
         if self.busy() {
             return;
@@ -279,6 +326,10 @@ impl Catalog {
         });
         if let Some(reply) = reply {
             self.worker = None;
+            let downloading = self.downloading.take();
+            if reply.is_err() {
+                self.failed = downloading;
+            }
             match reply {
                 Ok(Reply::Search(items)) => {
                     self.status = format!(
@@ -359,6 +410,9 @@ impl Catalog {
         let Some(project) = self.results.get(index).cloned() else {
             return;
         };
+        if self.busy() || self.download_label(&project).is_some() {
+            return;
+        }
         let game = self.config.game_home(home);
         if project.kind != Kind::ResourcePack
             && !(cfg!(feature = "mods")
@@ -367,13 +421,24 @@ impl Catalog {
         {
             return;
         }
+        self.downloading = Some((project.source, project.id.clone()));
+        self.failed = None;
+        *self.progress.lock().unwrap_or_else(|e| e.into_inner()) = 0.0;
+        let progress = self.progress.clone();
         self.job("Checking compatibility and downloading...", move || {
             std::fs::create_dir_all(&game).map_err(|e| e.to_string())?;
             let source = browser::source(project.source).ok_or("Unsupported download source")?;
-            let entries =
-                browser::installed::install(source.as_ref(), &project, true, &game, &|name, p| {
-                    log::info!("{name}: {:.0}%", p * 100.0)
-                })?;
+            let entries = browser::installed::install(
+                source.as_ref(),
+                &project,
+                true,
+                &game,
+                &|_name, p| {
+                    if p.is_finite() {
+                        *progress.lock().unwrap_or_else(|e| e.into_inner()) = p.clamp(0.0, 1.0);
+                    }
+                },
+            )?;
             Ok(Reply::Done(format!(
                 "Installed {} item(s). Open Play to load this profile.",
                 entries.len()

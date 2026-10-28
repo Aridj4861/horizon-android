@@ -8,6 +8,9 @@ Changes after 0.7.1:
   preserve them when handing over to the game.
 - Browse the official Horizon Mods catalog, retaining direct HTTPS `.hmod`
   imports. Native mod execution requires a 64-bit APK.
+- Show per-project download progress, installed state and retry actions in mod
+  and resource-pack search results; provide launcher button press feedback.
+- Use the upstream Horizon application icon.
 - Add a launcher icon, text-field carets, offline player-name status, client
   version and a GitHub link. Catalog tabs remain Mods/Packs, with Horizon Mods
   and Resource Packs section headings.
