@@ -185,6 +185,7 @@ pub mod title_edition;
 pub mod toasts;
 pub mod trims;
 pub mod ui;
+pub mod ui_text;
 pub mod ui_theme;
 pub mod vanillagen;
 pub mod vault;

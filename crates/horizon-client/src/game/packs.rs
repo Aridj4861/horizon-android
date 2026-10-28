@@ -163,6 +163,11 @@ impl Game<'_> {
             self.pending_pack_reload = true;
             return;
         }
+        #[cfg(target_os = "android")]
+        {
+            self.start_selected_pack_reload();
+        }
+        #[cfg(not(target_os = "android"))]
         if let Err(e) = self.reload_selected_packs() {
             log::warn!("Horizon: resource reload failed: {e}");
             if self.screen != super::Screen::Options {

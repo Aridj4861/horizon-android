@@ -212,6 +212,7 @@ const RELOAD_LINES: [&str; 4] = [
 /// worker while `progress` feeds the loading screen, then the apply lands
 /// on the render thread.
 pub(super) struct PackReload {
+    local: bool,
     pub(super) progress: Progress,
     handle: std::thread::JoinHandle<std::result::Result<super::packs::StagedPack, String>>,
 }
@@ -416,6 +417,18 @@ impl Game<'_> {
             return;
         };
         self.server_packs.active = server.clone();
+        self.begin_pack_reload(server, false);
+    }
+    #[cfg(target_os = "android")]
+    pub(super) fn start_selected_pack_reload(&mut self) {
+        if self.server_packs.reload.is_some() {
+            self.pending_pack_reload = true;
+            return;
+        }
+        self.ui.options.resource_error = None;
+        self.begin_pack_reload(self.server_packs.active.clone(), true);
+    }
+    fn begin_pack_reload(&mut self, server: Vec<packs::Pack>, local: bool) {
         // The overlay swallows input until the apply (`LoadingOverlay`):
         // release what is held so nothing keeps acting while it covers the
         // frame (`KeyMapping.releaseAll` when a screen opens).
@@ -450,10 +463,20 @@ impl Game<'_> {
                 .map_err(|e| e.to_string())
             });
         match handle {
-            Ok(handle) => self.server_packs.reload = Some(PackReload { progress, handle }),
+            Ok(handle) => {
+                self.server_packs.reload = Some(PackReload {
+                    progress,
+                    handle,
+                    local,
+                })
+            }
             Err(e) => {
                 log::error!("Horizon: could not start the pack reload worker: {e}");
-                self.finish_pack_reload(false);
+                if local {
+                    self.ui.options.resource_error = Some(e.to_string());
+                } else {
+                    self.finish_pack_reload(false);
+                }
             }
         }
     }
@@ -471,16 +494,23 @@ impl Game<'_> {
             .handle
             .join()
             .unwrap_or_else(|_| Err("the pack reload worker panicked".into()));
-        let ok = match staged
-            .and_then(|staged| self.apply_staged_pack(staged).map_err(|e| e.to_string()))
-        {
+        let ok = match staged.and_then(|staged| {
+            horizon_client::spans::time("pack_reload_apply", || {
+                self.apply_staged_pack(staged).map_err(|e| e.to_string())
+            })
+        }) {
             Ok(()) => true,
             Err(e) => {
                 log::warn!("Horizon: server resource pack reload failed: {e}");
+                if reload.local {
+                    self.ui.options.resource_error = Some(e);
+                }
                 false
             }
         };
-        self.finish_pack_reload(ok);
+        if !reload.local {
+            self.finish_pack_reload(ok);
+        }
     }
     /// `ServerPacks::reloaded` and the recovery reload it can ask for.
     fn finish_pack_reload(&mut self, ok: bool) {

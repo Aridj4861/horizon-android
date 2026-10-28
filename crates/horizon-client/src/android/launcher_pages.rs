@@ -499,8 +499,6 @@ impl Launcher {
                 (self.catalog.results.len() as f32 * 78.0 - (bottom - top)).max(0.0),
             ]);
             for (i, p) in self.catalog.results.iter().enumerate() {
-                let title = ui.fit_text(Face::Medium, 19.0, &p.title, w - 214.0);
-                let summary = ui.fit_text(Face::Regular, 14.0, &p.summary, w - 214.0);
                 let y = top + i as f32 * 78.0 - self.catalog.scroll;
                 let download = self.catalog.download_label(p);
                 if download.is_none() {
@@ -510,6 +508,8 @@ impl Launcher {
                 if y < top || y + 70.0 > bottom {
                     continue;
                 }
+                let title = ui.fit_text(Face::Medium, 19.0, &p.title, w - 214.0);
+                let summary = ui.fit_text(Face::Regular, 14.0, &p.summary, w - 214.0);
                 ui.text(Face::Medium, 19.0, 32.0, y, color::TEXT, &title);
                 ui.text(Face::Regular, 14.0, 32.0, y + 29.0, color::MUTED, &summary);
                 if let Some(state) = download {
@@ -993,19 +993,22 @@ impl Launcher {
         self.focus = None;
         if action.is_some() && horizon_client::official_install::ready(&self.home) {
             let audio = self.audio.get_or_insert_with(|| {
-                horizon_client::audio::Audio::new(&self.home.join(".local/horizon-client/26.3"))
+                let mut audio = horizon_client::audio::Audio::new(
+                    &self.home.join(".local/horizon-client/26.3"),
+                );
+                let settings = horizon_client::settings::Settings::load(
+                    &self
+                        .catalog
+                        .config
+                        .game_home(&self.home)
+                        .join("options.txt"),
+                );
+                audio.master = settings.volumes[0];
+                let mut volumes = settings.volumes;
+                volumes[0] = 1.0;
+                horizon_client::settings::set_source_volumes(volumes);
+                audio
             });
-            let settings = horizon_client::settings::Settings::load(
-                &self
-                    .catalog
-                    .config
-                    .game_home(&self.home)
-                    .join("options.txt"),
-            );
-            audio.master = settings.volumes[0];
-            let mut volumes = settings.volumes;
-            volumes[0] = 1.0;
-            horizon_client::settings::set_source_volumes(volumes);
             audio.play_button_click();
         }
         match action {
@@ -1074,9 +1077,10 @@ impl Launcher {
             Some(Action::SignOut) => self.login.sign_out(),
             Some(Action::LoginLink) => self.login.open_link(),
             Some(Action::Page(page)) => {
-                self.catalog.config.save(&self.home)?;
                 self.catalog.editing = None;
-                crate::platform::hide();
+                if crate::platform::active() {
+                    crate::platform::hide();
+                }
                 self.catalog.page = page;
                 self.catalog.scroll = 0.0;
                 self.error = None;

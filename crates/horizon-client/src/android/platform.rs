@@ -7,6 +7,7 @@ use jni::{
 use std::cell::RefCell;
 thread_local! {
     static EDIT: RefCell<Option<String>> = const { RefCell::new(None) };
+    static MULTILINE: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
     static VIBRATOR: RefCell<Option<Option<GlobalRef>>> = const { RefCell::new(None) };
     static VIBRATING: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
@@ -450,6 +451,13 @@ pub fn capture_mouse(capture: bool) -> bool {
 }
 
 pub fn show(text: &str) {
+    show_editor(text, false);
+}
+pub fn show_multiline(text: &str) {
+    show_editor(text, true);
+}
+fn show_editor(text: &str, multiline: bool) {
+    MULTILINE.with(|mode| mode.set(multiline));
     if crate::native_ime::show(text) {
         EDIT.with(|e| *e.borrow_mut() = Some(text.into()));
     } else {
@@ -473,15 +481,9 @@ pub fn poll() -> Vec<Output> {
         if new == *old {
             return vec![];
         }
-        let mut out = horizon_client::ime_edit::changes(old, &new);
+        let out =
+            horizon_client::ime_edit::editor_changes(old, &new, MULTILINE.with(|mode| mode.get()));
         *old = new;
-        if old.ends_with('\n') {
-            // Single-line fields treat a keyboard newline as confirmation.
-            if let Some(Output::Text(t)) = out.last_mut() {
-                t.pop();
-            }
-            out.push(Output::Enter);
-        }
         out
     })
 }

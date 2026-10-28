@@ -355,10 +355,6 @@ impl ApplicationHandler for Launcher {
                 self.drag = None;
                 Ok(())
             }
-            WindowEvent::Focused(true) => {
-                self.catalog.refresh(&self.home);
-                Ok(())
-            }
             WindowEvent::MouseInput {
                 state,
                 button: MouseButton::Left,

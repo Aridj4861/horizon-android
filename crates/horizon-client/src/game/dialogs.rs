@@ -48,6 +48,19 @@ fn warning_texts() -> (Text, Text, [Text; 2]) {
 }
 
 impl Game<'_> {
+    #[cfg(target_os = "android")]
+    pub(super) fn dialog_edit_value(&self) -> String {
+        self.dialogs
+            .open
+            .as_ref()
+            .and_then(|o| {
+                o.focus
+                    .and_then(|i| o.fields.get(i))
+                    .and_then(Option::as_ref)
+            })
+            .map(|e| e.value.clone())
+            .unwrap_or_default()
+    }
     /// Whether a dialog screen takes the input.
     pub(super) fn dialog_open(&self) -> bool {
         let d = &self.dialogs;

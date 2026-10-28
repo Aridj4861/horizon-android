@@ -337,17 +337,17 @@ impl<'a> Ui<'a> {
 
     pub fn fit_text(&self, face: Face, size: f32, text: &str, width: f32) -> String {
         if self.measure(face, size, text) <= width {
-            return text.into();
+            return text.to_owned();
         }
-        let mut value = text.to_owned();
-        while !value.is_empty() {
-            value.pop();
-            let shortened = format!("{value}...");
-            if self.measure(face, size, &shortened) <= width {
-                return shortened;
-            }
-        }
-        String::new()
+        let px = (size * self.density * 4.0).round() / 4.0;
+        with_cache(self.atlas, |cache| {
+            let font = cache.fonts.face(face);
+            let scaled = font.as_scaled(cache.fonts.scale(face, px));
+            crate::ui_text::fit(text, width * self.density, |previous, ch| {
+                let id = font.glyph_id(ch);
+                previous.map_or(0.0, |p| scaled.kern(font.glyph_id(p), id)) + scaled.h_advance(id)
+            })
+        })
     }
     /// Move rasterized glyphs into the batch's atlas uploads (real frames only).
     pub fn finish(self) {

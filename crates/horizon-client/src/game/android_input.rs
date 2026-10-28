@@ -317,7 +317,9 @@ impl Game<'_> {
         if !self.pad_in_menu() {
             self.open_chat("");
         }
-        let initial = if self.sign_edit.is_some() {
+        let initial = if self.dialog_open() {
+            self.dialog_edit_value()
+        } else if self.sign_edit.is_some() {
             self.sign_current().unwrap_or_default()
         } else if self.screen == Screen::Chat && self.title.is_none() {
             self.chat_key_code(KeyCode::End, None);
@@ -333,10 +335,28 @@ impl Game<'_> {
                 .unwrap_or_default()
         } else if self.screen == Screen::Creative {
             self.creative_screen.search.value.clone()
+        } else if self.recipe_search_focused() {
+            self.recipe_search_value()
+        } else if self.mod_browser_typing() {
+            self.mod_browser_edit_value()
+        } else if self.station_typing() {
+            self.station
+                .as_ref()
+                .map(|s| s.rename.value.clone())
+                .unwrap_or_default()
+        } else if self.book.is_some() {
+            self.book_edit_value().unwrap_or_default()
         } else {
             String::new()
         };
-        crate::platform::show(&initial);
+        if matches!(
+            self.book,
+            Some(super::books::BookScreen::Edit { signing: false, .. })
+        ) {
+            crate::platform::show_multiline(&initial);
+        } else {
+            crate::platform::show(&initial);
+        }
     }
     pub(super) fn android_poll_keyboard(&mut self) {
         self.android_custom_events();
@@ -434,8 +454,9 @@ impl Game<'_> {
         }
     }
     pub(super) fn android_menu_touch(&mut self, t: &Touch, events: &ActiveEventLoop, id: WindowId) {
-        let size = self.window.as_ref().unwrap().inner_size();
-        let b = HudBatch::new([size.width, size.height]);
+        let Some(b) = self.gui_scale() else {
+            return;
+        };
         let p = [t.location.x as f32 / b.scale, t.location.y as f32 / b.scale];
         let direct = self.pad.touch_ui.direct_pointer(t.id, p, t.phase);
         self.window_event(

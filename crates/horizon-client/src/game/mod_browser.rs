@@ -6,6 +6,21 @@
 //! mod's keys went down over an item. With no mod showing a panel, each
 //! hook here returns after one check.
 use super::Game;
+#[cfg(target_os = "android")]
+impl Game<'_> {
+    pub(super) fn mod_browser_edit_value(&self) -> String {
+        #[cfg(feature = "mods")]
+        return self
+            .mods
+            .browser
+            .search
+            .as_ref()
+            .map(|s| s.value.clone())
+            .unwrap_or_default();
+        #[cfg(not(feature = "mods"))]
+        String::new()
+    }
+}
 #[cfg(feature = "mods")]
 use {
     super::Screen,

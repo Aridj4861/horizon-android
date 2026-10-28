@@ -154,6 +154,14 @@ impl Game<'_> {
             s.reset_blink();
         }
     }
+    #[cfg(target_os = "android")]
+    pub(super) fn recipe_search_value(&self) -> String {
+        self.recipe_ui
+            .search
+            .as_ref()
+            .map(|s| s.value.clone())
+            .unwrap_or_default()
+    }
     /// Text typed (or one backspace) into the search box.
     pub(super) fn recipe_text(&mut self, text: Option<&str>, backspace: bool) {
         let Some(search) = self.recipe_ui.search.as_mut() else {

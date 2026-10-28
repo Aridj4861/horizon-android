@@ -5888,7 +5888,10 @@ impl Game<'_> {
         ) {
             self.cursor = pos;
         }
-        window.set_cursor_visible(!self.captured);
+        let pointer = !self.captured;
+        #[cfg(target_os = "android")]
+        let pointer = pointer && (!crate::touch_visible() || self.settings.keypad.enabled);
+        window.set_cursor_visible(pointer);
     }
     /// `GuiGraphicsExtractor.applyCursor` -> `Window.selectCursor` at the end
     /// of a frame: the cursor the frame's widgets asked for, set on the window
@@ -13020,6 +13023,7 @@ impl ApplicationHandler for Game<'_> {
         if let WindowEvent::Touch(touch) = &event {
             use winit::event::TouchPhase;
             self.last_input = Instant::now();
+            self.pad.menu.keyboard_focus = false;
             let size = self.window.as_ref().unwrap().inner_size();
             self.pad.touch.viewport(size.width, size.height);
             if self.pad.touch.editor.is_some() {
@@ -13057,7 +13061,7 @@ impl ApplicationHandler for Game<'_> {
                 self.pad.touch.clear();
                 return;
             }
-            if self.title.is_none() && self.screen == Screen::Playing {
+            if !self.pad_in_menu() {
                 self.pad.in_use = true;
                 let size = self.window.as_ref().unwrap().inner_size();
                 if touch.phase == TouchPhase::Started {
@@ -13148,6 +13152,18 @@ impl ApplicationHandler for Game<'_> {
                             },
                         },
                     );
+                }
+                if touch.phase == TouchPhase::Ended {
+                    let b = self.gui_scale();
+                    if let Some(b) = b {
+                        let p = [
+                            touch.location.x as f32 / b.scale,
+                            touch.location.y as f32 / b.scale,
+                        ];
+                        if crate::platform::field_at(p) {
+                            self.android_show_keyboard();
+                        }
+                    }
                 }
             }
             return;

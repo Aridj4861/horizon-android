@@ -57,3 +57,23 @@ disabled by the engine for external multiplayer servers, independently of Androi
 
 The package uses versionName `0.7.3` and versionCode `24`. Source checks do not
 establish a phone FPS improvement or replace an on-device picker/import test.
+
+## Input and reload follow-up
+
+- Route touches on sign/book/server dialogs through menu input rather than the
+  underlying Playing state. Pure touch menus no longer activate a controller
+  pointer. Creative/container field taps request the Android IME too.
+- Preserve initial text for sign, creative/recipe search, anvil, mod item search,
+  book and server-dialog editors. Book pages keep multiline input; signing a
+  book and sign lines use single-line confirmation. Register custom book text
+  areas as fields for the shared hit-test path.
+- Stage local Android resource-pack reloads on the existing worker and show its
+  progress overlay. Keep GPU application on the render thread with a named
+  `pack_reload_apply` timing. File import/provider behavior is unchanged.
+- Fit long launcher descriptions with a linear Unicode/kerning-aware scan rather
+  than repeatedly measuring and allocating shorter strings. Do not measure
+  offscreen rows or reread all player settings for every launcher button click.
+
+These fixes require a new APK. Initial world-entry GPU stalls and menu blur costs
+remain under investigation; no phone FPS gain or complete ANR elimination is
+claimed from compilation and host tests alone.

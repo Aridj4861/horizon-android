@@ -102,6 +102,9 @@ impl Game<'_> {
             || self.screen != Screen::Playing
             || self.sign_edit.is_some()
             || self.book.is_some()
+            || self.dialog_open()
+            || self.server_packs.prompt.is_some()
+            || self.link_prompt.is_some()
             || self.touch_editing()
     }
 
@@ -649,7 +652,12 @@ impl Game<'_> {
                 false
             }
         };
-        let in_menu = self.pad_in_menu()
+        #[cfg(target_os = "android")]
+        let navigation = !crate::touch_visible() || self.settings.keypad.enabled || keyboard_focus;
+        #[cfg(not(target_os = "android"))]
+        let navigation = true;
+        let in_menu = navigation
+            && self.pad_in_menu()
             && (self.settings.controller.enabled
                 || keyboard_focus
                 || (cfg!(target_os = "android") && self.settings.keypad.enabled));
@@ -846,6 +854,8 @@ impl Game<'_> {
     }
 
     fn pad_show_os_pointer(&mut self, show: bool) {
+        #[cfg(target_os = "android")]
+        let show = show && (!crate::touch_visible() || self.settings.keypad.enabled);
         if self.pad.menu.os_hidden != show {
             return;
         }
@@ -887,6 +897,8 @@ impl Game<'_> {
             || (self.screen == Screen::Creative && self.creative_screen.tab().search)
             || self.recipe_search_focused()
             || self.station_typing()
+            || self.mod_browser_typing()
+            || self.dialog_open()
     }
 
     /// Open the on-screen keyboard over the focused field: Horizon's, or
@@ -944,7 +956,11 @@ impl Game<'_> {
             }
         };
         let backspace = key == Some(KeyCode::Backspace);
-        if self.screen == Screen::Chat && self.title.is_none() {
+        if self.dialog_open() {
+            if let Err(error) = self.dialog_key(key.unwrap_or(KeyCode::Space), None, text) {
+                log::warn!("Dialog keyboard: {error}");
+            }
+        } else if self.screen == Screen::Chat && self.title.is_none() {
             match text {
                 Some(t) => self.chat_type(t),
                 None => self.chat_key_code(key.expect("a key"), None),
@@ -962,6 +978,10 @@ impl Game<'_> {
         } else if self.recipe_search_focused() {
             if key != Some(KeyCode::Enter) {
                 self.recipe_text(text, backspace);
+            }
+        } else if self.mod_browser_typing() {
+            if key != Some(KeyCode::Enter) {
+                self.mod_browser_text(text, backspace);
             }
         } else if self.station_typing() {
             if key != Some(KeyCode::Enter) {
