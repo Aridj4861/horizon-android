@@ -7,11 +7,11 @@
   "compared_source_files": 3147,
   "modified_existing_files": 41,
   "branch": "android",
-  "merged_upstream_commit": "e1b2b0b2fdf5962a30fb5de31b0c1bd6829d9083",
-  "merged_upstream_commits": 2931,
+  "merged_upstream_commit": "d0b6e489212ff7e4d08f31c56ea7606a9ff4ae20",
+  "merged_upstream_commits": 2935,
   "last_reviewed_date": "2026-10-28",
-  "last_update_commits": 51,
-  "latest_fetched_commit": "e1b2b0b2fdf5962a30fb5de31b0c1bd6829d9083",
-  "review": "0.7.3 integration: 51 stable main-branch commits after b6c936f8. Includes server chunk-worker pumping between ticks during world entry, trial spawner egg fixes, furnace/biome refactors, chat log de-duplication and desktop native-source mod tooling. Android keeps .hmod support, filters unsupported .hnmod projects and rejects their installation. Upstream deployment workflows remain inactive. See android-upstream-review-0.7.3.md for validation scope.",
+  "last_update_commits": 4,
+  "latest_fetched_commit": "d0b6e489212ff7e4d08f31c56ea7606a9ff4ae20",
+  "review": "0.7.3 follow-up: four stable commits after e1b2b0b2. Cache biome-source feature decoration in GeneratorData and preload it before world entry; bound supervisor HTTP request/header lines. Android module paths and inactive deployment workflows are preserved. See android-upstream-review-0.7.3.md.",
   "pending_review_commits": 0
 }
