@@ -492,6 +492,16 @@ impl Loading {
     #[cfg(target_os = "android")]
     pub(super) fn menu_android_keyboard(&mut self) {
         use horizon_client::osk::Output;
+        if let Some(notice) = crate::documents::poll() {
+            if notice.changed {
+                self.menu.options.pack_infos =
+                    packs::pack_infos(&self.options.as_ref().unwrap().resources);
+                self.menu.options.pack_screen = None;
+                self.settings.shader_packs =
+                    horizon_client::shader_pack_list::scan(&Game::shader_packs_dir());
+            }
+            log::info!("{}", notice.text);
+        }
         for out in crate::platform::poll() {
             match out {
                 Output::Text(s) => {
@@ -915,6 +925,8 @@ impl Loading {
         self.menu
             .frame_graph
             .draw(self.settings.horizon.overlay, batch, &gui.atlas);
+        #[cfg(target_os = "android")]
+        crate::documents::draw(batch, &gui.atlas);
     }
 
     #[cfg(target_os = "android")]

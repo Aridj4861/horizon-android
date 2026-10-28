@@ -191,8 +191,14 @@ pub fn cache_dir() -> Option<std::path::PathBuf> {
 }
 
 pub fn open_repository() -> bool {
+    open_url("https://github.com/Vasysik/horizon-android")
+}
+pub fn open_url(url: &str) -> bool {
+    if !url.starts_with("https://") && !url.starts_with("http://") {
+        return false;
+    }
     with_context(|env, activity| {
-        let address = JObject::from(env.new_string("https://github.com/Vasysik/horizon-android")?);
+        let address = JObject::from(env.new_string(url)?);
         let uri = env
             .call_static_method(
                 "android/net/Uri",

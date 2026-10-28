@@ -7,15 +7,17 @@ use winit::{
 
 #[derive(Clone, Copy, PartialEq)]
 pub(super) enum Action {
-    ToggleNative(usize),
     Page(Page),
     Play,
     Search,
     Field(&'static str),
     FinishNameEdit,
     Install(usize),
-    Remove(usize),
-    Toggle(usize),
+    Import(horizon_client::content_files::Kind),
+    ToggleSection(usize),
+    ToggleLocal(usize),
+    DeleteLocal(usize),
+    ConfirmDeleteLocal,
     Next,
     Previous,
     Profile,
@@ -62,7 +64,13 @@ pub(super) fn button(
         if accent { color::ACCENT } else { color::RAISED },
     );
     let padding = (w * 0.12).clamp(4.0, 12.0);
-    let font = if w < 80.0 { 13.0 } else { 16.0 };
+    let base = if w < 80.0 { 13.0 } else { 16.0 };
+    let font = if matches!(action, Action::Page(_)) {
+        (base * ((w - 2.0 * padding) / ui.measure(Face::Medium, base, label).max(1.0)).min(1.0))
+            .max(9.0)
+    } else {
+        base
+    };
     let label = ui.fit_text(Face::Medium, font, label, w - 2.0 * padding);
     ui.text(
         Face::Medium,
@@ -225,13 +233,14 @@ impl Launcher {
             self.login.signed_in,
         );
         let tabs = Page::ALL.len() as f32;
-        let tab_width = (w - 64.0) / tabs;
+        let tab_margin = if w < 700.0 { 16.0 } else { 32.0 };
+        let tab_width = (w - 2.0 * tab_margin) / tabs;
         for (i, page) in Page::ALL.iter().enumerate() {
-            let x = 32.0 + i as f32 * tab_width;
+            let x = tab_margin + i as f32 * tab_width;
             button(
                 &mut ui,
                 &mut self.targets,
-                [x, 88.0, tab_width - 8.0, 42.0],
+                [x, 88.0, tab_width - 4.0, 42.0],
                 if w < 700.0 {
                     match page {
                         Page::Installed => "Files",
@@ -414,6 +423,8 @@ impl Launcher {
                 color::TEXT,
                 if page == Page::Mods {
                     "Horizon Mods"
+                } else if page == Page::Shaders {
+                    "Shader Packs"
                 } else {
                     "Resource Packs"
                 },
@@ -438,17 +449,24 @@ impl Launcher {
                 Action::Search,
                 true,
             );
-            ui.text(
-                Face::Regular,
-                14.0,
-                32.0,
-                230.0,
-                color::MUTED,
-                if page == Page::Mods {
-                    "Search Horizon Mods or paste an HTTPS .hmod URL. Runtime requires 64-bit."
-                } else {
-                    "Resource packs download with checksum verification. Enable them in Installed."
-                },
+            let hint = match page {
+                Page::Mods => "Horizon .hmod / runtime needs 64-bit",
+                Page::Shaders => "Horizon catalog / ZIP support is experimental",
+                _ => "Verified downloads / enable in Installed",
+            };
+            let hint = ui.fit_text(Face::Regular, 14.0, hint, (w - 240.0).max(30.0));
+            ui.text(Face::Regular, 14.0, 32.0, 230.0, color::MUTED, &hint);
+            button(
+                &mut ui,
+                &mut self.targets,
+                [w - 190.0, 222.0, 158.0, 32.0],
+                "Import file",
+                Action::Import(match page {
+                    Page::Mods => horizon_client::content_files::Kind::Mods,
+                    Page::Shaders => horizon_client::content_files::Kind::Shaders,
+                    _ => horizon_client::content_files::Kind::Packs,
+                }),
+                false,
             );
             let top = 266.0;
             let bottom = h - 112.0;
@@ -514,119 +532,136 @@ impl Launcher {
                 false,
             );
         } else if page == Page::Installed {
-            let top = 160.0;
+            use horizon_client::content_files::Kind;
+            let top = 156.0;
             let bottom = h - 100.0;
             let row_height = if compact { 110.0 } else { 72.0 };
-            self.catalog.scroll = self.catalog.scroll.clamp(
-                0.0,
-                ((self.catalog.installed.entries.len() + self.catalog.native.len()) as f32
-                    * row_height
-                    - (bottom - top))
-                    .max(0.0),
-            );
-            self.list_view = Some([
-                top,
-                bottom,
-                ((self.catalog.installed.entries.len() + self.catalog.native.len()) as f32
-                    * row_height
-                    - (bottom - top))
-                    .max(0.0),
-            ]);
-            if self.catalog.installed.entries.is_empty() && self.catalog.native.is_empty() {
-                ui.text(
-                    Face::Regular,
-                    20.0,
-                    32.0,
-                    180.0,
-                    color::MUTED,
-                    "No additions yet. Find resource packs in Packs.",
+            let total = Kind::ALL
+                .iter()
+                .enumerate()
+                .map(|(i, k)| {
+                    48.0 + if self.catalog.sections[i] {
+                        self.catalog.local.iter().filter(|e| e.kind == *k).count() as f32
+                            * row_height
+                    } else {
+                        0.0
+                    }
+                })
+                .sum::<f32>();
+            let maximum = (total - (bottom - top)).max(0.0);
+            self.catalog.scroll = self.catalog.scroll.clamp(0.0, maximum);
+            self.list_view = Some([top, bottom, maximum]);
+            let mut offset = 0.0;
+            for (section, kind) in Kind::ALL.into_iter().enumerate() {
+                let count = self.catalog.local.iter().filter(|e| e.kind == kind).count();
+                let y = top + offset - self.catalog.scroll;
+                let label = format!(
+                    "{} {} ({count})",
+                    if self.catalog.sections[section] {
+                        "-"
+                    } else {
+                        "+"
+                    },
+                    kind.label()
                 );
-            }
-            for (i, e) in self.catalog.installed.entries.iter().enumerate() {
-                let title = ui.fit_text(
-                    Face::Medium,
-                    19.0,
-                    &e.title,
-                    if compact { w - 64.0 } else { w - 364.0 },
-                );
-                let y = top + i as f32 * row_height - self.catalog.scroll;
-                let row_size = if compact { 95.0 } else { 64.0 };
-                self.list_targets.push((
-                    [if compact { 32.0 } else { w - 300.0 }, y, 120.0, row_size],
-                    Action::Toggle(i),
-                ));
                 self.list_targets
-                    .push(([w - 165.0, y, 133.0, row_size], Action::Remove(i)));
-                if y < top || y + if compact { 95.0 } else { 64.0 } > bottom {
+                    .push(([32.0, y, w - 210.0, 40.0], Action::ToggleSection(section)));
+                self.list_targets
+                    .push(([w - 165.0, y, 133.0, 40.0], Action::Import(kind)));
+                if y >= top && y + 40.0 <= bottom {
+                    button(
+                        &mut ui,
+                        &mut self.targets,
+                        [32.0, y, w - 210.0, 40.0],
+                        &label,
+                        Action::ToggleSection(section),
+                        false,
+                    );
+                    button(
+                        &mut ui,
+                        &mut self.targets,
+                        [w - 165.0, y, 133.0, 40.0],
+                        "Import",
+                        Action::Import(kind),
+                        false,
+                    );
+                }
+                offset += 48.0;
+                if !self.catalog.sections[section] {
                     continue;
                 }
-                ui.text(Face::Medium, 19.0, 32.0, y, color::TEXT, &title);
-                ui.text(
-                    Face::Regular,
-                    14.0,
-                    32.0,
-                    y + 28.0,
-                    color::MUTED,
-                    &format!(
-                        "{} / {}",
-                        e.number,
-                        e.verdict.as_deref().unwrap_or("Resource pack")
-                    ),
-                );
-                toggle(
-                    &mut ui,
-                    &mut self.targets,
-                    [
-                        if compact { 32.0 } else { w - 300.0 },
-                        y + if compact { 55.0 } else { 0.0 },
-                        120.0,
-                        40.0,
-                    ],
-                    self.catalog.enabled.get(i).copied().unwrap_or(false),
-                    Action::Toggle(i),
-                );
-                button(
-                    &mut ui,
-                    &mut self.targets,
-                    [w - 165.0, y + if compact { 55.0 } else { 0.0 }, 133.0, 40.0],
-                    "Remove",
-                    Action::Remove(i),
-                    false,
-                );
-            }
-            for (i, (_, name, on)) in self.catalog.native.iter().enumerate() {
-                let y = top + (i + self.catalog.installed.entries.len()) as f32 * row_height
-                    - self.catalog.scroll;
-                self.list_targets.push((
-                    [w - 165.0, y, 133.0, if compact { 95.0 } else { 64.0 }],
-                    Action::ToggleNative(i),
-                ));
-                if y < top || y + if compact { 95.0 } else { 64.0 } > bottom {
-                    continue;
+                for (i, item) in self
+                    .catalog
+                    .local
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, e)| e.kind == kind)
+                {
+                    let y = top + offset - self.catalog.scroll;
+                    offset += row_height;
+                    self.list_targets.push((
+                        [
+                            if compact { 32.0 } else { w - 300.0 },
+                            y,
+                            120.0,
+                            row_height - 4.0,
+                        ],
+                        Action::ToggleLocal(i),
+                    ));
+                    self.list_targets.push((
+                        [w - 165.0, y, 133.0, row_height - 4.0],
+                        Action::DeleteLocal(i),
+                    ));
+                    if y < top || y + row_height - 4.0 > bottom {
+                        continue;
+                    }
+                    let title = ui.fit_text(
+                        Face::Medium,
+                        19.0,
+                        &item.title,
+                        if compact { w - 64.0 } else { w - 364.0 },
+                    );
+                    ui.text(Face::Medium, 19.0, 32.0, y, color::TEXT, &title);
+                    ui.text(
+                        Face::Regular,
+                        14.0,
+                        32.0,
+                        y + 28.0,
+                        color::MUTED,
+                        kind.label(),
+                    );
+                    if kind == Kind::Mods && !cfg!(feature = "mods") {
+                        ui.text(
+                            Face::Regular,
+                            14.0,
+                            if compact { 32.0 } else { w - 300.0 },
+                            y + if compact { 62.0 } else { 12.0 },
+                            color::MUTED,
+                            "64-bit required",
+                        );
+                    } else {
+                        toggle(
+                            &mut ui,
+                            &mut self.targets,
+                            [
+                                if compact { 32.0 } else { w - 300.0 },
+                                y + if compact { 55.0 } else { 0.0 },
+                                120.0,
+                                40.0,
+                            ],
+                            item.enabled,
+                            Action::ToggleLocal(i),
+                        );
+                    }
+                    button(
+                        &mut ui,
+                        &mut self.targets,
+                        [w - 165.0, y + if compact { 55.0 } else { 0.0 }, 133.0, 40.0],
+                        "Remove",
+                        Action::DeleteLocal(i),
+                        false,
+                    );
                 }
-                ui.text(
-                    Face::Medium,
-                    19.0,
-                    32.0,
-                    y,
-                    color::TEXT,
-                    &truncate(name, 65),
-                );
-                ui.text(
-                    Face::Regular,
-                    14.0,
-                    32.0,
-                    y + 28.0,
-                    color::MUTED,
-                    "Native Horizon WebAssembly mod / sandboxed",
-                );
-                toggle(
-                    &mut ui,
-                    &mut self.targets,
-                    [w - 165.0, y + if compact { 55.0 } else { 0.0 }, 133.0, 40.0],
-                    *on,
-                    Action::ToggleNative(i),
-                );
             }
         } else {
             let c = &self.catalog.config;
@@ -904,6 +939,7 @@ impl Launcher {
             );
         }
         ui.finish();
+        crate::documents::draw(&mut b, &gui.atlas);
 
         r.render(&game::loading_frame(&b))?;
         Ok(())
@@ -931,7 +967,7 @@ impl Launcher {
                 (*x..*x + *w).contains(&p[0]) && (*y..*y + *h).contains(&p[1])
             })
             .map(|(_, a)| *a);
-        if self.catalog.busy() {
+        if self.catalog.busy() || crate::documents::busy() {
             return Ok(());
         }
         self.feedback = action.map(|action| (action, std::time::Instant::now()));
@@ -954,6 +990,28 @@ impl Launcher {
             audio.play_button_click();
         }
         match action {
+            Some(Action::Import(kind)) => {
+                crate::platform::hide();
+                let home = self.catalog.config.game_home(&self.home);
+                if let Err(e) = crate::documents::begin(kind, home) {
+                    self.catalog.status = e;
+                }
+            }
+            Some(Action::ToggleSection(i)) => {
+                self.catalog.sections[i] = !self.catalog.sections[i];
+                self.catalog.scroll = 0.0;
+            }
+            Some(Action::ToggleLocal(i)) => self.catalog.toggle_local(&self.home, i),
+            Some(Action::DeleteLocal(i)) => {
+                self.catalog.pending_delete = self.catalog.local.get(i).cloned();
+                if let Some(item) = &self.catalog.pending_delete {
+                    self.chooser = Some(super::chooser::Chooser::confirm_delete(item.file.clone()));
+                }
+            }
+            Some(Action::ConfirmDeleteLocal) => {
+                self.catalog.remove_local(&self.home);
+                self.chooser = None;
+            }
             Some(Action::Repository) => {
                 self.catalog.status = if crate::platform::open_repository() {
                     "Repository opened in browser."
@@ -982,7 +1040,6 @@ impl Launcher {
             Some(Action::SignIn) => self.login.start(&self.catalog.config.microsoft_client_id),
             Some(Action::SignOut) => self.login.sign_out(),
             Some(Action::LoginLink) => self.login.open_link(),
-            Some(Action::ToggleNative(i)) => self.catalog.toggle_native(&self.home, i),
             Some(Action::Page(page)) => {
                 self.catalog.config.save(&self.home)?;
                 self.catalog.editing = None;
@@ -1024,8 +1081,6 @@ impl Launcher {
                 crate::platform::show(initial);
             }
             Some(Action::Install(i)) => self.catalog.install(&self.home, i),
-            Some(Action::Remove(i)) => self.catalog.remove(&self.home, i),
-            Some(Action::Toggle(i)) => self.catalog.toggle(&self.home, i),
             Some(Action::Next) => {
                 self.catalog.offset += 12;
                 self.catalog.search(&self.home);
@@ -1129,7 +1184,10 @@ impl Launcher {
                     if drag.moved {
                         if let Some(chooser) = &mut self.chooser {
                             chooser.scroll = (chooser.scroll + delta).max(0.0);
-                        } else if drag.origin_y() / density > 185.0 {
+                        } else if self
+                            .list_view
+                            .is_some_and(|view| drag.origin_y() / density >= view[0] as f64)
+                        {
                             self.catalog.scroll = (self.catalog.scroll + delta).max(0.0);
                         }
                     }
@@ -1180,11 +1238,4 @@ impl Launcher {
             self.catalog.edit(out, &self.home);
         }
     }
-}
-fn truncate(s: &str, max: usize) -> String {
-    let mut value: String = s.chars().take(max).collect();
-    if s.chars().count() > max {
-        value.push_str("...");
-    }
-    value
 }

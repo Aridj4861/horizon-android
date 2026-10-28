@@ -178,6 +178,23 @@ impl Launcher {
     }
 }
 impl Chooser {
+    pub(super) fn confirm_delete(name: String) -> Self {
+        Self {
+            title: "Remove add-on?",
+            help: "Deletes only the selected file from this profile. This cannot be undone.",
+            device: Some(name),
+            choices: vec![
+                (
+                    "Remove".into(),
+                    String::new(),
+                    Action::ConfirmDeleteLocal,
+                    false,
+                ),
+                ("Cancel".into(), String::new(), Action::Dismiss, true),
+            ],
+            scroll: 0.0,
+        }
+    }
     pub(super) fn navigation(&self, width: f32) -> Vec<([f32; 4], Action)> {
         self.choices
             .iter()

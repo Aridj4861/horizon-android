@@ -7,8 +7,8 @@ android {
         applicationId providers.gradleProperty('appId').getOrElse('dev.horizon.android')
         minSdk providers.gradleProperty('minSdk').getOrElse('28').toInteger()
         targetSdk 35
-        versionCode 23
-        versionName '0.7.2'
+        versionCode 24
+        versionName '0.7.3'
         ndk { abiFilters providers.gradleProperty('abi').get() }
     }
     signingConfigs {
@@ -35,6 +35,7 @@ android {
         }
     }
     sourceSets.main {
+        java.srcDirs = ['java']
         manifest.srcFile 'AndroidManifest.xml'
         jniLibs.srcDirs = ['../../.local/android/gradle-jni']
         assets.srcDirs = ['../../.local/android/gradle-assets']

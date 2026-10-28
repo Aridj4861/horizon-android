@@ -151,14 +151,16 @@ pub enum Page {
     Play,
     Mods,
     Packs,
+    Shaders,
     Installed,
     Settings,
 }
 impl Page {
-    pub const ALL: [Self; 5] = [
+    pub const ALL: [Self; 6] = [
         Self::Play,
         Self::Mods,
         Self::Packs,
+        Self::Shaders,
         Self::Installed,
         Self::Settings,
     ];
@@ -167,12 +169,13 @@ impl Page {
             Self::Play => "Play",
             Self::Mods => "Mods",
             Self::Packs => "Packs",
+            Self::Shaders => "Shaders",
             Self::Installed => "Installed",
             Self::Settings => "Settings",
         }
     }
     pub fn is_catalog(self) -> bool {
-        matches!(self, Self::Packs | Self::Mods)
+        matches!(self, Self::Packs | Self::Mods | Self::Shaders)
     }
 }
 enum Reply {
@@ -180,6 +183,9 @@ enum Reply {
     Done(String),
 }
 pub struct Catalog {
+    pub local: Vec<LocalItem>,
+    pub sections: [bool; 3],
+    pub pending_delete: Option<LocalItem>,
     downloaded: Vec<(browser::SourceId, String)>,
     downloading: Option<(browser::SourceId, String)>,
     progress: Arc<Mutex<f32>>,
@@ -198,11 +204,21 @@ pub struct Catalog {
     pub render_scale_text: String,
     worker: Option<mpsc::Receiver<Result<Reply, String>>>,
 }
+#[derive(Clone)]
+pub struct LocalItem {
+    pub kind: horizon_client::content_files::Kind,
+    pub file: String,
+    pub title: String,
+    pub enabled: bool,
+}
 impl Catalog {
     pub fn new(home: &Path) -> Self {
         let config = Config::load(home);
         let installed = Installed::load(&config.game_home(home));
         let mut result = Self {
+            local: vec![],
+            sections: [false, false, false],
+            pending_delete: None,
             downloaded: vec![],
             downloading: None,
             progress: Arc::new(Mutex::new(0.0)),
@@ -271,6 +287,40 @@ impl Catalog {
         if !cfg!(feature = "mods") {
             self.native.clear();
         }
+        self.local.clear();
+        for kind in horizon_client::content_files::Kind::ALL {
+            let dir = game.join(kind.folder());
+            if std::fs::symlink_metadata(&dir).is_ok_and(|m| m.file_type().is_symlink()) {
+                continue;
+            }
+            for entry in std::fs::read_dir(dir).into_iter().flatten().flatten() {
+                if !entry.file_type().is_ok_and(|t| t.is_file()) {
+                    continue;
+                }
+                let name = entry.file_name().to_string_lossy().into_owned();
+                if !horizon_client::content_files::plain_name(&name) || !kind.accepts(&name) {
+                    continue;
+                }
+                let enabled = match kind {
+                    horizon_client::content_files::Kind::Packs => {
+                        settings.resource_packs.contains(&format!("file/{name}"))
+                    }
+                    horizon_client::content_files::Kind::Shaders => {
+                        settings.horizon.shader_pack == name
+                    }
+                    horizon_client::content_files::Kind::Mods => name
+                        .strip_suffix(".hmod")
+                        .is_some_and(|id| on.enabled.contains(id)),
+                };
+                self.local.push(LocalItem {
+                    kind,
+                    file: name.clone(),
+                    title: name,
+                    enabled,
+                });
+            }
+        }
+        self.local.sort_by_key(|e| e.title.to_lowercase());
     }
     pub fn busy(&self) -> bool {
         self.worker.is_some()
@@ -332,10 +382,14 @@ impl Catalog {
             }
             match reply {
                 Ok(Reply::Search(items)) => {
-                    self.status = format!(
-                        "{} results - select Install to check compatibility",
-                        items.len()
-                    );
+                    self.status = if self.page == Page::Shaders && items.is_empty() {
+                        "No native shader packs published yet. Import a .hshader or experimental shaders ZIP.".into()
+                    } else {
+                        format!(
+                            "{} results - select Install to check compatibility",
+                            items.len()
+                        )
+                    };
                     self.results = items;
                 }
                 Ok(Reply::Done(s)) => self.status = s,
@@ -345,6 +399,15 @@ impl Catalog {
         }
     }
     pub fn search(&mut self, home: &Path) {
+        if self.page == Page::Shaders {
+            self.results.clear();
+            self.scroll = 0.0;
+            let query = Query::new(&self.query, Kind::Shader);
+            self.job("Searching Horizon shader packs...", move || {
+                browser::horizon::Registry.search(&query).map(Reply::Search)
+            });
+            return;
+        }
         if self.page == Page::Mods {
             self.results.clear();
             if self.query.starts_with("https://") {
@@ -392,20 +455,6 @@ impl Catalog {
             let _=std::fs::remove_file(stage);result
         });
     }
-    pub fn toggle_native(&mut self, home: &Path, index: usize) {
-        let Some((id, _, enabled)) = self.native.get(index) else {
-            return;
-        };
-        let game = self.config.game_home(home);
-        let mut list = horizon_client::mod_list::ModList::load(&game);
-        if *enabled {
-            list.enabled.remove(id);
-        } else {
-            list.enabled.insert(id.clone());
-        }
-        list.save(&game);
-        self.refresh(home);
-    }
     pub fn install(&mut self, home: &Path, index: usize) {
         let Some(project) = self.results.get(index).cloned() else {
             return;
@@ -415,6 +464,7 @@ impl Catalog {
         }
         let game = self.config.game_home(home);
         if project.kind != Kind::ResourcePack
+            && !(project.kind == Kind::Shader && project.source == browser::SourceId::Horizon)
             && !(cfg!(feature = "mods")
                 && project.kind == Kind::Mod
                 && project.source == browser::SourceId::Horizon)
@@ -445,58 +495,105 @@ impl Catalog {
             )))
         });
     }
-    pub fn remove(&mut self, home: &Path, index: usize) {
-        if self.busy() {
-            return;
-        }
-        let Some(entry) = self.installed.entries.get(index) else {
+    pub fn toggle_local(&mut self, home: &Path, index: usize) {
+        let Some(item) = self.local.get(index).cloned() else {
             return;
         };
         let game = self.config.game_home(home);
-        self.status = match browser::installed::remove(&game, &entry.project) {
-            Ok(e) => {
-                if e.kind == Kind::ResourcePack {
-                    let path = game.join("options.txt");
-                    let mut s = horizon_client::settings::Settings::load(&path);
-                    let name = format!(
-                        "file/{}",
-                        Path::new(&e.file)
-                            .file_name()
-                            .unwrap_or_default()
-                            .to_string_lossy()
-                    );
-                    s.resource_packs.retain(|p| p != &name);
-                    s.save(&path);
+        let path = game.join("options.txt");
+        let mut settings = horizon_client::settings::Settings::load(&path);
+        match item.kind {
+            horizon_client::content_files::Kind::Mods => {
+                if !cfg!(feature = "mods") {
+                    self.status = "Native mod execution requires a 64-bit APK".into();
+                    return;
                 }
-                format!("Removed {}", e.title)
+                let mut on = horizon_client::mod_list::ModList::load(&game);
+                if let Some(id) = item.file.strip_suffix(".hmod") {
+                    if item.enabled {
+                        on.enabled.remove(id);
+                    } else {
+                        on.enabled.insert(id.to_owned());
+                    }
+                }
+                on.save(&game);
             }
-            Err(e) => e,
-        };
+            horizon_client::content_files::Kind::Packs => {
+                let id = format!("file/{}", item.file);
+                if item.enabled {
+                    settings.resource_packs.retain(|p| p != &id);
+                } else {
+                    settings.resource_packs.push(id);
+                }
+                settings.save(&path);
+            }
+            horizon_client::content_files::Kind::Shaders => {
+                settings.horizon.shader_pack = if item.enabled {
+                    String::new()
+                } else {
+                    item.file
+                };
+                settings.save(&path);
+            }
+        }
+        self.status = "Selection saved for the next game launch".into();
         self.refresh(home);
     }
-    pub fn toggle(&mut self, home: &Path, index: usize) {
-        let Some(entry) = self.installed.entries.get(index) else {
+    pub fn remove_local(&mut self, home: &Path) {
+        let Some(item) = self.pending_delete.take() else {
             return;
         };
         let game = self.config.game_home(home);
-        if entry.kind == Kind::ResourcePack {
+        let result = (|| -> Result<(), String> {
+            if !horizon_client::content_files::plain_name(&item.file) {
+                return Err("Invalid content filename".into());
+            }
+            let dir = game.join(item.kind.folder());
+            if std::fs::symlink_metadata(&dir)
+                .map_err(|e| e.to_string())?
+                .file_type()
+                .is_symlink()
+            {
+                return Err("Refusing a redirected content directory".into());
+            }
+            let target = dir.join(&item.file);
+            let meta = std::fs::symlink_metadata(&target).map_err(|e| e.to_string())?;
+            if !meta.is_file() || meta.file_type().is_symlink() {
+                return Err(
+                    "Only an explicitly selected regular add-on file can be removed".into(),
+                );
+            }
+            std::fs::remove_file(target).map_err(|e| e.to_string())?;
+            let relative = format!("{}/{}", item.kind.folder(), item.file);
+            let mut installed = Installed::load(&game);
+            installed.entries.retain(|e| e.file != relative);
+            installed.save(&game)?;
             let path = game.join("options.txt");
             let mut settings = horizon_client::settings::Settings::load(&path);
-            let name = format!(
-                "file/{}",
-                Path::new(&entry.file)
-                    .file_name()
-                    .unwrap_or_default()
-                    .to_string_lossy()
-            );
-            if settings.resource_packs.contains(&name) {
-                settings.resource_packs.retain(|p| p != &name);
-            } else {
-                settings.resource_packs.push(name);
+            if item.kind == horizon_client::content_files::Kind::Packs {
+                settings
+                    .resource_packs
+                    .retain(|p| p != &format!("file/{}", item.file));
+            }
+            if item.kind == horizon_client::content_files::Kind::Shaders
+                && settings.horizon.shader_pack == item.file
+            {
+                settings.horizon.shader_pack.clear();
             }
             settings.save(&path);
-        }
-        self.status = format!("Updated {} for next launch", entry.title);
+            if item.kind == horizon_client::content_files::Kind::Mods {
+                let mut on = horizon_client::mod_list::ModList::load(&game);
+                if let Some(id) = item.file.strip_suffix(".hmod") {
+                    on.enabled.remove(id);
+                }
+                on.save(&game);
+            }
+            Ok(())
+        })();
+        self.status = match result {
+            Ok(()) => format!("Removed {}", item.title),
+            Err(e) => e,
+        };
         self.refresh(home);
     }
     pub fn edit(&mut self, out: horizon_client::osk::Output, home: &Path) {

@@ -225,6 +225,7 @@ const MAX_OUTLINE_EDGES: u64 = 256;
 /// Staging buffer size for section meshes: a frame of uploads while
 /// exploring fits in a few.
 const SECTION_UPLOAD_CHUNK: u64 = 4 << 20;
+pub mod upload_budget;
 /// Section copies are submitted early past this many staged bytes, which
 /// bounds the staging memory frames that are not drawn can hold.
 const SECTION_COPY_LIMIT: u64 = 64 << 20;
@@ -3059,11 +3060,14 @@ impl Renderer {
                 })
         });
         // With video and system memory both full, the section is not drawn.
-        let (page, start) = self.arena.alloc(&self.device, encoder, vertices)?;
+        let (page, start) = crate::spans::time("upload_vertex_alloc", || {
+            self.arena.alloc(&self.device, encoder, vertices)
+        })?;
         let sorted_indices = if translucent > 0 {
-            let indices =
+            let indices = crate::spans::time("upload_index_alloc", || {
                 self.sorted_indices
-                    .alloc(&self.device, encoder, u64::from(translucent) * 6);
+                    .alloc(&self.device, encoder, u64::from(translucent) * 6)
+            });
             if indices.is_none() {
                 self.arena.release(page, start, vertices);
                 return None;
@@ -3088,18 +3092,20 @@ impl Renderer {
                 let bytes: &[u8] = bytemuck::cast_slice(part);
                 self.uploaded_bytes += bytes.len() as u64;
                 self.section_copy_bytes += bytes.len() as u64;
-                self.section_uploads.buffer(
-                    encoder,
-                    self.arena.buffer(page),
-                    (start + offset as u64) * stride,
-                    bytes,
-                );
+                crate::spans::time("upload_vertex_stage", || {
+                    self.section_uploads.buffer(
+                        encoder,
+                        self.arena.buffer(page),
+                        (start + offset as u64) * stride,
+                        bytes,
+                    )
+                });
             }
         }
         if self.section_copy_bytes >= SECTION_COPY_LIMIT
             && let Some(copies) = self.take_section_copies()
         {
-            self.queue.submit([copies]);
+            crate::spans::time("upload_submit", || self.queue.submit([copies]));
         }
         Some(SectionGpu {
             page,

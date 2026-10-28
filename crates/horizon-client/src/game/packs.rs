@@ -32,19 +32,43 @@ pub fn packs_dir() -> PathBuf {
 }
 /// `Util.getPlatform().openPath`: the system file manager on the folder.
 pub fn open_folder(dir: &Path) {
-    let program = if cfg!(target_os = "windows") {
-        "explorer"
-    } else if cfg!(target_os = "macos") {
-        "open"
-    } else {
-        "xdg-open"
-    };
-    if let Err(e) = std::process::Command::new(program).arg(dir).spawn() {
-        log::warn!("Horizon: could not open {}: {e}", dir.display());
+    #[cfg(target_os = "android")]
+    {
+        use horizon_client::content_files::Kind;
+        let kind = match dir.file_name().and_then(|s| s.to_str()) {
+            Some("resourcepacks") => Some(Kind::Packs),
+            Some("horizon-mods") => Some(Kind::Mods),
+            Some("shaderpacks") => Some(Kind::Shaders),
+            _ => None,
+        };
+        if let Some(kind) = kind {
+            let home = std::env::current_dir().unwrap_or_default();
+            if let Err(e) = crate::documents::begin(kind, home) {
+                log::warn!("Import: {e}");
+            }
+        }
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        let program = if cfg!(target_os = "windows") {
+            "explorer"
+        } else if cfg!(target_os = "macos") {
+            "open"
+        } else {
+            "xdg-open"
+        };
+        if let Err(e) = std::process::Command::new(program).arg(dir).spawn() {
+            log::warn!("Horizon: could not open {}: {e}", dir.display());
+        }
     }
 }
 /// `Util.getPlatform().openUri`: the system browser on the link.
 pub fn open_uri(uri: &str) {
+    #[cfg(target_os = "android")]
+    {
+        crate::platform::open_url(uri);
+    }
+    #[cfg(not(target_os = "android"))]
     open_folder(Path::new(uri));
 }
 /// The resource root to load from, given the vanilla root, the selection and

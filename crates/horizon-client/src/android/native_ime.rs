@@ -32,12 +32,14 @@ enum Command {
     Poll,
     Capture(bool),
     Bounds,
+    ImportDocument,
 }
 struct Ui {
     vm: JavaVM,
     edit: GlobalRef,
     input: GlobalRef,
     native: GlobalRef,
+    activity: GlobalRef,
     commands: Mutex<VecDeque<Command>>,
     reader: Mutex<UnixStream>,
     writer: Mutex<UnixStream>,
@@ -66,7 +68,7 @@ pub unsafe fn initialize(
     }
     let vm = unsafe { JavaVM::from_raw(vm) }.map_err(|e| e.to_string())?;
     let mut env = vm.attach_current_thread().map_err(|e| e.to_string())?;
-    let (edit, input, native) = env
+    let (edit, input, native, activity) = env
         .with_local_frame(32, |env| -> jni::errors::Result<_> {
             let activity = unsafe { JObject::from_raw(activity) };
             let content = env
@@ -128,6 +130,7 @@ pub unsafe fn initialize(
                 env.new_global_ref(edit)?,
                 env.new_global_ref(input)?,
                 env.new_global_ref(native)?,
+                env.new_global_ref(activity)?,
             ))
         })
         .map_err(|e| {
@@ -143,6 +146,7 @@ pub unsafe fn initialize(
         edit,
         input,
         native,
+        activity,
         commands: Mutex::new(VecDeque::new()),
         reader: Mutex::new(reader),
         writer: Mutex::new(writer),
@@ -234,6 +238,50 @@ impl Ui {
     }
     fn apply(&self, env: &mut JNIEnv<'_>, c: Command) -> jni::errors::Result<()> {
         match c {
+            Command::ImportDocument => {
+                let result = (|| -> jni::errors::Result<()> {
+                    let action =
+                        JObject::from(env.new_string("android.intent.action.OPEN_DOCUMENT")?);
+                    let intent = env.new_object(
+                        "android/content/Intent",
+                        "(Ljava/lang/String;)V",
+                        &[JValue::Object(&action)],
+                    )?;
+                    let category =
+                        JObject::from(env.new_string("android.intent.category.OPENABLE")?);
+                    env.call_method(
+                        &intent,
+                        "addCategory",
+                        "(Ljava/lang/String;)Landroid/content/Intent;",
+                        &[JValue::Object(&category)],
+                    )?;
+                    let mime = JObject::from(env.new_string("*/*")?);
+                    env.call_method(
+                        &intent,
+                        "setType",
+                        "(Ljava/lang/String;)Landroid/content/Intent;",
+                        &[JValue::Object(&mime)],
+                    )?;
+                    env.call_method(
+                        &intent,
+                        "addFlags",
+                        "(I)Landroid/content/Intent;",
+                        &[JValue::Int(1)],
+                    )?;
+                    env.call_method(
+                        &self.activity,
+                        "startActivityForResult",
+                        "(Landroid/content/Intent;I)V",
+                        &[JValue::Object(&intent), JValue::Int(4101)],
+                    )?;
+                    Ok(())
+                })();
+                if let Err(error) = result {
+                    let _ = env.exception_clear();
+                    log::warn!("Document picker: {error}");
+                    crate::documents::picker_failed("No Android document picker is available");
+                }
+            }
             Command::Show(text) => {
                 let s = JObject::from(env.new_string(&text)?);
                 env.call_method(
@@ -442,4 +490,11 @@ pub fn viewport_bottom() -> Option<u32> {
     let bottom = ui.bottom.load(Ordering::Acquire);
     (bottom > 0)
         .then(|| (bottom as f64 * winit::platform::android::native_input_scale()[1]).round() as u32)
+}
+pub fn pick_document() -> bool {
+    let Some(ui) = UI.get().filter(|ui| !ui.failed.load(Ordering::Acquire)) else {
+        return false;
+    };
+    ui.enqueue(Command::ImportDocument);
+    true
 }

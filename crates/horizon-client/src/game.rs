@@ -6315,6 +6315,8 @@ impl Game<'_> {
             self.draw_sign_editor(&mut batch);
             self.draw_book(&mut batch);
         }
+        #[cfg(target_os = "android")]
+        crate::documents::draw(&mut batch, &self.gui.atlas);
         batch
     }
     fn creative_inventory_open(&self) -> bool {
@@ -12640,7 +12642,9 @@ impl Game<'_> {
         let (far_distance, far_reduced) = self.far_terrain_choice();
         if let Some(renderer) = self.renderer.as_mut() {
             let g = &self.settings.horizon;
-            let budgeted = g.chunk_updates > 0 || g.upload_budget_kib > 0;
+            let mobile_uploads =
+                cfg!(target_os = "android") && self.options.execution_role.is_client();
+            let budgeted = g.chunk_updates > 0 || g.upload_budget_kib > 0 || mobile_uploads;
             if !budgeted && self.pending_uploads.is_empty() {
                 horizon_client::spans::time("upload", || {
                     for (key, mesh) in uploads {
@@ -12665,29 +12669,26 @@ impl Game<'_> {
                 let centre = self.streaming.center;
                 let far = |k: &(i32, i32, i32)| (k.0 - centre.0).pow(2) + (k.2 - centre.1).pow(2);
                 pending.sort_unstable_by_key(|(k, _)| std::cmp::Reverse(far(k)));
-                let (limit, budget) = if budgeted {
-                    (
-                        g.chunk_updates as usize,
-                        u64::from(g.upload_budget_kib) * 1024,
-                    )
-                } else {
-                    (0, 0)
-                };
-                let (mut count, mut bytes) = (0, 0u64);
-                while let Some((_, mesh)) = pending.last() {
-                    let size = ((mesh.solid.len() + mesh.translucent.len())
-                        * std::mem::size_of::<horizon_client::mesher::TerrainVertex>())
-                        as u64;
-                    if (limit > 0 && count >= limit)
-                        || (budget > 0 && bytes > 0 && bytes + size > budget)
-                    {
-                        break;
+                let mut budget = horizon_client::gfx::upload_budget::UploadBudget::with_wait(
+                    g.chunk_updates as usize,
+                    u64::from(g.upload_budget_kib) * 1024,
+                    mobile_uploads,
+                    renderer.last_wait,
+                );
+                let upload_started = Instant::now();
+                horizon_client::spans::time("upload", || {
+                    while let Some((_, mesh)) = pending.last() {
+                        let size = ((mesh.solid.len() + mesh.translucent.len())
+                            * std::mem::size_of::<horizon_client::mesher::TerrainVertex>())
+                            as u64;
+                        if !budget.allows(size, upload_started.elapsed()) {
+                            break;
+                        }
+                        let (key, mesh) = pending.pop().expect("checked above");
+                        renderer.upload(key, &mesh);
+                        budget.record(size);
                     }
-                    let (key, mesh) = pending.pop().expect("checked above");
-                    renderer.upload(key, &mesh);
-                    count += 1;
-                    bytes += size;
-                }
+                });
             }
             renderer.remove_columns(unloaded.iter().map(|c| (c.x, c.z)));
             if let (Some(lod), Some(player)) = (&mut self.lod, &self.player) {

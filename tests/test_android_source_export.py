@@ -48,9 +48,12 @@ class SourceExportTests(unittest.TestCase):
             self.assertFalse((root / '.local/source.zip').exists())
 
     def test_public_tree_guard_rejects_android_private_paths(self):
-        for name in ['app.apk', 'signing/release.jks', 'control.json', '.env.production', 'a/.gradle/state']:
+        for name in ['app.apk', 'signing/release.jks', 'control.json', '.env.production', 'a/.gradle/state',
+                     'packaging/android/java/net/minecraft/Client.java',
+                     'packaging/android/java/dev/horizon/android/OtherActivity.java']:
             self.assertTrue(prohibited(name), name)
-        for name in ['LICENSE', 'crates/horizon-client/src/touch.rs', '.env.example']:
+        for name in ['LICENSE', 'crates/horizon-client/src/touch.rs', '.env.example',
+                     'packaging/android/java/dev/horizon/android/HorizonActivity.java']:
             self.assertFalse(prohibited(name), name)
 
 

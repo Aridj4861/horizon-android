@@ -308,6 +308,9 @@ impl ApplicationHandler for Launcher {
         }
     }
     fn window_event(&mut self, events: &ActiveEventLoop, id: WindowId, event: WindowEvent) {
+        if crate::documents::handle_event(&event) {
+            return;
+        }
         if matches!(event, WindowEvent::Resized(_)) {
             let _ = crate::native_ime::viewport_bottom();
         }
@@ -430,6 +433,12 @@ impl ApplicationHandler for Launcher {
             audio.tick(false, &Default::default());
         }
         self.catalog.poll(&self.home);
+        if let Some(notice) = crate::documents::poll() {
+            self.catalog.status = notice.text;
+            if notice.changed {
+                self.catalog.refresh(&self.home);
+            }
+        }
         for result in crate::gallery::poll() {
             self.catalog.status = result.unwrap_or_else(|e| format!("File export failed: {e}"));
         }

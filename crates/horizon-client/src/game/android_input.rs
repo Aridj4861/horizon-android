@@ -338,6 +338,14 @@ impl Game<'_> {
     }
     pub(super) fn android_poll_keyboard(&mut self) {
         self.android_custom_events();
+        if let Some(notice) = crate::documents::poll() {
+            if notice.changed {
+                self.refresh_pack_lists();
+                self.settings.shader_packs =
+                    horizon_client::shader_pack_list::scan(&Self::shader_packs_dir());
+            }
+            self.system_message(horizon_client::text::Text::literal(notice.text));
+        }
         for result in crate::gallery::poll() {
             self.system_message(horizon_client::text::Text::literal(
                 result.unwrap_or_else(|e| format!("File export failed: {e}")),
@@ -371,6 +379,7 @@ impl Game<'_> {
                 "gpu_reserved_bytes":memory.as_ref().map(|m|m.total_reserved_bytes)})
         });
         serde_json::json!({"renderer":renderer,"android_power":crate::platform::performance_power(),
+            "menu_blur_radius":self.menu_blur(),"shader_pack_active":!self.settings.horizon.shader_pack.is_empty(),
             "render_distance":self.settings.render_distance,
             "simulation_distance":self.settings.simulation_distance,"fps_limit":self.framerate_limit(),
             "focused":self.focused,"paused":self.pause,"in_world":self.player.is_some(),
@@ -379,6 +388,7 @@ impl Game<'_> {
             "underwater":self.ambience.was_underwater(),"mobs":self.mobs.len(),
             "particles":self.particles.len(),"chunks":self.world.chunks.len(),
             "dirty_light":self.world.dirty_light.len(),"pending_uploads":self.pending_uploads.len(),
+            "pending_mesh_bytes":self.pending_uploads.iter().map(|(_,m)|(m.solid.len()+m.translucent.len()) as u64*std::mem::size_of::<horizon_client::mesher::TerrainVertex>() as u64).sum::<u64>(),
             "remote_backlog":self.remote_backlog(),
             "streaming":self.streaming.stages().into_iter().collect::<std::collections::BTreeMap<_,_>>()})
     }

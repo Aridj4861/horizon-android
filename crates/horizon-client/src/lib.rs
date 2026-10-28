@@ -41,6 +41,7 @@ pub mod command_storage;
 pub mod confirm_screen;
 pub mod container_screen;
 pub mod containers;
+pub mod content_files;
 pub mod control;
 pub mod crafting;
 pub mod crash;
