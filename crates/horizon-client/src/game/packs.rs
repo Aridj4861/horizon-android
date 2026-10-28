@@ -66,10 +66,12 @@ pub fn open_folder(dir: &Path) {
 /// `Util.getPlatform().openUri`: the system browser on the link.
 pub fn open_uri(uri: &str) {
     #[cfg(target_os = "android")]
-    {
-        crate::platform::open_url(uri);
+    crate::platform::open_url(uri);
+    #[cfg(windows)]
+    if let Err(error) = open::that_detached(uri) {
+        log::warn!("Horizon: could not open URI {uri}: {error}");
     }
-    #[cfg(not(target_os = "android"))]
+    #[cfg(not(any(windows, target_os = "android")))]
     open_folder(Path::new(uri));
 }
 /// The resource root to load from, given the vanilla root, the selection and

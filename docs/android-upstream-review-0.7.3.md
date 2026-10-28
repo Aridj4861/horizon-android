@@ -54,3 +54,38 @@ Validation: 12 archive/import/upload Rust tests, 10 Android source tests, the tw
 capture tests and one remote-mining fixture test, plus ARM64/ARMv7 release Clippy.
 No full APK or game session is required for these checks. Deployment workflows
 remain inactive and the explicitly registered Android document callback remains.
+
+## Follow-up through abd1755f
+
+194 additional stable commits including merge history after `f66f66c3`:
+
+- Reduce full far-column/proto sweeps to every eighth unchanged tick, while
+  sweeping immediately when the view centre or radius changes.
+- Reuse natural-spawn candidate buffers and block-entity ticker lists. Check
+  hopper cooldowns before consulting blocks.
+- Cache sign text layout by sign data, light, distance and font epoch; batch
+  entity quads. Reduce temporary copies/strings in item, HUD, name-tag and effect
+  panel rendering. These are upstream CPU changes, not measured phone FPS gains.
+- Retain stable gameplay fixes for mobs, sounds, block use, advancement triggers,
+  portal riders, offhand pickup and third-person rendering.
+- Add desktop source-native-mod hook points, launcher preparation/download and
+  toolchain updates. Android still filters source-only native bundles and uses
+  its own installation/account UI; this does not add native-mod builds on phones.
+- Accept the fifth metadata republish of 26.3, keeping the same pinned game jars.
+
+Merge resolutions preserve Android's single NativeActivity/event-loop factory,
+return-to-launcher path, Rust IME and DocumentsProvider. Desktop fullscreen
+recovery remains active; Android URI browsing uses platform Intents and Windows
+uses the registered URI handler. Crash reports keep the fork's source-structure
+path scrubbing, avoiding an embedded private CARGO_MANIFEST_DIR. Upstream launcher
+and nightly workflow updates remain in disabled reference files. Only Android
+source checks are active.
+
+Validation: ARM64 and ARMv7 release-profile Clippy passed after conflict resolution;
+43 upstream nightly-tool tests passed. Android host checks passed (19 content/
+resource/storage tests, 6 recorder/timing tests, 10 source/audit tests; one
+prepared-resource comparison remains opt-in). The potion component protocol test
+passed, which does not reproduce the reported pickup disconnect. A separate Poco
+probe verified actual provider queries, read/write/rename/delete, navigation
+paths, rejected traversal/symlinks and contended Android flock. The full game APK
+and sign editor UI were not rebuilt or device-tested in this integration pass.

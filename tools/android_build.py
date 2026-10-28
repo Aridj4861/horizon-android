@@ -53,6 +53,8 @@ def engine_data(public=False):
     resources = ROOT / '.local/horizon-client' / version
     if not (resources / 'horizon-resources.json').is_file():
         raise FileNotFoundError('Developer build needs prepared engine tables; run tools/android_prepare.py once')
+    if public and not (resources / 'worldgen/blocks/structure-blocks.json').is_file():
+        raise FileNotFoundError('Public build needs generated structure transforms; run tools/android_prepare.py again')
     files = [p for p in resources.iterdir() if p.is_file() and p.suffix in ('.json', '.nbt') and p.name != 'asset-index.json']
     for name in ['worldgen', 'biome-parameters']:
         files.extend(p for p in (resources / name).rglob('*') if p.is_file())
