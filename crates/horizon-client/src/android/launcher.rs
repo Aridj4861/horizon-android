@@ -102,6 +102,7 @@ impl Launcher {
             game.exiting(events);
             drop(game);
         }
+        crate::performance::stop();
         crate::platform::hide();
         horizon_client::auth::clear_current();
         self.session_ready = false;
@@ -231,7 +232,22 @@ impl Launcher {
             self.audio = None;
             self.error = None;
             let _ = std::fs::remove_file(self.home.join("android-error.txt"));
-            let game = game::android_game()?;
+            if self.catalog.config.record_performance {
+                crate::performance::start(
+                    &self.home,
+                    serde_json::json!({
+                        "renderer": self.catalog.config.renderer.label(),
+                        "resolution_percent": self.catalog.config.render_scale.percent(),
+                    }),
+                )?;
+            }
+            let game = match game::android_game() {
+                Ok(game) => game,
+                Err(error) => {
+                    crate::performance::stop();
+                    return Err(error);
+                }
+            };
             // Android has one native window; release its surface before handing it over.
             self.renderer = None;
             self.window = None;
@@ -412,6 +428,9 @@ impl ApplicationHandler for Launcher {
             audio.tick(false, &Default::default());
         }
         self.catalog.poll(&self.home);
+        for result in crate::gallery::poll() {
+            self.catalog.status = result.unwrap_or_else(|e| format!("File export failed: {e}"));
+        }
         self.login.poll();
         if let Some(result) = self.session_worker.as_ref().and_then(|w| w.try_recv().ok()) {
             self.session_worker = None;

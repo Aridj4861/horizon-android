@@ -20,6 +20,8 @@ pub(super) enum Action {
     Previous,
     Profile,
     Logs,
+    RecordPerformance,
+    ExportPerformance,
     Account,
     SignIn,
     DeviceSignIn,
@@ -635,11 +637,11 @@ impl Launcher {
             self.catalog.scroll = self
                 .catalog
                 .scroll
-                .clamp(0.0, (6.0 * row_height - (h - 130.0 - 195.0)).max(0.0));
+                .clamp(0.0, (8.0 * row_height - (h - 130.0 - 195.0)).max(0.0));
             self.list_view = Some([
                 195.0,
                 h - 130.0,
-                (6.0 * row_height - (h - 130.0 - 195.0)).max(0.0),
+                (8.0 * row_height - (h - 130.0 - 195.0)).max(0.0),
             ]);
             for (i, (title, value, action)) in [
                 ("Rendering", c.renderer.label().to_owned(), Action::Renderer),
@@ -659,6 +661,21 @@ impl Launcher {
                     Action::Orientation,
                 ),
                 ("Input", c.input_host.label().to_owned(), Action::InputHost),
+                (
+                    "Performance recording",
+                    if c.record_performance {
+                        "On / up to 30 min"
+                    } else {
+                        "Off"
+                    }
+                    .into(),
+                    Action::RecordPerformance,
+                ),
+                (
+                    "Performance report",
+                    "Save latest to Downloads".into(),
+                    Action::ExportPerformance,
+                ),
                 (
                     "Server",
                     if c.server.is_empty() {
@@ -1023,6 +1040,22 @@ impl Launcher {
                         "No startup error. In game: F3 shows device, terrain and frame diagnostics."
                             .into()
                     });
+            }
+            Some(Action::RecordPerformance) => {
+                self.catalog.config.record_performance = !self.catalog.config.record_performance;
+                if !self.catalog.config.record_performance {
+                    crate::performance::stop();
+                }
+                self.catalog.config.save(&self.home)?;
+                self.catalog.status = if self.catalog.config.record_performance {
+                    "Recording starts on Play. Detailed timings add overhead. Return here to save the report."
+                } else { "Performance recording off." }.into();
+            }
+            Some(Action::ExportPerformance) => {
+                self.catalog.status = match crate::performance::export(&self.home) {
+                    Ok(()) => "Exporting performance report...".into(),
+                    Err(e) => e,
+                };
             }
             None => {}
         }

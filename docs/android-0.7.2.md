@@ -14,6 +14,9 @@ Changes after 0.7.1:
 - Move Add buttons below the editor toolbar and draw editable controls above
   the toolbar. Improve launcher content insets and footer spacing.
 - Reset the Android inactivity timer when world loading completes.
+- Add opt-in detailed performance reports with frame/server/worker timings,
+  slow-frame events, streaming queues and renderer statistics, exported locally
+  to Downloads. See [recording instructions](android-performance.md).
 - Integrate reviewed upstream history through `b6c936f8`; see the
   [upstream review](android-upstream-review-0.7.2.md).
 

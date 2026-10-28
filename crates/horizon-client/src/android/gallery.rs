@@ -20,6 +20,7 @@ struct Request {
     sdk: i32,
     legacy_dir: Option<PathBuf>,
     file: PathBuf,
+    report: bool,
 }
 fn permission(env: &mut JNIEnv<'_>, activity: &JObject<'_>) -> jni::errors::Result<bool> {
     let name = JObject::from(env.new_string("android.permission.WRITE_EXTERNAL_STORAGE")?);
@@ -34,6 +35,12 @@ fn permission(env: &mut JNIEnv<'_>, activity: &JObject<'_>) -> jni::errors::Resu
         == 0)
 }
 pub fn save(file: &Path) -> std::result::Result<(), String> {
+    save_file(file, false)
+}
+pub fn save_report(file: &Path) -> std::result::Result<(), String> {
+    save_file(file, true)
+}
+fn save_file(file: &Path, report: bool) -> std::result::Result<(), String> {
     let request = crate::platform::with_context(|env, activity| {
         let sdk = env
             .get_static_field("android/os/Build$VERSION", "SDK_INT", "I")?
@@ -64,7 +71,8 @@ pub fn save(file: &Path) -> std::result::Result<(), String> {
             )?
             .l()?;
         let legacy_dir = if sdk <= 28 {
-            let pictures = JObject::from(env.new_string("Pictures")?);
+            let pictures =
+                JObject::from(env.new_string(if report { "Download" } else { "Pictures" })?);
             let dir = env
                 .call_static_method(
                     "android/os/Environment",
@@ -88,11 +96,12 @@ pub fn save(file: &Path) -> std::result::Result<(), String> {
             sdk,
             legacy_dir,
             file: file.to_owned(),
+            report,
         })
     });
     let Some(request) = request else {
         PERMISSION_PENDING.store(false, Ordering::Relaxed);
-        return Err("Android could not open the screenshot gallery".into());
+        return Err("Android could not open file export".into());
     };
     std::thread::Builder::new()
         .name("Screenshot gallery".into())
@@ -161,7 +170,10 @@ fn write(request: Request) -> Result<String> {
         while !permission(&mut env, request.activity.as_obj())? {
             if std::time::Instant::now() >= deadline {
                 PERMISSION_PENDING.store(false, Ordering::Relaxed);
-                return Err("Allow storage access to save screenshots to Pictures/HorizonAndroid; the PNG remains in the profile".into());
+                return Err(
+                    "Allow storage access to export this file; the original remains in Horizon"
+                        .into(),
+                );
             }
             std::thread::sleep(std::time::Duration::from_millis(250));
         }
@@ -178,13 +190,26 @@ fn write(request: Request) -> Result<String> {
     let result = (|| -> Result<String> {
         let values = env.new_object("android/content/ContentValues", "()V", &[])?;
         put(&mut env, &values, "_display_name", name)?;
-        put(&mut env, &values, "mime_type", "image/png")?;
+        put(
+            &mut env,
+            &values,
+            "mime_type",
+            if request.report {
+                "application/x-ndjson"
+            } else {
+                "image/png"
+            },
+        )?;
         if request.sdk >= 29 {
             put(
                 &mut env,
                 &values,
                 "relative_path",
-                "Pictures/HorizonAndroid",
+                if request.report {
+                    "Download/HorizonAndroid"
+                } else {
+                    "Pictures/HorizonAndroid"
+                },
             )?;
             pending(&mut env, &values, 1)?;
         } else if let Some(dir) = &request.legacy_dir {
@@ -204,23 +229,45 @@ fn write(request: Request) -> Result<String> {
                     Err(e) => return Err(e.into()),
                 }
                 output = dir.join(format!(
-                    "{}_{n}.png",
+                    "{}_{n}.{}",
                     request
                         .file
                         .file_stem()
+                        .unwrap_or_default()
+                        .to_string_lossy(),
+                    request
+                        .file
+                        .extension()
                         .unwrap_or_default()
                         .to_string_lossy()
                 ));
             }
             put(&mut env, &values, "_data", &output.to_string_lossy())?;
         }
-        let images = env
-            .get_static_field(
+        let images = if request.report && request.sdk >= 29 {
+            env.get_static_field(
+                "android/provider/MediaStore$Downloads",
+                "EXTERNAL_CONTENT_URI",
+                "Landroid/net/Uri;",
+            )?
+            .l()?
+        } else if request.report {
+            let volume = JObject::from(env.new_string("external")?);
+            env.call_static_method(
+                "android/provider/MediaStore$Files",
+                "getContentUri",
+                "(Ljava/lang/String;)Landroid/net/Uri;",
+                &[JValue::Object(&volume)],
+            )?
+            .l()?
+        } else {
+            env.get_static_field(
                 "android/provider/MediaStore$Images$Media",
                 "EXTERNAL_CONTENT_URI",
                 "Landroid/net/Uri;",
             )?
-            .l()?;
+            .l()?
+        };
         row = env
             .call_method(
                 request.resolver.as_obj(),
@@ -256,7 +303,17 @@ fn write(request: Request) -> Result<String> {
             env.call_method(request.resolver.as_obj(),"update","(Landroid/net/Uri;Landroid/content/ContentValues;Ljava/lang/String;[Ljava/lang/String;)I",&[JValue::Object(&row),JValue::Object(&published),JValue::Object(&JObject::null()),JValue::Object(&JObject::null())])?;
         }
         Ok(format!(
-            "Screenshot saved to Pictures/HorizonAndroid/{name}"
+            "{} saved to {}/HorizonAndroid/{name}",
+            if request.report {
+                "Performance report"
+            } else {
+                "Screenshot"
+            },
+            if request.report {
+                "Download"
+            } else {
+                "Pictures"
+            }
         ))
     })();
     if result.is_err() && !row.is_null() {

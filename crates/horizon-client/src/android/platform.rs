@@ -217,6 +217,36 @@ pub fn open_repository() -> bool {
     })
     .is_some()
 }
+/// Public Android power/thermal status; no device identifiers or sysfs access.
+pub fn performance_power() -> serde_json::Value {
+    with_context(|env, activity| {
+        let name = JObject::from(env.new_string("power")?);
+        let power = env
+            .call_method(
+                activity,
+                "getSystemService",
+                "(Ljava/lang/String;)Ljava/lang/Object;",
+                &[JValue::Object(&name)],
+            )?
+            .l()?;
+        let sdk = env
+            .get_static_field("android/os/Build$VERSION", "SDK_INT", "I")?
+            .i()?;
+        let saver = env
+            .call_method(&power, "isPowerSaveMode", "()Z", &[])?
+            .z()?;
+        let thermal = if sdk >= 29 {
+            Some(
+                env.call_method(&power, "getCurrentThermalStatus", "()I", &[])?
+                    .i()?,
+            )
+        } else {
+            None
+        };
+        Ok(serde_json::json!({"android_sdk":sdk,"power_save":saver,"thermal_status":thermal}))
+    })
+    .unwrap_or(serde_json::Value::Null)
+}
 pub fn clipboard_set(text: &str) {
     let _ = clipboard_write(text, false);
 }

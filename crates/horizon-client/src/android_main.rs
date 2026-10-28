@@ -22,6 +22,8 @@ mod display;
 mod gallery;
 #[path = "android/native_ime.rs"]
 mod native_ime;
+#[path = "android/performance.rs"]
+mod performance;
 #[path = "android/platform.rs"]
 mod platform;
 #[allow(dead_code)]

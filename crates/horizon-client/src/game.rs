@@ -13853,6 +13853,8 @@ impl ApplicationHandler for Game<'_> {
                     {
                         let cpu = now.elapsed().saturating_sub(r.last_wait).as_secs_f32() * 1000.0;
                         let spans = horizon_client::spans::take();
+                        #[cfg(target_os = "android")]
+                        crate::performance::slow_frame(cpu, &spans);
                         if cpu > threshold {
                             // The render thread's own CPU time in the frame:
                             // far below the wall time, the frame waited.
@@ -13867,6 +13869,8 @@ impl ApplicationHandler for Game<'_> {
                             );
                         }
                     }
+                    #[cfg(target_os = "android")]
+                    let mut performance_sample = None;
                     if let Some(r) = self.renderer.as_mut() {
                         let cpu = now.elapsed().saturating_sub(r.last_wait);
                         if rendered {
@@ -13878,15 +13882,29 @@ impl ApplicationHandler for Game<'_> {
                             );
                             self.frame_stats.record_cpu(ms(cpu));
                             let render = r.last_encode;
-                            self.frame_stats.record_phases([
+                            let phases = [
                                 ms(updated - now),
                                 ms(ticked - updated),
                                 ms(ticked.elapsed().saturating_sub(r.last_wait + render)),
                                 ms(render),
-                            ]);
+                            ];
+                            self.frame_stats.record_phases(phases);
+                            #[cfg(target_os = "android")]
+                            {
+                                performance_sample = crate::performance::record(
+                                    ms(elapsed),
+                                    ms(cpu),
+                                    &r.gpu_times,
+                                    phases,
+                                );
+                            }
                         }
                         self.frame_stats.record_gpu(&r.gpu_times);
                         r.gpu_times.clear();
+                    }
+                    #[cfg(target_os = "android")]
+                    if let Some(sample) = performance_sample {
+                        crate::performance::submit(sample, self.android_performance_context());
                     }
                     self.limit_frame();
                     self.pause = self.pauses_game();
@@ -15865,7 +15883,11 @@ fn loading_app(
 #[cfg(target_os = "android")]
 pub(crate) fn android_game() -> Result<Box<dyn ApplicationHandler>> {
     horizon_client::auth::clear_current();
-    let options = Options::read()?.ok_or("missing Android options")?;
+    let mut options = Options::read()?.ok_or("missing Android options")?;
+    if crate::performance::active() {
+        options.spikes = Some(50.0);
+    }
+    horizon_client::spans::enable(options.spikes.is_some());
     let settings = Settings::load(&std::env::current_dir()?.join("options.txt"));
     let root = options.resources.clone();
     horizon_threads::put_helpers_behind();

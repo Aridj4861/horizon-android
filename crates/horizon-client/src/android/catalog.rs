@@ -43,6 +43,7 @@ pub struct Config {
     pub orientation: Orientation,
     pub input_host: InputHost,
     pub keypad_controls: bool,
+    pub record_performance: bool,
 }
 
 #[derive(Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]

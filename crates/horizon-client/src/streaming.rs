@@ -484,18 +484,32 @@ impl Streaming {
                                     queue = shared.ready.wait(queue).unwrap();
                                 }
                             };
-                            let done = match job {
-                                Job::Generate(x, z) => match generator.load(x, z) {
-                                    Some(chunk) => {
-                                        generator.prepare_loaded(&mut worker, &chunk);
-                                        Done::Generated(chunk)
+                            let stage = match &job {
+                                Job::Generate(..) => "generate_or_load",
+                                Job::Decorate(..) => "decorate",
+                                Job::Finish(..) => "finish_chunk",
+                                Job::Save(..) => "save_chunks",
+                                Job::Light(..) => "light_chunk",
+                                Job::Mesh(..) => "mesh_section",
+                            };
+                            let done = crate::spans::job(stage, || match job {
+                                Job::Generate(x, z) => {
+                                    match crate::spans::job("load_saved_chunk", || {
+                                        generator.load(x, z)
+                                    }) {
+                                        Some(chunk) => {
+                                            generator.prepare_loaded(&mut worker, &chunk);
+                                            Done::Generated(chunk)
+                                        }
+                                        None => {
+                                            let proto = crate::spans::job("generate_chunk", || {
+                                                generator.proto(&mut worker, x, z)
+                                            });
+                                            let decorated = generator.is_decorated(&proto);
+                                            Done::Proto(x, z, proto, decorated)
+                                        }
                                     }
-                                    None => {
-                                        let proto = generator.proto(&mut worker, x, z);
-                                        let decorated = generator.is_decorated(&proto);
-                                        Done::Proto(x, z, proto, decorated)
-                                    }
-                                },
+                                }
                                 Job::Decorate(x, z, mut region) => {
                                     generator.decorate(&mut worker, &mut region);
                                     Done::Decorated(x, z, region)
@@ -536,7 +550,7 @@ impl Streaming {
                                     faces = Some((context.tables.clone(), mesher.visibility));
                                     Done::Meshed(x, sy, z, mesh, seq)
                                 }
-                            };
+                            });
                             if send.send(done).is_err() {
                                 return;
                             }

@@ -340,7 +340,7 @@ impl Game<'_> {
         self.android_custom_events();
         for result in crate::gallery::poll() {
             self.system_message(horizon_client::text::Text::literal(
-                result.unwrap_or_else(|e| format!("Screenshot export failed: {e}")),
+                result.unwrap_or_else(|e| format!("File export failed: {e}")),
             ));
         }
         for out in crate::platform::poll() {
@@ -355,6 +355,32 @@ impl Game<'_> {
         if self.title.is_none() && self.screen == Screen::Playing && crate::platform::active() {
             crate::platform::hide();
         }
+    }
+    pub(super) fn android_performance_context(&self) -> serde_json::Value {
+        let renderer = self.renderer.as_ref().map(|r| {
+            let [arena, vertices] = r.section_vertex_bytes();
+            let memory = r.device.generate_allocator_report();
+            serde_json::json!({"gpu":r.info.name,"backend":format!("{:?}",r.info.backend),
+                "surface":[r.config.width,r.config.height],"world_size":r.world_render_size(),
+                "present":format!("{:?}",r.config.present_mode),
+                "wait_ms":r.last_wait.as_secs_f32()*1000.0,
+                "draw_calls":r.section_draw_calls,"drawn_sections":r.drawn_sections,
+                "resident_sections":r.resident_sections(),"uploaded_bytes_total":r.uploaded_bytes,
+                "arena_bytes":arena,"section_vertex_bytes":vertices,
+                "gpu_allocated_bytes":memory.as_ref().map(|m|m.total_allocated_bytes),
+                "gpu_reserved_bytes":memory.as_ref().map(|m|m.total_reserved_bytes)})
+        });
+        serde_json::json!({"renderer":renderer,"android_power":crate::platform::performance_power(),
+            "render_distance":self.settings.render_distance,
+            "simulation_distance":self.settings.simulation_distance,"fps_limit":self.framerate_limit(),
+            "focused":self.focused,"paused":self.pause,"in_world":self.player.is_some(),
+            "playing_screen":self.screen == Screen::Playing,
+            "idle_seconds":self.last_input.elapsed().as_secs(),
+            "underwater":self.ambience.was_underwater(),"mobs":self.mobs.len(),
+            "particles":self.particles.len(),"chunks":self.world.chunks.len(),
+            "dirty_light":self.world.dirty_light.len(),"pending_uploads":self.pending_uploads.len(),
+            "remote_backlog":self.remote_backlog(),
+            "streaming":self.streaming.stages().into_iter().collect::<std::collections::BTreeMap<_,_>>()})
     }
     fn android_key_up(&mut self, key: KeyCode) {
         if self.pad.custom_keys.contains(&key) {

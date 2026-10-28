@@ -366,7 +366,7 @@ impl Game<'_> {
             return self.tick_server(paused);
         };
         let (started, cpu) = (Instant::now(), horizon_client::spans::thread_cpu());
-        let result = self.tick_server(paused);
+        let result = horizon_client::spans::job("server_tick", || self.tick_server(paused));
         let wall = started.elapsed().as_secs_f32() * 1000.0;
         // Taken every tick: nothing else takes this thread's spans.
         let spans = horizon_client::spans::take();
