@@ -36,6 +36,16 @@ POCO M8 Pro · 16 chunks · Fancy graphics
 | --- | --- |
 | ![Snowy landscape on Android](docs/media/android/snow-landscape.png) | ![Hypixel Arcade lobby on Android](docs/media/android/hypixel-arcade.png) |
 
+| **Third-person view** | **Desert terrain** |
+| --- | --- |
+| ![Steve on Android with third-person camera, touch controls and FPS overlay](docs/media/android/third-person-desert.png) | ![Desert terrain on Android with touch controls and FPS overlay](docs/media/android/desert-panorama.png) |
+
+### Hypixel Arcade gameplay
+
+https://youtu.be/gWK01tGlyFI
+
+*Disasters gameplay recorded on Poco M8 Pro. FPS readings in the footage are not a controlled benchmark.*
+
 ## Help build it
 
 Try a developer build, send a reproducible bug report, or contribute a focused
