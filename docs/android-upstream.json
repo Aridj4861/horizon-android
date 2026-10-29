@@ -11,7 +11,7 @@
   "merged_upstream_commits": 3681,
   "last_reviewed_date": "2026-10-29",
   "last_update_commits": 174,
-  "latest_fetched_commit": "45ecf7bef04f873e7cbd45813e0b0f39e441a588",
+  "latest_fetched_commit": "acb209dbf74cbf95fe9cb1244d0b013781591b48",
   "review": "Reviewed 174 stable commits through 45ecf7bef: sunset sky rendering cost, far sampling threads, resize bounds, server HUD resets, entity and item fixes, text rendering and desktop launcher updates. Retained Android presentation sizing, lifecycle guards, touch aiming/input and inactive upstream deployment workflows.",
-  "pending_review_commits": 0
+  "pending_review_commits": 179
 }

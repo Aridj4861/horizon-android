@@ -9,6 +9,7 @@ Changes in development after 0.7.3 (versionCode 25).
 - Performance reports separate GPU preparation/uploads, world rendering and
   post-processing/hand/HUD work. Android's total GPU timer also includes in-frame
   preparation; earlier section copies are outside that interval.
+- Reduced sunrise/sunset GPU work without changing the sky geometry, colors or resolution. Sector selection skips unrelated fan triangles; CPU and actual-WGSL GPU tests compare it with the full reference calculation.
 - Android recognizes the application as a game for system game tools.
 - GPU occlusion tests use atomic visibility stamps to avoid concurrent fragment
   writes. Adreno 730 flicker reports still require confirmation on that GPU.
@@ -65,5 +66,8 @@ Controller feedback is routed to the active Android InputDevice vibrator when av
 sends system volume keys must be switched on the controller itself; those keys
 are not repurposed. The Vibration setting controls this feedback; actual external rumble depends on the Android driver and controller mode.
 
-The intermittent low-FPS GPU plateau remains under investigation. Timing reports
-do not establish its root cause. No measured phone FPS improvement is claimed.
+A reproducible post-load slowdown was isolated to the sunrise shader by freezing
+the world and alternating dawn/noon without moving the player or loading chunks.
+The optimization addresses that GPU cost; it does not eliminate the separate work
+of generating and meshing terrain. Other intermittent slowdown reports still need
+device-specific investigation. No measured phone FPS improvement is claimed.
