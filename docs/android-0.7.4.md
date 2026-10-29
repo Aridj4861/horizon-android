@@ -32,8 +32,8 @@ Changes in development after 0.7.3 (versionCode 25).
 - **Toggle sprint button**, in Touch Controls: tap on/off instead of hold, with
   visible pressed state. Clearing touch input or losing focus resets the latch.
   Both new touch settings default to off.
-- Merge 359 upstream commits across three reviewed batches, including merge history,
-  through `87a6a7a16`:
+- Merge 533 upstream commits across four reviewed batches, including merge history,
+  through `45ecf7bef`:
   asynchronous single-player startup, connection screens, faster disconnects,
   team-aware multiplayer collisions, packet validation, item component handling,
   native-mod hooks and gameplay fixes. The later batch adds render-crate separation,

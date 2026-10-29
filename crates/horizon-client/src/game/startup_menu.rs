@@ -388,6 +388,9 @@ impl Loading {
                     self.save_menu_settings();
                     self.apply_menu_settings();
                 }
+                Event::SliderDrag => {
+                    self.apply_menu_settings();
+                }
                 Event::Close if self.menu.options.resource_error.is_some() => {}
                 Event::Close => {
                     self.menu.options_open = false;
@@ -441,7 +444,7 @@ impl Loading {
                     }
                 }
                 // Mods' settings pages open only in a running game.
-                Event::ModSettings(_) | Event::NativeButton(..) => {}
+                Event::ModSettings(_) | Event::NativeSettings(_) | Event::NativeButton(..) => {}
                 // The startup menu runs before the game opens a control socket.
                 Event::ButtonClick => {
                     #[cfg(target_os = "android")]
