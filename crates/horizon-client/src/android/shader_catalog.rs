@@ -94,7 +94,9 @@ pub fn install(
             || false,
         )
         .map_err(|e| e.to_string())?;
-        if native { return Err("This ZIP is a native Horizon shader pack. Use Import file to install it as .hshader".into()); }
+        if native {
+            return Err("This ZIP is a native Horizon shader pack. Use Import file to install it as .hshader".into());
+        }
         let (algo, hash) = file.checksum().ok_or("The source supplies no checksum")?;
         if replacing {
             fs::rename(&path, &target).map_err(|e| e.to_string())?;

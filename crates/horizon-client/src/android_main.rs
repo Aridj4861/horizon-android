@@ -8,9 +8,12 @@ mod game;
 mod launcher;
 // Share the desktop launcher's actual search, compatibility checks, downloads,
 // dependency resolution and Java content porting; GPUI itself is desktop-only.
+// These files are formatted in the launcher's separate Rust 2021 workspace.
+#[rustfmt::skip]
 #[allow(dead_code)]
 #[path = "../../../launcher/src/account.rs"]
 mod account;
+#[rustfmt::skip]
 #[allow(dead_code)]
 #[path = "../../../launcher/src/browser.rs"]
 mod browser;
@@ -34,6 +37,7 @@ mod native_ime;
 mod performance;
 #[path = "android/platform.rs"]
 mod platform;
+#[rustfmt::skip]
 #[allow(dead_code)]
 #[path = "../../../launcher/src/proxy.rs"]
 mod proxy;
@@ -43,6 +47,7 @@ mod search_queue;
 mod secure_store;
 #[path = "android/shader_catalog.rs"]
 mod shader_catalog;
+#[rustfmt::skip]
 #[allow(dead_code)]
 #[path = "../../../launcher/src/skins.rs"]
 mod skins;
