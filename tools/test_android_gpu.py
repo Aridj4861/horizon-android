@@ -24,6 +24,7 @@ pollster = "0.4"
 log = "0.4"
 bytemuck = "1"
 naga = { version = "30.0.1", features = ["wgsl-in"] }
+glam = "0.30"
 ''', encoding='utf-8')
     modules = '\n'.join(
         f'#[path = "{(ROOT / "crates/horizon-client-render/src/gfx" / (name + ".rs")).as_posix()}"] pub mod {name};'
@@ -108,6 +109,29 @@ fn storage_pages_fit_portable_binding_limits() {
                      f'let module = naga::front::wgsl::parse_str(include_str!("{shader}")).unwrap();\n'
                      'naga::valid::Validator::new(naga::valid::ValidationFlags::all(), '
                      'naga::valid::Capabilities::all()).validate(&module).unwrap();\n}\n')
+    # Use the shader's real functions: duplicating their math in a GPU test
+    # would miss changes made only to the shipped WGSL.
+    terrain = (ROOT / 'crates/horizon-client-render/src/terrain.wgsl').read_text(encoding='utf-8')
+    functions = terrain[terrain.index('fn sunrise_weight_full'):terrain.index("// The sky's colour")]
+    (work / 'src/sunrise.wgsl').write_text('''const PI: f32 = 3.141592653589793;
+struct Globals { sunrise: vec4<f32>, sunrise_fan: array<vec4<f32>,32> }
+@group(0) @binding(0) var<uniform> globals: Globals;
+@group(0) @binding(1) var<storage,read> rays: array<vec4<f32>>;
+@group(0) @binding(2) var<storage,read_write> results: array<vec2<f32>>;
+''' + functions + '''
+@compute @workgroup_size(64) fn main(@builtin(global_invocation_id) id: vec3<u32>) {
+    if id.x < arrayLength(&rays) {
+        let d = rays[id.x].xyz;
+        results[id.x] = vec2(sunrise_weight_full(d), sunrise_weight(d));
+    }
+}
+''', encoding='utf-8')
+    with (work / 'src/lib.rs').open('a', encoding='utf-8') as output:
+        for name, source in [
+            ('sunrise_fan', ROOT / 'crates/horizon-client-render/src/gfx/sunrise_fan.rs'),
+            ('sunrise_gpu', ROOT / 'tools/android_sunrise_gpu_test.rs'),
+        ]:
+            output.write(f'\n#[path = "{source.as_posix()}"] mod {name};\n')
     subprocess.run(['cargo', 'test', '--manifest-path', str(work / 'Cargo.toml'),
                     '--', '--nocapture', '--test-threads=1'], cwd=ROOT, check=True)
 

@@ -83,15 +83,34 @@ mod tests {
         if d.y * d.y + d.z * d.z < 1e-10 {
             return weight(&normals, d);
         }
-        let angle = d
-            .dot(Vec3::from_slice(&normals[16][..3]))
-            .atan2(-d.dot(Vec3::from_slice(&normals[20][..3])));
-        let sector = (angle * TRIANGLES as f32 / std::f32::consts::TAU).floor() as i32;
         let n = |i: usize| Vec3::from_slice(&normals[i][..3]);
+        let apex = d.dot(n(0));
+        if apex * normals[0][3] < -1e-4 {
+            return 0.0;
+        }
+        let y = d.dot(n(16));
+        let x = -d.dot(n(20));
+        let ax = x.abs();
+        let ay = y.abs();
+        let t = std::f32::consts::SQRT_2 - 1.0;
+        let q = if ay > ax {
+            if ax < ay * t { 3 } else { 2 }
+        } else if ay > ax * t {
+            1
+        } else {
+            0
+        };
+        let sector = if x >= 0.0 {
+            if y >= 0.0 { q } else { 15 - q }
+        } else if y >= 0.0 {
+            7 - q
+        } else {
+            8 + q
+        };
         let mut best = 0.0f32;
-        let coordinate = angle * TRIANGLES as f32 / std::f32::consts::TAU;
-        let fraction = coordinate - coordinate.floor();
-        let offsets: &[i32] = if fraction.min(1.0 - fraction) < 0.001 {
+        let k0 = d.dot(n(16 + sector as usize));
+        let k1 = d.dot(n(16 + ((sector + 1) % 16) as usize));
+        let offsets: &[i32] = if k0.abs().min(k1.abs()) < ax.max(ay) * 0.001 {
             &[0, 8, -1, 1, 7, 9]
         } else {
             &[0, 8]

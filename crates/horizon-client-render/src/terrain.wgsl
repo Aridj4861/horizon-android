@@ -223,32 +223,47 @@ fn sunrise_weight_full(d: vec3<f32>) -> f32 {
     }
     return best;
 }
-// The rim's YZ projection is a uniformly spaced ellipse. Undo its Y
-// squash to select the intersected angular sector rather than testing all
-// sixteen triangles in every screen pixel. Adjacent sectors cover floating
-// point seams; the opposite sector covers the other ray direction.
+// The rim's YZ projection is an ellipse. Comparing its unsquashed X/Y
+// magnitudes with tan(PI/8) selects one of sixteen sectors without atan2.
+fn sunrise_triangle_weight(d: vec3<f32>, i: u32) -> f32 {
+    let k0 = dot(d, globals.sunrise_fan[16u+i].xyz);
+    let k1 = dot(d, globals.sunrise_fan[16u+(i+1u)%16u].xyz);
+    let triangle = globals.sunrise_fan[i];
+    let apex = dot(d, triangle.xyz);
+    let s = apex + k1 - k0;
+    if abs(s) >= 1e-6 && s * triangle.w > 0.0 && apex * s >= 0.0
+        && k1 * s >= 0.0 && k0 * s <= 0.0 {
+        return apex / s;
+    }
+    return 0.0;
+}
 fn sunrise_weight(d: vec3<f32>) -> f32 {
     if globals.sunrise.a <= 0.001 { return 0.0; }
     if dot(d.yz, d.yz) < 1e-10 { return sunrise_weight_full(d); }
-    let angle = atan2(dot(d, globals.sunrise_fan[16].xyz),
-        -dot(d, globals.sunrise_fan[20].xyz));
-    let coordinate = angle * (16.0 / (2.0 * PI));
-    let sector = i32(floor(coordinate));
-    let fraction = coordinate - floor(coordinate);
-    let candidates = select(2u, 6u, min(fraction, 1.0 - fraction) < 0.001);
-    let offsets = array<i32, 6>(0, 8, -1, 1, 7, 9);
-    var best = 0.0;
-    for (var candidate = 0u; candidate < candidates; candidate++) {
-        let i = u32((sector + offsets[candidate] + 32) % 16);
-        let k0 = dot(d, globals.sunrise_fan[16u+i].xyz);
-        let k1 = dot(d, globals.sunrise_fan[16u+(i+1u)%16u].xyz);
-        let triangle = globals.sunrise_fan[i];
-        let apex = dot(d, triangle.xyz);
-        let s = apex + k1 - k0;
-        if abs(s) >= 1e-6 && s * triangle.w > 0.0 && apex * s >= 0.0
-            && k1 * s >= 0.0 && k0 * s <= 0.0 {
-            best = max(best, apex / s);
-        }
+    // The camera lies in the rim plane. A forward ray can reach the fan
+    // only on the apex side. Keep a guard for rounded coplanar normals.
+    let apex = dot(d, globals.sunrise_fan[0].xyz);
+    if apex * globals.sunrise_fan[0].w < -1e-4 { return 0.0; }
+    let y = dot(d, globals.sunrise_fan[16].xyz);
+    let x = -dot(d, globals.sunrise_fan[20].xyz);
+    let ax = abs(x);
+    let ay = abs(y);
+    let tangent = 0.414213562373095;
+    let quadrant_sector = select(select(0u, 1u, ay > ax * tangent),
+        select(2u, 3u, ax < ay * tangent), ay > ax);
+    let sector = select(select(8u + quadrant_sector, 7u - quadrant_sector, y >= 0.0),
+        select(15u - quadrant_sector, quadrant_sector, y >= 0.0), x >= 0.0);
+    var best = max(sunrise_triangle_weight(d, sector),
+        sunrise_triangle_weight(d, (sector + 8u) % 16u));
+    // Test adjacent sectors only at a rounded boundary; their exact rim
+    // normals remain the authority for hit tests and interpolation weights.
+    let k0 = dot(d, globals.sunrise_fan[16u+sector].xyz);
+    let k1 = dot(d, globals.sunrise_fan[16u+(sector+1u)%16u].xyz);
+    if min(abs(k0), abs(k1)) < max(ax, ay) * 0.001 {
+        best = max(best, sunrise_triangle_weight(d, (sector + 15u) % 16u));
+        best = max(best, sunrise_triangle_weight(d, (sector + 1u) % 16u));
+        best = max(best, sunrise_triangle_weight(d, (sector + 7u) % 16u));
+        best = max(best, sunrise_triangle_weight(d, (sector + 9u) % 16u));
     }
     return best;
 }
