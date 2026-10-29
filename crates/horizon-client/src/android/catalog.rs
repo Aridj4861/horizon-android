@@ -45,6 +45,7 @@ pub struct Config {
     pub keypad_controls: bool,
     pub record_performance: bool,
     pub shader_source: crate::shader_catalog::Origin,
+    pub mod_source: crate::shader_catalog::Origin,
 }
 
 pub use horizon_client::android_gamepad::InputMode as InputHost;
@@ -393,6 +394,7 @@ impl Catalog {
         let source = match self.page {
             Page::Packs => browser::SourceId::Modrinth,
             Page::Shaders => self.config.shader_source.source(),
+            Page::Mods => self.config.mod_source.source(),
             _ => browser::SourceId::Horizon,
         };
         let key = (self.page, source, self.query.trim().to_owned(), self.offset);
@@ -411,6 +413,13 @@ impl Catalog {
         {
             "No Horizon shader packs match this search. Try another query or import a .hshader."
                 .into()
+        } else if self.page == Page::Mods
+            && self.config.mod_source == crate::shader_catalog::Origin::Modrinth
+        {
+            format!(
+                "{} Java mods - browsing only; this Rust client cannot run Java loaders",
+                items.len()
+            )
         } else {
             format!(
                 "{} results - select Install to check compatibility",
@@ -440,7 +449,9 @@ impl Catalog {
             let result = if page == Page::Shaders && source == browser::SourceId::Modrinth {
                 query.everything = true;
                 browser::modrinth::search_shader_packs(&query)
-            } else if page == Page::Packs {
+            } else if page == Page::Packs
+                || (page == Page::Mods && source == browser::SourceId::Modrinth)
+            {
                 query.everything = true;
                 browser::modrinth::Modrinth.search(&query)
             } else {

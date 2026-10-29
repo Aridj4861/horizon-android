@@ -13,6 +13,9 @@ Changes in development after 0.7.3 (versionCode 25).
 - Shader search has separate **Horizon** and **Modrinth** sources. Native packs
   keep the Horizon registry path; classic Modrinth ZIPs have experimental
   compatibility, checksum/archive checks, install status and Installed management.
+- Recipe-book search registers its actual editor bounds with Android IME. Controller text entry uses the system keyboard; command-block, world-option and settings fields preserve existing text.
+- Classic shader ZIP downloads use exclusive file creation rather than hard links, which Android app-data policy rejects.
+- Mods has Horizon/Modrinth source tabs. Modrinth Java mods are browse-only: installing a Java loader is not supported by this Rust client. HTTPS .hmod imports remain available.
 - Native Android input for standard USB and Bluetooth gamepads: positional
   buttons, sticks, D-pad hats and analog/digital triggers use Controller Settings
   bindings, deadzones and look sensitivity. Controller focus navigation also
@@ -23,8 +26,9 @@ Changes in development after 0.7.3 (versionCode 25).
   input. The choice is saved between launches.
 - **Controls in inventory**, in Touch Controls, optionally keeps the overlay
   visible. Custom keys and utility buttons remain available; Inventory/Pause
-  close the inventory. Movement/combat buttons do not act on inventory slots or
-  move the player behind the screen. Slot taps still work directly.
+  close the inventory. Movement controls do not move the player behind the screen.
+  Slot taps still work directly. Shift/LMB/RMB utility buttons support modifier
+  holds, ordinary clicks and split stacks.
 - **Toggle sprint button**, in Touch Controls: tap on/off instead of hold, with
   visible pressed state. Clearing touch input or losing focus resets the latch.
   Both new touch settings default to off.
@@ -55,10 +59,9 @@ Device testing still needs to cover:
   utility buttons. No world movement or accidental item dropping from controls.
 - Sprint hold/toggle: second tap stops sprinting; check pause, inventory and sleep.
 
-Controller firmware must expose an Android gamepad. A keyboard/media mode that
+Controller feedback is routed to the active Android InputDevice vibrator when available, with existing phone feedback as fallback. Controller firmware must expose an Android gamepad. A keyboard/media mode that
 sends system volume keys must be switched on the controller itself; those keys
-are not repurposed. External-controller rumble is not implemented; the existing
-Vibration setting still controls the phone vibrator.
+are not repurposed. The Vibration setting controls this feedback; actual external rumble depends on the Android driver and controller mode.
 
 The intermittent low-FPS GPU plateau remains under investigation. Timing reports
 do not establish its root cause. No measured phone FPS improvement is claimed.

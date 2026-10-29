@@ -10,6 +10,7 @@ thread_local! {
     static MULTILINE: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
     static VIBRATOR: RefCell<Option<Option<GlobalRef>>> = const { RefCell::new(None) };
     static VIBRATING: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    static PAD_VIBRATOR: RefCell<Option<GlobalRef>> = const { RefCell::new(None) };
 }
 
 fn with_vibrator(f: impl FnOnce(&mut JNIEnv<'_>, &JObject<'_>) -> jni::errors::Result<()>) {
@@ -65,6 +66,9 @@ pub fn vibrate(pulse: horizon_client::gamepad::Pulse) {
     if amplitude == 0 || pulse.millis == 0 {
         return;
     }
+    if vibrate_gamepad(pulse, amplitude) {
+        return;
+    }
     with_vibrator(|env, service| {
         let effect = env
             .call_static_method(
@@ -88,6 +92,7 @@ pub fn vibrate(pulse: horizon_client::gamepad::Pulse) {
     });
 }
 pub fn cancel_vibration() {
+    cancel_gamepad_vibration();
     if !VIBRATING.with(|v| v.replace(false)) {
         return;
     }
@@ -95,6 +100,84 @@ pub fn cancel_vibration() {
         env.call_method(service, "cancel", "()V", &[])?;
         Ok(())
     });
+}
+
+fn cancel_gamepad_vibration() {
+    let vibrator = PAD_VIBRATOR.with(|v| v.borrow_mut().take());
+    if let Some(vibrator) = vibrator {
+        with_context(|env, _| {
+            env.call_method(vibrator.as_obj(), "cancel", "()V", &[])?;
+            Ok(())
+        });
+    }
+}
+
+/// Use the vibrator advertised by the active InputDevice, never an unrelated pad.
+/// Unsupported USB/Bluetooth firmware retains the existing phone feedback.
+fn vibrate_gamepad(pulse: horizon_client::gamepad::Pulse, amplitude: i32) -> bool {
+    let Some(id) = horizon_client::android_runtime::active_gamepad_id() else {
+        return false;
+    };
+    with_context(|env, _| {
+        let device = env
+            .call_static_method(
+                "android/view/InputDevice",
+                "getDevice",
+                "(I)Landroid/view/InputDevice;",
+                &[JValue::Int(id)],
+            )?
+            .l()?;
+        if device.is_null() {
+            return Ok(false);
+        }
+        let sdk = env
+            .get_static_field("android/os/Build$VERSION", "SDK_INT", "I")?
+            .i()?;
+        let vibrator = if sdk >= 31 {
+            let manager = env
+                .call_method(
+                    &device,
+                    "getVibratorManager",
+                    "()Landroid/os/VibratorManager;",
+                    &[],
+                )?
+                .l()?;
+            env.call_method(
+                &manager,
+                "getDefaultVibrator",
+                "()Landroid/os/Vibrator;",
+                &[],
+            )?
+            .l()?
+        } else {
+            env.call_method(&device, "getVibrator", "()Landroid/os/Vibrator;", &[])?
+                .l()?
+        };
+        if !env.call_method(&vibrator, "hasVibrator", "()Z", &[])?.z()? {
+            return Ok(false);
+        }
+        let effect = env
+            .call_static_method(
+                "android/os/VibrationEffect",
+                "createOneShot",
+                "(JI)Landroid/os/VibrationEffect;",
+                &[
+                    JValue::Long(i64::from(pulse.millis.min(1000))),
+                    JValue::Int(amplitude),
+                ],
+            )?
+            .l()?;
+        env.call_method(
+            &vibrator,
+            "vibrate",
+            "(Landroid/os/VibrationEffect;)V",
+            &[JValue::Object(&effect)],
+        )?;
+        let reference = env.new_global_ref(&vibrator)?;
+        PAD_VIBRATOR.with(|v| *v.borrow_mut() = Some(reference));
+        Ok(true)
+    })
+    .unwrap_or(false)
 }
 
 pub(crate) fn with_context<R>(
@@ -594,6 +677,9 @@ pub fn poll_gamepad_connections() {
     });
     if let Some((ids, controllers)) = ids {
         horizon_client::android_runtime::retain_gamepads(&ids);
+        if horizon_client::android_runtime::active_gamepad_id().is_none() {
+            cancel_gamepad_vibration();
+        }
         winit::platform::android::set_native_gamepads(&controllers);
     }
 }

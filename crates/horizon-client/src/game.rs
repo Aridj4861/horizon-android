@@ -13253,6 +13253,17 @@ impl ApplicationHandler for Game<'_> {
                     || (touch.phase == TouchPhase::Started
                         && self.pad.touch.control_at_point(overlay_point)));
             if inventory_control
+                && self.pad.touch.inventory_update(
+                    touch.id,
+                    overlay_point,
+                    touch.phase == TouchPhase::Started,
+                    matches!(touch.phase, TouchPhase::Ended | TouchPhase::Cancelled),
+                )
+            {
+                self.android_custom_events();
+                return;
+            }
+            if inventory_control
                 && touch.phase == TouchPhase::Started
                 && self.pad.touch.custom_at(overlay_point).is_none()
                 && let Some(control) = self.pad.touch.control_at(overlay_point)

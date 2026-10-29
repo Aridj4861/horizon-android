@@ -87,21 +87,18 @@ fn view_pages(data: Option<&StackData>) -> Vec<Text> {
 }
 impl Game<'_> {
     #[cfg(target_os = "android")]
-    pub(super) fn book_edit_value(&self) -> Option<String> {
-        match &self.book {
+    pub(super) fn book_edit_value(&mut self) -> Option<String> {
+        match self.book.as_mut() {
             Some(BookScreen::Edit {
                 signing,
                 title_edit,
                 page_edit,
                 ..
-            }) => Some(
-                if *signing {
-                    &title_edit.value
-                } else {
-                    &page_edit.value
-                }
-                .clone(),
-            ),
+            }) => {
+                let edit = if *signing { title_edit } else { page_edit };
+                edit.move_cursor_to_end(false);
+                Some(edit.value.clone())
+            }
             _ => None,
         }
     }

@@ -137,6 +137,7 @@ impl Game<'_> {
         }
         #[cfg(target_os = "android")]
         {
+            self.pad.touch.inventory_mode = self.android_inventory_controls();
             let active = horizon_client::android_runtime::active_input();
             if self.pad.last_input_mode.replace(active).is_some_and(|old| {
                 old == horizon_client::android_gamepad::InputMode::KeyboardMouse && old != active

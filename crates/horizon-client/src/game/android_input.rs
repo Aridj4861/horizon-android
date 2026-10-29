@@ -154,7 +154,7 @@ impl Game<'_> {
                 let result = if let Some(key) = horizon_client::keybinds::key_code(default) {
                     self.mapped_key(key, down, false)
                 } else if let Some(button) = horizon_client::keybinds::mouse_button(default) {
-                    self.play_mouse(button, down)
+                    self.android_custom_mouse(button, down)
                 } else {
                     Ok(())
                 };
@@ -199,7 +199,7 @@ impl Game<'_> {
             for mapped in self.settings.keys.translate_all(key) {
                 let result = match mapped {
                     Ok(code) => self.mapped_key(code, down, false),
-                    Err(button) => self.play_mouse(button, down),
+                    Err(button) => self.android_custom_mouse(button, down),
                 };
                 if let Err(error) = result {
                     log::warn!("Custom touch key: {error}");
@@ -210,6 +210,33 @@ impl Game<'_> {
                 self.android_show_keyboard();
             }
         }
+    }
+
+    fn android_custom_mouse(&mut self, button: MouseButton, down: bool) -> Result<()> {
+        if !matches!(self.screen, Screen::Inventory | Screen::Creative) {
+            return self.play_mouse(button, down);
+        }
+        let right = button == MouseButton::Right;
+        if !matches!(button, MouseButton::Left | MouseButton::Right) {
+            return Ok(());
+        }
+        if down {
+            if self.screen == Screen::Creative {
+                self.click_creative(right);
+            } else {
+                self.inventory_press(right);
+            }
+            if let Some(container) = self.container {
+                self.container_changed(container);
+            }
+        } else {
+            self.inventory_mouse_release(right);
+            if self.screen == Screen::Creative && !right {
+                self.creative_screen.release();
+            }
+            self.loom_release();
+        }
+        Ok(())
     }
 
     pub(super) fn android_aux_touch(
@@ -320,6 +347,7 @@ impl Game<'_> {
         let initial = if self.dialog_open() {
             self.dialog_edit_value()
         } else if self.sign_edit.is_some() {
+            self.sign_input(Some(KeyCode::End), None);
             self.sign_current().unwrap_or_default()
         } else if self.screen == Screen::Chat && self.title.is_none() {
             self.chat_key_code(KeyCode::End, None);
@@ -334,15 +362,25 @@ impl Game<'_> {
                 .map(|(_, s, _)| s.to_owned())
                 .unwrap_or_default()
         } else if self.screen == Screen::Creative {
+            self.creative_screen.search.move_cursor_to_end(false);
             self.creative_screen.search.value.clone()
         } else if self.recipe_search_focused() {
             self.recipe_search_value()
+        } else if self.screen == Screen::Options {
+            self.ui.options.android_edit_value()
+        } else if self.screen == Screen::WorldOptions {
+            self.world_options_edit_value()
+        } else if self.screen == Screen::CommandBlock {
+            self.command_block_edit_value()
         } else if self.mod_browser_typing() {
             self.mod_browser_edit_value()
         } else if self.station_typing() {
             self.station
-                .as_ref()
-                .map(|s| s.rename.value.clone())
+                .as_mut()
+                .map(|s| {
+                    s.rename.move_cursor_to_end(false);
+                    s.rename.value.clone()
+                })
                 .unwrap_or_default()
         } else if self.book.is_some() {
             self.book_edit_value().unwrap_or_default()

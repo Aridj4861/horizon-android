@@ -584,6 +584,24 @@ impl Game<'_> {
         }
     }
     /// Characters typed into the command box (`StringUtil.isAllowedChatCharacter`).
+    #[cfg(target_os = "android")]
+    pub(super) fn command_block_edit_value(&mut self) -> String {
+        self.command_block_screen
+            .as_mut()
+            .map(|s| {
+                s.command.move_cursor_to_end(false);
+                s.command.value.clone()
+            })
+            .unwrap_or_default()
+    }
+    #[cfg(target_os = "android")]
+    pub(super) fn command_block_ime(&mut self, text: Option<&str>) {
+        if let Some(text) = text {
+            self.command_block_type(text);
+        } else if let Some(s) = self.command_block_screen.as_mut() {
+            s.command.key(KeyCode::Backspace, false, false);
+        }
+    }
     pub(super) fn command_block_type(&mut self, typed: &str) {
         let allowed: String = typed
             .chars()

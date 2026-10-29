@@ -102,7 +102,22 @@ pub fn install(
             fs::rename(&path, &target).map_err(|e| e.to_string())?;
         } else {
             // Do not replace a file created during the download by an importer/Files.
-            fs::hard_link(&path, &target).map_err(|e| e.to_string())?;
+            // Android's app-data SELinux policy forbids hard links. Reserve the
+            // destination exclusively instead; a failed copy removes only ours.
+            let mut output = fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&target)
+                .map_err(|e| e.to_string())?;
+            let copied = (|| -> std::io::Result<()> {
+                std::io::copy(&mut fs::File::open(&path)?, &mut output)?;
+                output.sync_all()
+            })();
+            if let Err(error) = copied {
+                drop(output);
+                let _ = fs::remove_file(&target);
+                return Err(error.to_string());
+            }
         }
         list.entries.retain(|e| !ours(e));
         list.entries.push(installed::Entry {

@@ -134,6 +134,9 @@ impl Devices {
     pub fn clear(&mut self) {
         *self = Self::default();
     }
+    pub fn active_id(&self) -> Option<i32> {
+        self.active
+    }
     pub fn poll(&mut self) -> PadState {
         self.active
             .and_then(|id| self.devices.get_mut(&id))
@@ -169,11 +172,13 @@ mod tests {
     fn a_short_press_survives_until_one_poll_and_disconnect_clears_it() {
         let mut d = Devices::default();
         d.key(4, 96, true);
+        assert_eq!(d.active_id(), Some(4));
         d.key(4, 96, false);
         assert!(d.poll().held(Button::South));
         assert!(!d.poll().held(Button::South));
         d.key(4, 96, true);
         d.retain(&[]);
+        assert_eq!(d.active_id(), None);
         assert_eq!(d.poll(), PadState::default());
     }
     #[test]

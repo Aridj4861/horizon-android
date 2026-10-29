@@ -49,16 +49,19 @@ fn warning_texts() -> (Text, Text, [Text; 2]) {
 
 impl Game<'_> {
     #[cfg(target_os = "android")]
-    pub(super) fn dialog_edit_value(&self) -> String {
+    pub(super) fn dialog_edit_value(&mut self) -> String {
         self.dialogs
             .open
-            .as_ref()
+            .as_mut()
             .and_then(|o| {
                 o.focus
-                    .and_then(|i| o.fields.get(i))
-                    .and_then(Option::as_ref)
+                    .and_then(|i| o.fields.get_mut(i))
+                    .and_then(Option::as_mut)
             })
-            .map(|e| e.value.clone())
+            .map(|e| {
+                e.move_cursor_to_end(false);
+                e.value.clone()
+            })
             .unwrap_or_default()
     }
     /// Whether a dialog screen takes the input.

@@ -74,6 +74,11 @@ pub fn retain_gamepads(ids: &[i32]) {
 pub fn clear_gamepads() {
     GAMEPADS.lock().unwrap().clear();
 }
+pub fn active_gamepad_id() -> Option<i32> {
+    (active_input() == InputMode::Controller)
+        .then(|| GAMEPADS.lock().unwrap().active_id())
+        .flatten()
+}
 pub fn gamepad_state() -> crate::gamepad::PadState {
     if active_input() == InputMode::Controller {
         GAMEPADS.lock().unwrap().poll()

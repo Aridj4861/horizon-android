@@ -11,6 +11,7 @@ pub(super) enum Action {
     Play,
     Search,
     ShaderSource(crate::shader_catalog::Origin),
+    ModSource(crate::shader_catalog::Origin),
     Field(&'static str),
     FinishNameEdit,
     Install(usize),
@@ -462,7 +463,7 @@ impl Launcher {
                 Action::Search,
                 true,
             );
-            if page == Page::Shaders {
+            if matches!(page, Page::Shaders | Page::Mods) {
                 use crate::shader_catalog::Origin;
                 let width = ((w - 185.0) / 2.0).clamp(58.0, 120.0);
                 for (i, origin) in [Origin::Horizon, Origin::Modrinth].into_iter().enumerate() {
@@ -472,15 +473,30 @@ impl Launcher {
                         &mut self.targets,
                         rect,
                         origin.source().label(),
-                        Action::ShaderSource(origin),
+                        if page == Page::Mods {
+                            Action::ModSource(origin)
+                        } else {
+                            Action::ShaderSource(origin)
+                        },
                         false,
                     );
-                    if self.catalog.config.shader_source == origin {
+                    if (if page == Page::Mods {
+                        self.catalog.config.mod_source
+                    } else {
+                        self.catalog.config.shader_source
+                    }) == origin
+                    {
                         ui.border(rect[0], rect[1], rect[2], rect[3], 1.0, color::TEXT);
                     }
                 }
             }
             let hint = match page {
+                Page::Mods
+                    if self.catalog.config.mod_source
+                        == crate::shader_catalog::Origin::Modrinth =>
+                {
+                    "Modrinth Java mods are browse-only; Fabric/Forge/NeoForge cannot run here"
+                }
                 Page::Mods => "Search Horizon mods or paste an HTTPS .hmod link",
                 Page::Shaders
                     if self.catalog.config.shader_source
@@ -529,7 +545,10 @@ impl Launcher {
             for (i, p) in self.catalog.results.iter().enumerate() {
                 let y = top + i as f32 * 78.0 - self.catalog.scroll;
                 let download = self.catalog.download_label(p);
-                if download.is_none() {
+                if download.is_none()
+                    && !(p.kind == crate::browser::Kind::Mod
+                        && p.source == crate::browser::SourceId::Modrinth)
+                {
                     self.list_targets
                         .push(([w - 150.0, y, 118.0, 70.0], Action::Install(i)));
                 }
@@ -542,6 +561,17 @@ impl Launcher {
                 ui.text(Face::Regular, 14.0, 32.0, y + 29.0, color::MUTED, &summary);
                 if let Some(state) = download {
                     ui.text(Face::Medium, 16.0, w - 150.0, y + 12.0, color::TEXT, &state);
+                } else if p.kind == crate::browser::Kind::Mod
+                    && p.source == crate::browser::SourceId::Modrinth
+                {
+                    ui.text(
+                        Face::Regular,
+                        14.0,
+                        w - 150.0,
+                        y + 12.0,
+                        color::MUTED,
+                        "Java mod",
+                    );
                 } else if p.kind == crate::browser::Kind::Mod && !cfg!(feature = "mods") {
                     ui.text(
                         Face::Regular,
@@ -1040,11 +1070,17 @@ impl Launcher {
             audio.play_button_click();
         }
         match action {
+            Some(Action::ModSource(origin)) => {
+                self.catalog.config.mod_source = origin;
+                self.catalog.config.save(&self.home)?;
+                self.catalog.offset = 0;
+                self.catalog.browse(&self.home);
+            }
             Some(Action::ShaderSource(origin)) => {
                 self.catalog.config.shader_source = origin;
                 self.catalog.config.save(&self.home)?;
                 self.catalog.offset = 0;
-                self.catalog.search(&self.home);
+                self.catalog.browse(&self.home);
             }
             Some(Action::OpenFolder(kind)) => {
                 crate::platform::hide();

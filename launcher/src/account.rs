@@ -427,6 +427,8 @@ fn minecraft_token(ep: &Endpoints, xtoken: &str) -> Result<(String, u64), String
         )),
         "the Minecraft services",
     );
+    // Shared with the Rust 2021 launcher; its edition cannot use let chains.
+    #[allow(clippy::collapsible_if)]
     if let Ok((200, v)) = &launcher {
         if let Some(token) = str_field(v, "access_token") {
             return Ok((token, lifetime(v)));
@@ -1318,6 +1320,7 @@ pub fn session_for_game(
 /// ([`launch`]): the selected account when it owns the game, else one that does. With no answer
 /// from the services, an account that owned it plays with its last token. Mojang's game takes the
 /// token on its command line, as Mojang's launcher gives it; that command is never logged.
+#[cfg(not(target_os = "android"))]
 pub fn java_player() -> Result<crate::java_launch::Player, String> {
     let mut accounts = Accounts::load();
     let player = java_player_with(
@@ -1330,6 +1333,7 @@ pub fn java_player() -> Result<crate::java_launch::Player, String> {
     player
 }
 
+#[cfg(not(target_os = "android"))]
 fn java_player_with(
     ep: &Endpoints,
     client_id: Option<&str>,

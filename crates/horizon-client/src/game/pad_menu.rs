@@ -904,12 +904,12 @@ impl Game<'_> {
     /// Open the on-screen keyboard over the focused field: Horizon's, or
     /// Steam's on a Steam Deck (`steam://open/keyboard`, which types into
     /// the window like a real keyboard).
+    #[cfg(target_os = "android")]
     fn pad_open_keyboard(&mut self) {
-        #[cfg(target_os = "android")]
-        if self.settings.keypad.enabled {
-            self.android_show_keyboard();
-            return;
-        }
+        self.android_show_keyboard();
+    }
+    #[cfg(not(target_os = "android"))]
+    fn pad_open_keyboard(&mut self) {
         // Without xdg-open (macOS, Windows), Horizon's keyboard instead.
         if gamepad::steam_keyboard(self.settings.controller.keyboard)
             && std::process::Command::new("xdg-open")
@@ -986,6 +986,11 @@ impl Game<'_> {
         } else if self.station_typing() {
             if key != Some(KeyCode::Enter) {
                 self.station_text(text, backspace);
+            }
+        } else if cfg!(target_os = "android") && self.screen == Screen::CommandBlock {
+            #[cfg(target_os = "android")]
+            if key != Some(KeyCode::Enter) {
+                self.command_block_ime(text);
             }
         } else if self.screen == Screen::WorldOptions {
             if key != Some(KeyCode::Enter) {

@@ -1353,6 +1353,16 @@ impl OptionsUi {
         self.settings_search.focused
             && matches!(self.page(), Page::Video | Page::Controls | Page::KeyBinds)
     }
+    #[cfg(target_os = "android")]
+    pub fn android_edit_value(&mut self) -> String {
+        let edit = if self.page() == Page::Language {
+            &mut self.language_search
+        } else {
+            &mut self.settings_search
+        };
+        edit.move_cursor_to_end(false);
+        edit.value.clone()
+    }
     pub fn page(&self) -> Page {
         *self.stack.last().unwrap_or(&Page::Main)
     }

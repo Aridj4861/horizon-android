@@ -55,6 +55,82 @@ pub(super) fn choices(raw_keys: bool) -> Vec<(String, String)> {
     }
 }
 impl TouchControls {
+    pub(super) fn draw_inventory_button(
+        &self,
+        b: &mut HudBatch,
+        a: &HudAtlas,
+        control: Control,
+        rect: [f32; 4],
+        color: u32,
+    ) -> bool {
+        if !self.inventory_mode {
+            return false;
+        }
+        let Some(token) = Self::inventory_token(control) else {
+            return false;
+        };
+        let label = match control {
+            Control::Sneak => "Shift",
+            Control::Attack => "LMB",
+            _ => "RMB",
+        };
+        let pressed = self.held_custom_tokens().any(|v| v == token);
+        if !theme_button(b, a, "button", rect, pressed, color, true) {
+            nine(b, a, "ui/button_borderless_light", 2.0, rect, color);
+        }
+        let width = HudBatch::text_width(a, label);
+        let start = b.vertices.len();
+        b.text(
+            a,
+            label,
+            rect[0] + (rect[2] - width) / 2.0,
+            rect[1] + (rect[3] - 8.0) / 2.0,
+            rgba(25, 25, 25, (color >> 24) as u8),
+            false,
+        );
+        let scale = ((rect[2] - 6.0).max(1.0) / width.max(1.0))
+            .min(((rect[3] - 6.0).max(1.0) / 8.0).min(1.0));
+        b.scale_since(
+            start,
+            rect[0] + rect[2] / 2.0,
+            rect[1] + rect[3] / 2.0,
+            scale,
+            scale,
+        );
+        true
+    }
+    pub(super) fn inventory_token(control: Control) -> Option<&'static str> {
+        match control {
+            Control::Sneak => Some("key.keyboard.left.shift"),
+            Control::Attack => Some("action:key.attack"),
+            Control::Use => Some("action:key.use"),
+            _ => None,
+        }
+    }
+    pub fn inventory_update(
+        &mut self,
+        id: u64,
+        point: [f32; 2],
+        started: bool,
+        ended: bool,
+    ) -> bool {
+        if self.custom_fingers.contains_key(&id) {
+            return self.custom_update(id, point, false, ended);
+        }
+        if started
+            && self.custom_at(point).is_none()
+            && let Some(token) = self.control_at(point).and_then(Self::inventory_token)
+        {
+            let pressed = !self.custom_fingers.values().any(|v| v == token);
+            self.custom_fingers.insert(id, token.into());
+            self.fingers.insert(id, (Role::Ignore, point));
+            if pressed {
+                self.custom_events.push((token.into(), true));
+            }
+            return true;
+        }
+        false
+    }
     pub(super) fn fit_placement(&self, mut p: Placement) -> Placement {
         p.size = (p.size * self.settings.button_scale)
             .min(self.aspect())
@@ -184,6 +260,30 @@ impl TouchControls {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn inventory_modifier_and_mouse_hold_independently_and_cancel_cleanly() {
+        let mut t = TouchControls::default();
+        t.viewport(1920, 1080);
+        t.inventory_mode = true;
+        for (id, control, token) in [
+            (1, Control::Sneak, "key.keyboard.left.shift"),
+            (2, Control::Attack, "action:key.attack"),
+            (3, Control::Use, "action:key.use"),
+        ] {
+            assert!(t.visible(control));
+            assert!(t.inventory_update(id, t.placement(control).center, true, false));
+            assert_eq!(t.key_events(), [(token.into(), true)]);
+        }
+        t.clear_world_gesture();
+        assert_eq!(t.held_custom_tokens().count(), 3);
+        assert_eq!(t.poll_state(), PadState::default());
+        assert!(t.inventory_update(2, [0.0, 0.0], false, true));
+        assert_eq!(t.key_events(), [("action:key.attack".into(), false)]);
+        t.clear();
+        let released = t.key_events();
+        assert!(released.contains(&("key.keyboard.left.shift".into(), false)));
+        assert!(released.contains(&("action:key.use".into(), false)));
+    }
     #[test]
     fn unassigned_button_emits_no_input() {
         let mut touch = TouchControls::default();

@@ -65,6 +65,8 @@ pub struct TouchControls {
     pub force_crosshair: bool,
     /// Physical keypad profiles keep utility controls without a movement overlay.
     pub auxiliary_only: bool,
+    /// Inventory utility buttons emit real modifier/mouse events, never movement.
+    pub inventory_mode: bool,
     pub editor: Option<editor::Editor>,
     fingers: BTreeMap<u64, (Role, [f32; 2])>,
     custom_fingers: BTreeMap<u64, String>,
@@ -160,6 +162,9 @@ impl TouchControls {
         self.pending.set(button, true);
     }
     fn visible(&self, c: Control) -> bool {
+        if self.inventory_mode && Self::inventory_token(c).is_some() {
+            return true;
+        }
         if self.auxiliary_only && !Self::auxiliary_control(c) {
             return false;
         }
@@ -322,6 +327,9 @@ impl TouchControls {
                         .fingers
                         .values()
                         .any(|(_, point)| layout::contains(p.rect(self.aspect()), *point));
+                if self.draw_inventory_button(b, a, control, [x, y, size, size], color) {
+                    continue;
+                }
                 let themed = match control {
                     Control::Chat => Some("chat"),
                     Control::Pause => Some("pause"),
