@@ -230,12 +230,15 @@ fn sunrise_weight_full(d: vec3<f32>) -> f32 {
 fn sunrise_weight(d: vec3<f32>) -> f32 {
     if globals.sunrise.a <= 0.001 { return 0.0; }
     if dot(d.yz, d.yz) < 1e-10 { return sunrise_weight_full(d); }
-    let flip = select(1.0, -1.0, globals.sun.z > 0.0);
-    let angle = atan2(d.z * flip * globals.sunrise.a, 3.0 * d.y);
-    let sector = i32(floor(angle * (16.0 / (2.0 * PI))));
+    let angle = atan2(dot(d, globals.sunrise_fan[16].xyz),
+        -dot(d, globals.sunrise_fan[20].xyz));
+    let coordinate = angle * (16.0 / (2.0 * PI));
+    let sector = i32(floor(coordinate));
+    let fraction = coordinate - floor(coordinate);
+    let candidates = select(2u, 6u, min(fraction, 1.0 - fraction) < 0.001);
     let offsets = array<i32, 6>(0, 8, -1, 1, 7, 9);
     var best = 0.0;
-    for (var candidate = 0u; candidate < 6u; candidate++) {
+    for (var candidate = 0u; candidate < candidates; candidate++) {
         let i = u32((sector + offsets[candidate] + 32) % 16);
         let k0 = dot(d, globals.sunrise_fan[16u+i].xyz);
         let k1 = dot(d, globals.sunrise_fan[16u+(i+1u)%16u].xyz);

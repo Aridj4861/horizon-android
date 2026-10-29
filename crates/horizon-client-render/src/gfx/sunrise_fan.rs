@@ -83,12 +83,20 @@ mod tests {
         if d.y * d.y + d.z * d.z < 1e-10 {
             return weight(&normals, d);
         }
-        let flip = if sun.z > 0.0 { -1.0 } else { 1.0 };
-        let angle = (d.z * flip * alpha).atan2(3.0 * d.y);
+        let angle = d
+            .dot(Vec3::from_slice(&normals[16][..3]))
+            .atan2(-d.dot(Vec3::from_slice(&normals[20][..3])));
         let sector = (angle * TRIANGLES as f32 / std::f32::consts::TAU).floor() as i32;
         let n = |i: usize| Vec3::from_slice(&normals[i][..3]);
         let mut best = 0.0f32;
-        for offset in [0, 8, -1, 1, 7, 9] {
+        let coordinate = angle * TRIANGLES as f32 / std::f32::consts::TAU;
+        let fraction = coordinate - coordinate.floor();
+        let offsets: &[i32] = if fraction.min(1.0 - fraction) < 0.001 {
+            &[0, 8, -1, 1, 7, 9]
+        } else {
+            &[0, 8]
+        };
+        for &offset in offsets {
             let i = (sector + offset).rem_euclid(16) as usize;
             let k0 = d.dot(n(16 + i));
             let k1 = d.dot(n(16 + (i + 1) % 16));
