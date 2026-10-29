@@ -7,11 +7,11 @@
   "compared_source_files": 3147,
   "modified_existing_files": 41,
   "branch": "android",
-  "merged_upstream_commit": "13d7d9995dbd820f90d0b904b395c2574e9f1eed",
-  "merged_upstream_commits": 3381,
+  "merged_upstream_commit": "87a6a7a161814ffffc846950aba4997f592df4fc",
+  "merged_upstream_commits": 3507,
   "last_reviewed_date": "2026-10-29",
-  "last_update_commits": 133,
-  "latest_fetched_commit": "13d7d9995dbd820f90d0b904b395c2574e9f1eed",
-  "review": "0.7.4: merge 133 stable upstream commits including merge history through 13d7d9995. Integrates horizon-client-render extraction, decoded sprite caching, native item/recipe panels, unified targeting, combat and projectile fixes, world-save recovery, structure/LOD corrections and server Code of Conduct. Android runtime, touch, keypad and file-lock modules follow the rendering boundary with compatibility re-exports. Unified targeting retains off-center touch aiming; native panel search retains Android IME access. Decoded sprite caches use the system Android cache directory. Android README and inactive upstream workflows are preserved; desktop Java-instance changes do not add a Java runtime to Android.",
+  "last_update_commits": 126,
+  "latest_fetched_commit": "87a6a7a161814ffffc846950aba4997f592df4fc",
+  "review": "0.7.4: reviewed 126 additional stable upstream commits through 87a6a7a16: cached registry and sound enumeration, server entity state and teams, container titles, copper chests, capes, optional TAA/upscaling, fog, item components and launcher account fixes. Android retains explicit shared module paths, native input, diagnostic GPU timing, Vulkan batching, and inactive upstream deployment workflows. Desktop Java-instance modules remain excluded from the Android host.",
   "pending_review_commits": 0
 }

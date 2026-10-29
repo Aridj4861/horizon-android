@@ -54,8 +54,9 @@ mod entity_outline;
 mod weather;
 use entity_batch::EntityBatch;
 pub use entity_batch::{
-    ENERGY_SWIRL_OVERLAY, SHADOW_OVERLAY, TRANSLUCENT_GLINT_ITEM_OVERLAY, TRANSLUCENT_ITEM_OVERLAY,
-    TRANSLUCENT_PARTICLE_OVERLAY, WATER_MASK_OVERLAY,
+    ENERGY_SWIRL_OVERLAY, SHADOW_OVERLAY, TEXT_POLYGON_OFFSET_OVERLAY,
+    TRANSLUCENT_GLINT_ITEM_OVERLAY, TRANSLUCENT_ITEM_OVERLAY, TRANSLUCENT_PARTICLE_OVERLAY,
+    WATER_MASK_OVERLAY,
 };
 
 /// Window.getAppropriateLineWidth, in framebuffer pixels.
@@ -446,6 +447,7 @@ pub struct Renderer {
     lightning_pipeline: wgpu::RenderPipeline,
     lightning: lightning::Renderer,
     see_through_pipeline: wgpu::RenderPipeline,
+    text_polygon_offset_pipeline: wgpu::RenderPipeline,
     celestial_pipeline: wgpu::RenderPipeline,
     celestial_buffer: wgpu::Buffer,
     end_sky: end_sky::EndSky,
@@ -555,7 +557,7 @@ pub struct Renderer {
     block_entity_revision: u64,
     /// VisGraph face connectivity per meshed section (cave culling).
     occlusion: occlusion::Occlusion,
-    /// Resolution scale and FXAA (Horizon settings).
+    /// Resolution scale, FXAA and TAA (Horizon settings).
     world_post: world_post::Post,
     #[cfg(target_os = "android")]
     frame_scale: Option<frame_scale::FrameScale>,
@@ -809,8 +811,14 @@ fn mip_chain(
 /// pass is also what passes each draw's first instance to shaders reading
 /// `instance_index`, and DirectX 12 is the fallback, where working matters
 /// more than CPU time.
-fn instance_descriptor(backends: wgpu::Backends) -> wgpu::InstanceDescriptor {
+fn instance_descriptor(
+    backends: wgpu::Backends,
+    window: Option<&Arc<Window>>,
+) -> wgpu::InstanceDescriptor {
     let mut descriptor = wgpu::InstanceDescriptor::new_without_display_handle();
+    if let Some(window) = window {
+        descriptor = descriptor.with_display_handle(Box::new(WindowDisplay(window.clone())));
+    }
     descriptor.backends = backends.with_env();
     let dx12 = cfg!(windows) && descriptor.backends.contains(wgpu::Backends::DX12);
     if !cfg!(debug_assertions) && !dx12 {
@@ -819,6 +827,21 @@ fn instance_descriptor(backends: wgpu::Backends) -> wgpu::InstanceDescriptor {
             .remove(wgpu::InstanceFlags::VALIDATION_INDIRECT_CALL);
     }
     descriptor.with_env()
+}
+/// The window's display connection, so the OpenGL backend creates its EGL
+/// display from the X11 or Wayland connection the window lives on. Without
+/// one, wgpu-hal falls back to `EGL_MESA_platform_surfaceless`, whose configs
+/// cannot present to a window; the backend then reports the surface as
+/// incompatible and the game has no OpenGL to fall back to (`gl not
+/// compatible with provided surface`).
+#[derive(Debug, Clone)]
+struct WindowDisplay(Arc<Window>);
+impl wgpu::rwh::HasDisplayHandle for WindowDisplay {
+    fn display_handle(
+        &self,
+    ) -> std::result::Result<wgpu::rwh::DisplayHandle<'_>, wgpu::rwh::HandleError> {
+        wgpu::rwh::HasDisplayHandle::display_handle(&*self.0)
+    }
 }
 /// The backends to open a device on, each tried in turn until one gives a
 /// device. `api` is the player's choice (`GraphicsApi::with_env` applied);
@@ -934,7 +957,7 @@ async fn open_device(
         if attempt > 0 {
             log::warn!("Horizon renderer: trying {name} ({})", failures.join("; "));
         }
-        let instance = wgpu::Instance::new(instance_descriptor(backends));
+        let instance = wgpu::Instance::new(instance_descriptor(backends, Some(window)));
         let surface = if offscreen {
             None
         } else {
@@ -2101,6 +2124,21 @@ impl Renderer {
             alpha_blend,
             false,
         );
+        // RenderPipelines.TEXT_POLYGON_OFFSET: a text display's text and
+        // background win against the surface they lie on (bias 1, 10).
+        let text_polygon_offset_pipeline = entity_pipeline(
+            "Polygon offset text",
+            None,
+            true,
+            wgpu::CompareFunction::GreaterEqual,
+            wgpu::DepthBiasState {
+                constant: 10,
+                slope_scale: 1.0,
+                clamp: 0.0,
+            },
+            alpha_blend,
+            false,
+        );
         let entity_pipeline = entity_pipeline(
             "Entities",
             None,
@@ -2665,6 +2703,7 @@ impl Renderer {
             lightning_pipeline,
             lightning: lightning::Renderer::new(),
             see_through_pipeline,
+            text_polygon_offset_pipeline,
             celestial_pipeline,
             celestial_buffer,
             end_sky: end_sky::EndSky::default(),
@@ -3373,9 +3412,12 @@ impl Renderer {
             self.send_hdr_metadata();
         }
     }
-    pub fn set_world_post(&mut self, scale: f32, antialias: bool) {
+    /// `upscale`: output pixels per rendered pixel, for TAA to rebuild (1: native).
+    pub fn set_world_post(&mut self, scale: f32, antialias: bool, taa: bool, upscale: f32) {
         self.world_post.scale = scale.clamp(0.25, 2.0);
-        self.world_post.antialias = antialias;
+        self.world_post.antialias = antialias && !taa;
+        self.world_post.taa = taa;
+        self.world_post.upscale = if taa { upscale.clamp(1.0, 4.0) } else { 1.0 };
     }
     pub fn world_render_size(&self) -> [u32; 2] {
         [self.config.width, self.config.height]
@@ -3802,6 +3844,16 @@ impl Renderer {
             frame.boss_darken,
         );
         let view_proj = self.view_projection(frame);
+        // TAA runs where the world post pass does, not under a shader pack's own.
+        let taa = !frame.title
+            && self.pack_post.as_ref().is_none_or(|p| p.1.is_none())
+            && self.native.as_ref().is_none_or(|n| n.post.is_none());
+        let jittered = self.world_post.jitter(
+            [self.config.width, self.config.height],
+            taa,
+            view_proj,
+            frame.camera,
+        ) * view_proj;
         if frame.title {
             self.panorama.prepare(
                 &self.queue,
@@ -3853,7 +3905,7 @@ impl Renderer {
             )
         };
         let globals = Globals {
-            view_proj: view_proj.to_cols_array_2d(),
+            view_proj: jittered.to_cols_array_2d(),
             fog_color,
             fog,
             sky_color: [
@@ -4393,6 +4445,7 @@ impl Renderer {
         }
         let [
             entity_quads,
+            text_quads,
             crumbling_quads,
             translucent_crumbling_quads,
             water_mask_quads,
@@ -4405,6 +4458,7 @@ impl Renderer {
             .update(entities, frame.additive, frame.hand, frame.see_through);
         let weather_quads = frame.weather.len() as u32 / 4;
         let world_quads = entity_quads
+            + text_quads
             + crumbling_quads
             + translucent_crumbling_quads
             + water_mask_quads
@@ -4483,7 +4537,7 @@ impl Renderer {
             self.stars.prepare(
                 &mut self.uploads,
                 &mut encoder,
-                view_proj * rotation,
+                jittered * rotation,
                 brightness,
             );
         }
@@ -4664,6 +4718,8 @@ impl Renderer {
                 .flatten();
         }
         let pack_reads_world = pack_post || native_post;
+        // Phase 2 of occlusion culling draws over the depth, and a shader pack or TAA reads it.
+        let keep_depth = pack_reads_world || (taa && self.world_post.taa);
         // The pack's program reads the vertices this frame's draws bind.
         let pack_draws_terrain = pack_terrain && flat_frame == self.pack_terrain_flat;
         // The shadow camera's lists, drawn by the pack's shadow programs.
@@ -4815,8 +4871,7 @@ impl Renderer {
                     view: world_depth,
                     depth_ops: Some(wgpu::Operations {
                         load: wgpu::LoadOp::Clear(0.0),
-                        // Phase 2 of occlusion culling draws over it; a shader pack reads it.
-                        store: if cull.is_some() || pack_reads_world {
+                        store: if cull.is_some() || keep_depth {
                             wgpu::StoreOp::Store
                         } else {
                             wgpu::StoreOp::Discard
@@ -4891,7 +4946,7 @@ impl Renderer {
                                 &mut encoder,
                                 world_view,
                                 world_depth,
-                                pack_reads_world,
+                                keep_depth,
                             );
                             pass.set_bind_group(0, &self.group, &[]);
                             pack_frame(&mut pass);
@@ -4921,7 +4976,7 @@ impl Renderer {
                                 &mut encoder,
                                 world_view,
                                 world_depth,
-                                pack_reads_world,
+                                keep_depth,
                             );
                             pass.set_bind_group(0, &self.group, &[]);
                             pack_frame(&mut pass);
@@ -4950,6 +5005,13 @@ impl Renderer {
                 pass.draw_indexed(0..entity_quads * 6, 0, 0..1);
                 pass.set_bind_group(0, &self.group, &[]);
             }
+            if text_quads > 0 {
+                pass.set_pipeline(&self.text_polygon_offset_pipeline);
+                pass.set_bind_group(0, &self.entity_group, &[]);
+                pass.set_vertex_buffer(0, self.entity_buffer.slice(..));
+                pass.draw_indexed(0..text_quads * 6, (entity_quads * 4) as i32, 0..1);
+                pass.set_bind_group(0, &self.group, &[]);
+            }
             if translucent_item_quads > 0 {
                 pass.set_pipeline(&self.translucent_item_pipeline);
                 pass.set_bind_group(0, &self.entity_group, &[]);
@@ -4969,7 +5031,11 @@ impl Renderer {
                 pass.set_pipeline(&self.crumbling_pipeline);
                 pass.set_bind_group(0, &self.entity_group, &[]);
                 pass.set_vertex_buffer(0, self.entity_buffer.slice(..));
-                pass.draw_indexed(0..crumbling_quads * 6, (entity_quads * 4) as i32, 0..1);
+                pass.draw_indexed(
+                    0..crumbling_quads * 6,
+                    ((entity_quads + text_quads) * 4) as i32,
+                    0..1,
+                );
                 pass.set_bind_group(0, &self.group, &[]);
             }
             if shadow_quads > 0 {
@@ -4995,7 +5061,8 @@ impl Renderer {
                 pass.set_vertex_buffer(0, self.entity_buffer.slice(..));
                 pass.draw_indexed(
                     0..water_mask_quads * 6,
-                    ((entity_quads + crumbling_quads + translucent_crumbling_quads) * 4) as i32,
+                    ((entity_quads + text_quads + crumbling_quads + translucent_crumbling_quads)
+                        * 4) as i32,
                     0..1,
                 );
                 pass.set_bind_group(0, &self.group, &[]);
@@ -5013,6 +5080,7 @@ impl Renderer {
                 pass.draw_indexed(
                     0..swirl_quads * 6,
                     ((entity_quads
+                        + text_quads
                         + crumbling_quads
                         + translucent_crumbling_quads
                         + water_mask_quads)
@@ -5106,7 +5174,7 @@ impl Renderer {
                 pass.set_vertex_buffer(0, self.entity_buffer.slice(..));
                 pass.draw_indexed(
                     0..translucent_crumbling_quads * 6,
-                    ((entity_quads + crumbling_quads) * 4) as i32,
+                    ((entity_quads + text_quads + crumbling_quads) * 4) as i32,
                     0..1,
                 );
             }
@@ -5241,7 +5309,8 @@ impl Renderer {
                 native.timing.as_mut(),
             );
         } else if scaled.is_some() {
-            self.world_post.finish(&mut encoder, &view_target);
+            self.world_post
+                .finish(&self.queue, &mut encoder, &view_target);
         }
         if let Some(hdr) = &self.hdr {
             hdr.keep_world(&mut encoder);
@@ -5761,6 +5830,7 @@ mod tests {
             (11, 2),
             (15, 10),
             (7, 3),
+            (35, 11),
             (4, 4),
             (12, 7),
         ]
@@ -5770,7 +5840,7 @@ mod tests {
         let mut batch = super::EntityBatch::default();
         let counts = batch.update(&entities, &quad(3, 5), &quad(0, 6), &quad(0, 8));
         let vertices = &batch.combined;
-        assert_eq!(counts, [4, 1, 1, 0, 0, 1, 1, 0]);
+        assert_eq!(counts, [4, 1, 1, 1, 0, 0, 1, 1, 0]);
         assert_eq!(
             vertices
                 .as_chunks::<4>()
@@ -5778,7 +5848,7 @@ mod tests {
                 .iter()
                 .map(|q| q[0].light)
                 .collect::<Vec<_>>(),
-            [0, 1, 3, 4, 2, 7, 9, 10, 5, 6, 8]
+            [0, 1, 3, 4, 11, 2, 7, 9, 10, 5, 6, 8]
         );
     }
     #[test]
@@ -5949,7 +6019,7 @@ mod tests {
     #[test]
     fn indirect_draws_are_validated_only_in_debug_builds_and_on_directx_12() {
         let validated = |backends| {
-            super::instance_descriptor(backends)
+            super::instance_descriptor(backends, None)
                 .flags
                 .contains(wgpu::InstanceFlags::VALIDATION_INDIRECT_CALL)
         };

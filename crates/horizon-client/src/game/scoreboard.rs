@@ -462,12 +462,18 @@ impl Game<'_> {
 
     // ---- teams in gameplay -----------------------------------------------------
 
-    /// `Entity.getTeam` of a mob (a mob joins a team by its UUID).
+    /// `Entity.getScoreboardName`: another player's profile name
+    /// (`Player.getScoreboardName`), any other entity's UUID.
+    fn scoreboard_name(&self, id: u32, uuid: [i32; 4]) -> String {
+        self.remote_player_name(id)
+            .map_or_else(|| uuid_text(uuid), str::to_owned)
+    }
+    /// `Entity.getTeam` of a mob or another player.
     pub(super) fn mob_team(&self, id: u32) -> Option<&sb::Team> {
-        self.score.board.entity_team(
-            self.remote_player_name(id),
-            self.persist.uuids.get(&id).copied(),
-        )
+        let uuid = self.persist.uuids.get(&id)?;
+        self.score
+            .board
+            .players_team(&self.scoreboard_name(id, *uuid))
     }
     pub(super) fn player_team(&self) -> Option<&sb::Team> {
         self.score.board.players_team(self.acting_player_name())
@@ -481,9 +487,12 @@ impl Game<'_> {
         horizon_client::mobs::Teams {
             player: self.player_team(),
             mobs: self
-                .mobs
+                .persist
+                .uuids
                 .iter()
-                .filter_map(|mob| Some((mob.id, self.mob_team(mob.id)?)))
+                .filter_map(|(id, uuid)| {
+                    Some((*id, board.players_team(&self.scoreboard_name(*id, *uuid))?))
+                })
                 .collect(),
         }
     }
@@ -492,13 +501,11 @@ impl Game<'_> {
         let Some(team) = self.player_team() else {
             return HashSet::new();
         };
-        self.mobs
+        self.persist
+            .uuids
             .iter()
-            .filter(|mob| {
-                self.mob_team(mob.id)
-                    .is_some_and(|other| other.name == team.name)
-            })
-            .map(|mob| mob.id)
+            .filter(|(id, uuid)| team.players.contains(&self.scoreboard_name(**id, **uuid)))
+            .map(|(id, _)| *id)
             .collect()
     }
     /// `Player.getDisplayName`: the name with the team's prefix, suffix and colour.
