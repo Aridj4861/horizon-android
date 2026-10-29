@@ -15932,12 +15932,85 @@ struct Loading {
     progress: Progress,
     receiver: Receiver<LoaderMsg>,
     loaded: Option<std::result::Result<Loaded, String>>,
+    renderer_job: Option<JoinHandle<std::result::Result<Renderer, String>>>,
+    prepared_renderer: Option<Renderer>,
     handle: Option<JoinHandle<()>>,
     shown: bool,
     menu: startup_menu::StartupMenu,
     error: Option<Box<dyn std::error::Error>>,
 }
 impl Loading {
+    /// Keep window/input/lifecycle events flowing while Vulkan creates the
+    /// full game's textures and pipelines. The worker never owns a surface.
+    fn prepare_renderer(&mut self) -> Result<()> {
+        if self.menu.reload_packs {
+            return Ok(());
+        }
+        if let Some(job) = &self.renderer_job {
+            if !job.is_finished() {
+                return Ok(());
+            }
+            let job = self.renderer_job.take().unwrap();
+            self.prepared_renderer = Some(job.join().map_err(|_| "renderer worker panicked")??);
+            return Ok(());
+        }
+        if !cfg!(target_os = "android") || self.prepared_renderer.is_some() {
+            return Ok(());
+        }
+        let Some(Ok(loaded)) = &mut self.loaded else {
+            return Ok(());
+        };
+        let Some(previous) = &self.renderer else {
+            return Ok(());
+        };
+        let options = self.options.as_ref().ok_or("loading already finished")?;
+        if options.offscreen || previous.info.backend != wgpu::Backend::Vulkan {
+            return Ok(());
+        }
+        let gui = self.gui.as_ref().ok_or("missing menu bundle")?;
+        let window = self.window.clone().ok_or("window closed")?;
+        let context = previous.background_context();
+        let assets = loaded.pack.render.clone();
+        let forcefield = loaded.pack.forcefield.clone();
+        let panorama = gui.panorama.clone();
+        let hud = (gui.atlas.pixels.clone(), gui.atlas.width, gui.atlas.height);
+        let glint = gui.atlas.glint.clone();
+        let glint_armor = gui.atlas.glint_armor.clone();
+        let prepared = loaded.renderer_cpu.take();
+        let api = rendering_api(&self.settings);
+        self.renderer_job = Some(
+            std::thread::Builder::new()
+                .name("Renderer preparation".into())
+                .spawn(move || {
+                    let started = Instant::now();
+                    let result = pollster::block_on(Renderer::new_with_context(
+                        window,
+                        true,
+                        &assets.pixels,
+                        assets.sprite_size,
+                        assets.sprite_minimum_size,
+                        assets.texture_layers,
+                        &assets.sprite_mips,
+                        &assets.animations,
+                        (&hud.0, hud.1, hud.2),
+                        (&glint.0, glint.1, glint.2),
+                        (&glint_armor.0, glint_armor.1, glint_armor.2),
+                        (&forcefield.2, forcefield.0),
+                        &panorama,
+                        prepared,
+                        Some(context),
+                        api,
+                    ))
+                    .map_err(|error| error.to_string());
+                    log::info!(
+                        "Horizon: background renderer prepared in {} ms",
+                        started.elapsed().as_millis()
+                    );
+                    result
+                })?,
+        );
+        Ok(())
+    }
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         #[cfg(target_os = "android")]
         if let Some(renderer) = &mut self.renderer {
@@ -16124,20 +16197,34 @@ impl Loading {
         options.server = None;
         let gui = self.gui.take().ok_or("missing menu bundle")?;
         let window = self.window.clone().ok_or("window closed")?;
-        // Keep the loader's device and swap in the real textures in one step.
-        if let Some(renderer) = &mut self.renderer {
-            renderer.release_surface();
-        }
         let renderer_at = Instant::now();
-        let renderer = build_renderer(
-            window.clone(),
-            options.offscreen,
-            &loaded.pack,
-            &gui,
-            self.renderer.as_ref(),
-            loaded.renderer_cpu,
-            rendering_api(&self.settings),
-        )?;
+        let renderer = if let Some(mut renderer) = self.prepared_renderer.take() {
+            renderer
+                .activate_replacement(self.renderer.as_mut().ok_or("missing loading renderer")?)?;
+            // Glyphs are still being drawn into the loading atlas until this
+            // handoff; invalidate only now, after the new GPU atlas is ready.
+            gui.atlas.font.reset_cache();
+            renderer.hud.sprite_animations = gui
+                .atlas
+                .sprite_animations
+                .iter()
+                .map(|(rect, animation)| (*rect, animation.clone(), (usize::MAX, 0, 0)))
+                .collect();
+            renderer
+        } else {
+            if let Some(renderer) = &mut self.renderer {
+                renderer.release_surface();
+            }
+            build_renderer(
+                window.clone(),
+                options.offscreen,
+                &loaded.pack,
+                &gui,
+                self.renderer.as_ref(),
+                loaded.renderer_cpu,
+                rendering_api(&self.settings),
+            )?
+        };
         log::info!(
             "Horizon: world renderer ready after {} ms",
             self.started.elapsed().as_millis()
@@ -16258,7 +16345,12 @@ impl ApplicationHandler for App {
                     crate::game::exit_app(event_loop);
                     return;
                 }
-                match if loading.menu.reload_packs {
+                if let Err(error) = loading.prepare_renderer() {
+                    loading.error = Some(error);
+                    crate::game::exit_app(event_loop);
+                    return;
+                }
+                match if loading.menu.reload_packs || loading.renderer_job.is_some() {
                     None
                 } else {
                     loading.loaded.take()
@@ -16333,6 +16425,8 @@ fn loading_app(
         progress,
         receiver,
         loaded: None,
+        renderer_job: None,
+        prepared_renderer: None,
         handle: Some(loader),
         shown: false,
         menu,

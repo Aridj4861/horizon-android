@@ -964,6 +964,17 @@ impl Loading {
         if !self.menu.reload_packs || self.loaded.is_none() {
             return Ok(());
         }
+        if self
+            .renderer_job
+            .as_ref()
+            .is_some_and(|job| !job.is_finished())
+        {
+            return Ok(());
+        }
+        if let Some(job) = self.renderer_job.take() {
+            let _ = job.join();
+        }
+        self.prepared_renderer = None;
         if let Some(Ok(loaded)) = &mut self.loaded {
             if let Some(loader) = &loaded.rest_loader
                 && !loader.ready()?
@@ -1025,11 +1036,38 @@ mod tests {
             progress: Progress::new(),
             receiver,
             loaded: None,
+            renderer_job: None,
+            prepared_renderer: None,
             handle: None,
             shown: false,
             menu: StartupMenu::default(),
             error: None,
         }
+    }
+
+    #[test]
+    fn renderer_preparation_does_not_wait_for_its_worker() {
+        let (_sender, receiver) = std::sync::mpsc::channel();
+        let (release, wait) = std::sync::mpsc::channel();
+        let mut loading = loading(receiver);
+        loading.renderer_job = Some(std::thread::spawn(move || {
+            wait.recv().unwrap();
+            Err("test renderer failure".into())
+        }));
+        loading.prepare_renderer().unwrap();
+        assert!(!loading.renderer_job.as_ref().unwrap().is_finished());
+        release.send(()).unwrap();
+        while !loading.renderer_job.as_ref().unwrap().is_finished() {
+            std::thread::yield_now();
+        }
+        assert!(
+            loading
+                .prepare_renderer()
+                .unwrap_err()
+                .to_string()
+                .contains("test renderer failure")
+        );
+        assert!(loading.renderer_job.is_none());
     }
 
     #[test]

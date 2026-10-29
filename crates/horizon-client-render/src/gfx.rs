@@ -372,6 +372,19 @@ struct BorderUniform {
     color: [f32; 4],
     offset: [f32; 4],
 }
+/// Shared GPU handles and presentation format for preparing a replacement.
+/// A background context owns no window surface; the event thread retains it.
+pub struct ReplacementContext {
+    instance: wgpu::Instance,
+    adapter: wgpu::Adapter,
+    device: wgpu::Device,
+    queue: wgpu::Queue,
+    surface: Option<wgpu::Surface<'static>>,
+    config: wgpu::SurfaceConfiguration,
+    present_modes: Vec<wgpu::PresentMode>,
+    hdr_output: Option<hdr::Output>,
+}
+
 pub struct Renderer {
     instance: wgpu::Instance,
     adapter: wgpu::Adapter,
@@ -1145,6 +1158,46 @@ impl Renderer {
         previous: Option<&Self>,
         api: GraphicsApi,
     ) -> Result<Self> {
+        Self::new_with_context(
+            window,
+            offscreen,
+            sprite_pixels,
+            sprite_size,
+            sprite_minimum_size,
+            layers,
+            sprite_mips,
+            animations,
+            hud_atlas,
+            glint,
+            glint_armor,
+            forcefield,
+            panorama_faces,
+            prepared,
+            previous.map(Self::replacement_context),
+            api,
+        )
+        .await
+    }
+    /// Build GPU resources without borrowing the renderer still drawing the menu.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn new_with_context(
+        window: Arc<Window>,
+        offscreen: bool,
+        sprite_pixels: &[u8],
+        sprite_size: u32,
+        sprite_minimum_size: u32,
+        layers: u32,
+        sprite_mips: &[crate::mipmap::Settings],
+        animations: &[SpriteAnimation],
+        hud_atlas: (&[u8], u32, u32),
+        glint: (&[u8], u32, u32),
+        glint_armor: (&[u8], u32, u32),
+        forcefield: (&[u8], u32),
+        panorama_faces: &panorama::Faces,
+        prepared: Option<PreparedTextures>,
+        mut previous: Option<ReplacementContext>,
+        api: GraphicsApi,
+    ) -> Result<Self> {
         let split = sprite_split();
         if layers > split * SPRITE_ARRAYS {
             return Err(format!(
@@ -1159,7 +1212,7 @@ impl Renderer {
             adapter,
             device,
             queue,
-        } = match previous {
+        } = match previous.as_mut() {
             // Reload resources on the same device; replacing live Vulkan
             // devices can invalidate the driver's swapchain state on the same
             // window.
@@ -1170,11 +1223,7 @@ impl Renderer {
                     surface: if offscreen {
                         None
                     } else {
-                        let spare = renderer
-                            .spare_surface
-                            .lock()
-                            .unwrap_or_else(std::sync::PoisonError::into_inner)
-                            .take();
+                        let spare = renderer.surface.take();
                         Some(match spare {
                             Some(surface) => surface,
                             None => renderer.instance.create_surface(window.clone())?,
@@ -1210,6 +1259,7 @@ impl Renderer {
                 config.usage |= wgpu::TextureUsages::COPY_SRC;
             }
             config.present_mode = previous
+                .as_ref()
                 .map(|renderer| renderer.config.present_mode)
                 .filter(|mode| caps.present_modes.contains(mode))
                 .unwrap_or_else(|| {
@@ -1243,6 +1293,14 @@ impl Renderer {
                 );
             }
             (config, caps.present_modes.clone(), hdr_output)
+        } else if let Some(context) = &previous {
+            // Pipelines prepared in the worker must target the actual window
+            // format, not the generic offscreen format.
+            (
+                context.config.clone(),
+                context.present_modes.clone(),
+                context.hdr_output,
+            )
         } else {
             let format = wgpu::TextureFormat::Bgra8Unorm;
             let config = wgpu::SurfaceConfiguration {
@@ -2876,8 +2934,49 @@ impl Renderer {
             view_formats: &config.view_formats,
         })
     }
-    /// Hand the window surface over to the renderer that replaces this one on
-    /// the same device (it takes `spare_surface`).
+    /// Share GPU handles without handing the live window surface to a worker.
+    pub fn background_context(&self) -> ReplacementContext {
+        ReplacementContext {
+            instance: self.instance.clone(),
+            adapter: self.adapter.clone(),
+            device: self.device.clone(),
+            queue: self.queue.clone(),
+            surface: None,
+            config: self.config.clone(),
+            present_modes: self.present_modes.clone(),
+            hdr_output: self.hdr_output,
+        }
+    }
+    fn replacement_context(&self) -> ReplacementContext {
+        let mut context = self.background_context();
+        context.surface = self
+            .spare_surface
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .take();
+        context
+    }
+    /// Only the event thread transfers/configures the live Android surface.
+    pub fn activate_replacement(&mut self, previous: &mut Self) -> Result<()> {
+        if previous.suspended {
+            return Err("cannot attach a renderer while the window is suspended".into());
+        }
+        previous.release_surface();
+        self.surface = previous
+            .spare_surface
+            .get_mut()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .take();
+        self.offscreen = None;
+        self.suspended = false;
+        if self.surface.is_none() {
+            self.recreate_surface()?;
+        }
+        let size = self.window.inner_size();
+        self.resize(size.width, size.height);
+        Ok(())
+    }
+    /// Set the live surface aside for a replacement on the same device.
     pub fn release_surface(&mut self) {
         *self
             .spare_surface
