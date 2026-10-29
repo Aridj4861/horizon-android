@@ -398,6 +398,8 @@ impl Game<'_> {
                 "surface":[r.config.width,r.config.height],"world_size":r.world_render_size(),
                 "present":format!("{:?}",r.config.present_mode),
                 "wait_ms":r.last_wait.as_secs_f32()*1000.0,
+                "gpu_stages":r.gpu_stage_times().into_iter().map(|(stage, median_ms, max_ms, samples)|
+                    serde_json::json!({"stage":stage,"median_ms":median_ms,"max_ms":max_ms,"samples":samples})).collect::<Vec<_>>(),
                 "draw_calls":r.section_draw_calls,"drawn_sections":r.drawn_sections,
                 "resident_sections":r.resident_sections(),"uploaded_bytes_total":r.uploaded_bytes,
                 "arena_bytes":arena,"section_vertex_bytes":vertices,

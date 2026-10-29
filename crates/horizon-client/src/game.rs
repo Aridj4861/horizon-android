@@ -14267,6 +14267,10 @@ impl ApplicationHandler for Game<'_> {
         self.android_apply_display_scale();
         #[cfg(target_os = "android")]
         self.android_poll_keyboard();
+        #[cfg(target_os = "android")]
+        if let Some(renderer) = &mut self.renderer {
+            renderer.set_detailed_gpu_timing(crate::performance::active());
+        }
         if horizon_threads::stop_requests() > 0
             && self.pending_save.as_ref().is_none_or(|save| !save.quit)
         {

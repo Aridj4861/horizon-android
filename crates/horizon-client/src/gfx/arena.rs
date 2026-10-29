@@ -120,7 +120,13 @@ impl Arena {
         usage: wgpu::BufferUsages,
     ) -> Self {
         // 256 MiB pages, or less where the device's buffers are smaller.
-        let bytes = device.limits().max_buffer_size.min(PAGE_BYTES);
+        let limits = device.limits();
+        let mut bytes = limits.max_buffer_size.min(PAGE_BYTES);
+        // A storage arena binds the whole page. Mobile Vulkan devices commonly
+        // allow 1 GiB buffers but only 128 MiB per shader storage binding.
+        if usage.contains(wgpu::BufferUsages::STORAGE) {
+            bytes = bytes.min(u64::from(limits.max_storage_buffer_binding_size));
+        }
         let page_limit = (bytes / stride) / GRAIN * GRAIN;
         let capacity = capacity.next_multiple_of(GRAIN).min(page_limit);
         Self {

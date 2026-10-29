@@ -88,6 +88,7 @@ mod end_sky;
 mod flat;
 #[cfg(target_os = "android")]
 mod frame_scale;
+mod frame_timing;
 mod hdr;
 pub mod lightning;
 mod lod;
@@ -384,6 +385,8 @@ pub struct Renderer {
     /// (see `startup_step`).
     first_frame: FirstFrame,
     gpu_timer: Option<timing::GpuTimer>,
+    gpu_stages: Option<frame_timing::FrameTiming>,
+    gpu_stages_enabled: bool,
     /// GPU frame times (ms) read back since the caller last drained them.
     pub gpu_times: Vec<f32>,
     /// The last lightmap written, RGBA rows of sky level by block level
@@ -2618,6 +2621,8 @@ impl Renderer {
                 FirstFrame::Drawn
             },
             gpu_timer,
+            gpu_stages: None,
+            gpu_stages_enabled: false,
             gpu_times: Vec::new(),
             lightmap_pixels: [0; 16 * 16 * 4],
             last_wait: std::time::Duration::ZERO,
@@ -3515,6 +3520,22 @@ impl Renderer {
     }
     /// Times the shader pack's passes on the GPU while `on` (the F3 overlay is open), or always
     /// with `HORIZON_SHADER_PACK_TIMING`.
+    /// Additional GPU scopes for opt-in Android reports; ordinary frames add no queries.
+    pub fn set_detailed_gpu_timing(&mut self, on: bool) {
+        if self.gpu_stages_enabled == on {
+            return;
+        }
+        self.gpu_stages_enabled = on;
+        self.gpu_stages = on
+            .then(|| frame_timing::FrameTiming::new(&self.device, &self.queue))
+            .flatten();
+    }
+    pub fn gpu_stage_times(&self) -> Vec<(&'static str, f32, f32, usize)> {
+        self.gpu_stages
+            .as_ref()
+            .map(frame_timing::FrameTiming::summaries)
+            .unwrap_or_default()
+    }
     pub fn set_pass_timing(&mut self, on: bool) {
         self.pass_timing = on || pack_timing::PassTiming::logging();
     }
@@ -3759,6 +3780,13 @@ impl Renderer {
                     label: Some("Horizon frame"),
                 })
         });
+        #[cfg(target_os = "android")]
+        if let Some(timer) = &mut self.gpu_timer {
+            timer.begin(&mut encoder);
+        }
+        if let Some(stages) = &mut self.gpu_stages {
+            stages.begin_prepare(&mut encoder);
+        }
         if self.animated_textures {
             self.animate(&mut encoder, frame.ticks);
             self.hud
@@ -4612,8 +4640,16 @@ impl Renderer {
             format: Some(self.config.format.remove_srgb_suffix()),
             ..Default::default()
         });
+        #[cfg(not(target_os = "android"))]
         if let Some(timer) = &mut self.gpu_timer {
             timer.begin(&mut encoder);
+        }
+        if let Some(stages) = &mut self.gpu_stages {
+            stages.begin_world(
+                &self.device,
+                &mut encoder,
+                (&view_target, self.config.format.remove_srgb_suffix()),
+            );
         }
         // The world's targets: the screen, or the scaled target of `post`.
         let pack_post = !frame.title && self.pack_post.as_ref().is_some_and(|p| p.1.is_some());
@@ -5093,6 +5129,13 @@ impl Renderer {
                 );
             }
         }
+        if let Some(stages) = &mut self.gpu_stages {
+            stages.screen(
+                &self.device,
+                &mut encoder,
+                (world_view, self.config.format.remove_srgb_suffix()),
+            );
+        }
         if let Some((color, depth)) = &scaled
             && pack_post
             && let Some((dimension, Some(mut post))) = self.pack_post.take()
@@ -5346,6 +5389,13 @@ impl Renderer {
                 (&view_target, self.config.format.remove_srgb_suffix()),
             );
         }
+        if let Some(stages) = &mut self.gpu_stages {
+            stages.end(
+                &self.device,
+                &mut encoder,
+                (&view_target, self.config.format.remove_srgb_suffix()),
+            );
+        }
         let readback = self.screenshot.take().and_then(|path| {
             // The copy and PNG writer both assume 8-bit pixels; a float surface would make
             // the row stride too small for the copy and abort in validation.
@@ -5384,6 +5434,9 @@ impl Renderer {
         if let Some(timer) = &mut self.gpu_timer {
             timer.submitted(&self.queue);
             timer.collect(&self.device, &mut self.gpu_times);
+        }
+        if let Some(stages) = &mut self.gpu_stages {
+            stages.submitted(&self.queue);
         }
         if let Some(Some(timer)) = Self::pass_timer(&mut self.pack_post, &mut self.native) {
             timer.submitted(&self.queue);

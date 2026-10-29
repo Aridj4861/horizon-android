@@ -115,7 +115,13 @@ pub struct Flat {
 /// (9,300 draws) the CPU saves 1.3 ms. The bar was 4,096 draws when they
 /// were 2.2 to 2.5 per section; a section's draw count now depends on the
 /// sides it shows the eye (`mesher::Sides`), so it counts sections.
-const MIN_SECTIONS: usize = 1600;
+// Android's explicit Vulkan batching path also benefits at medium distances;
+// small views keep the ordinary draw path. Desktop retains its measured bar.
+const MIN_SECTIONS: usize = if cfg!(target_os = "android") {
+    512
+} else {
+    1600
+};
 
 /// Whether flat draws apply: the backend emulates multi-draw, and vertex
 /// shaders can read storage buffers large enough for an index page.
@@ -126,7 +132,12 @@ pub fn wanted(adapter: &wgpu::Adapter, device: &wgpu::Device) -> bool {
         Ok("1") => return supported(adapter, device),
         _ => {}
     }
-    adapter.get_info().backend == wgpu::Backend::Metal && supported(adapter, device)
+    let backend = adapter.get_info().backend;
+    (backend == wgpu::Backend::Metal
+        || cfg!(target_os = "android")
+            && backend == wgpu::Backend::Vulkan
+            && !crate::android_runtime::compatibility())
+        && supported(adapter, device)
 }
 
 fn supported(adapter: &wgpu::Adapter, device: &wgpu::Device) -> bool {
@@ -134,7 +145,8 @@ fn supported(adapter: &wgpu::Adapter, device: &wgpu::Device) -> bool {
     let limits = device.limits();
     flags.contains(wgpu::DownlevelFlags::VERTEX_STORAGE | wgpu::DownlevelFlags::COMPUTE_SHADERS)
         && limits.max_storage_buffers_per_shader_stage >= 3
-        && limits.max_storage_buffer_binding_size >= super::arena::PAGE_BYTES
+        && limits.max_storage_buffer_binding_size
+            >= wgpu::Limits::default().max_storage_buffer_binding_size
 }
 
 fn storage(binding: u32, stage: wgpu::ShaderStages, read_only: bool) -> wgpu::BindGroupLayoutEntry {

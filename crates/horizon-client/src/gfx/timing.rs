@@ -234,6 +234,10 @@ impl GpuTimer {
     /// GPU milliseconds of frames whose timestamps have arrived, oldest first.
     pub fn collect(&mut self, device: &wgpu::Device, out: &mut Vec<f32>) {
         let _ = device.poll(wgpu::PollType::Poll);
+        self.collect_ready(out);
+    }
+    /// Read completed mappings after the renderer has already polled the device.
+    pub(super) fn collect_ready(&mut self, out: &mut Vec<f32>) {
         for i in 0..SLOTS {
             let slot = &self.slots[(self.next + i) % SLOTS];
             if slot.state.load(Ordering::Acquire) != MAPPED {

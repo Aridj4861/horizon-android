@@ -2,6 +2,14 @@
 
 Changes in development after 0.7.3 (versionCode 25).
 
+- **Vulkan / GPU batching** uses flattened terrain draws for medium and large
+  views on capable Android GPUs. Storage pages respect the device's shader
+  binding limit, including 128 MiB devices. Compatibility mode retains its
+  ordinary drawing path. Performance still depends on the GPU and scene.
+- Performance reports separate GPU preparation/uploads, world rendering and
+  post-processing/hand/HUD work. Android's total GPU timer also includes in-frame
+  preparation; earlier section copies are outside that interval.
+- Android recognizes the application as a game for system game tools.
 - Shader search has separate **Horizon** and **Modrinth** sources. Native packs
   keep the Horizon registry path; classic Modrinth ZIPs have experimental
   compatibility, checksum/archive checks, install status and Installed management.
@@ -30,6 +38,8 @@ Changes in development after 0.7.3 (versionCode 25).
 Host input tests: `python tools/test_android_input.py`.
 Shader catalog/install tests: `python tools/test_android_shaders.py`; add `--live`
 to check Modrinth metadata without downloading shader packs.
+GPU arena, upload, shader and timestamp tests: `python tools/test_android_gpu.py`
+(requires a host Vulkan/DX12 GPU with encoder timestamps; does not open a game).
 
 Device testing still needs to cover:
 
