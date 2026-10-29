@@ -149,6 +149,9 @@ impl Opt {
             Opt::TouchInteract => "Interact button",
             Opt::TouchLeftHand => "Left handed",
             Opt::TouchSprintButton => "Sprint button",
+            Opt::TouchSprintToggle => "Toggle sprint button",
+            Opt::TouchInventoryControls => "Controls in inventory",
+            Opt::AndroidInputMode => "Input device",
             Opt::TouchSwapJumpSneak => "Swap jump / sneak",
             Opt::TouchAutoSprint => "Auto Sprint",
             Opt::Fov => "options.fov",
@@ -367,6 +370,16 @@ impl Opt {
             ),
             Opt::TouchLeftHand => Some(if s.touch.left_handed { "ON" } else { "OFF" }.into()),
             Opt::TouchSprintButton => Some(if s.touch.sprint_button { "ON" } else { "OFF" }.into()),
+            Opt::TouchSprintToggle => Some(if s.touch.sprint_toggle { "ON" } else { "OFF" }.into()),
+            Opt::TouchInventoryControls => Some(
+                if s.touch.inventory_controls {
+                    "ON"
+                } else {
+                    "OFF"
+                }
+                .into(),
+            ),
+            Opt::AndroidInputMode => Some(crate::android_runtime::input_mode().label().into()),
             Opt::TouchSwapJumpSneak => {
                 Some(if s.touch.swap_jump_sneak { "ON" } else { "OFF" }.into())
             }
@@ -760,6 +773,18 @@ impl Opt {
             Opt::TouchInteract => s.touch.contextual_interact ^= true,
             Opt::TouchLeftHand => s.touch.left_handed ^= true,
             Opt::TouchSprintButton => s.touch.sprint_button ^= true,
+            Opt::TouchSprintToggle => s.touch.sprint_toggle ^= true,
+            Opt::TouchInventoryControls => s.touch.inventory_controls ^= true,
+            Opt::AndroidInputMode => {
+                let all = crate::android_gamepad::InputMode::ALL;
+                let i = all
+                    .iter()
+                    .position(|m| *m == crate::android_runtime::input_mode())
+                    .unwrap_or(0);
+                crate::android_runtime::configure_input(
+                    all[usize::from(next(i as u8, all.len() as u8))],
+                );
+            }
             Opt::TouchAttackSide => s.touch.attack_indicator_left ^= true,
             Opt::TouchSwapJumpSneak => s.touch.swap_jump_sneak ^= true,
             Opt::TouchAutoSprint => s.touch.sprint_with_joystick ^= true,
@@ -1587,7 +1612,11 @@ impl OptionsUi {
                 )];
                 rows.extend(pairs(&[Opt::ToggleCrouch, Opt::ToggleSprint]));
                 #[cfg(target_os = "android")]
-                rows.extend(pairs(&[Opt::AutoJump, Opt::TouchAutoSprint]));
+                rows.extend(pairs(&[
+                    Opt::AutoJump,
+                    Opt::TouchAutoSprint,
+                    Opt::AndroidInputMode,
+                ]));
                 #[cfg(not(target_os = "android"))]
                 rows.extend(pairs(&[Opt::AutoJump]));
                 rows.push(Row::Buttons(
@@ -1631,6 +1660,8 @@ impl OptionsUi {
                     Opt::DebugGuiScale,
                     Opt::TouchAnalog,
                     Opt::TouchSprintButton,
+                    Opt::TouchSprintToggle,
+                    Opt::TouchInventoryControls,
                     Opt::TouchInteract,
                     Opt::TouchLeftHand,
                     Opt::TouchSwapJumpSneak,

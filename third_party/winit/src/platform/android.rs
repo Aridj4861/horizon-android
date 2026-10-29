@@ -218,3 +218,21 @@ pub mod activity {
     #[doc(hidden)]
     pub struct AndroidApp;
 }
+
+/// Android input device ID, for disconnect checks through InputDevice.getDevice.
+#[cfg(android_platform)]
+pub fn native_device_id(id: crate::event::DeviceId) -> i32 {
+    id.0.native_id()
+}
+
+/// Known controller devices, including their separately reported D-pad key events.
+#[cfg(android_platform)]
+pub fn set_native_gamepads(ids: &[i32]) {
+    crate::platform_impl::set_gamepad_devices(ids);
+}
+
+/// True only for device IDs observed emitting mouse/touchpad source events.
+#[cfg(android_platform)]
+pub fn native_pointer_device(id: crate::event::DeviceId) -> bool {
+    crate::platform_impl::pointer_device(id.0.native_id())
+}

@@ -124,6 +124,9 @@ fn toggle(
 impl Launcher {
     /// The same spatial focus algorithm as the game's controller menus.
     pub(super) fn navigate(&mut self, key: &KeyEvent) -> bool {
+        self.navigate_key(&key.logical_key)
+    }
+    pub(super) fn navigate_key(&mut self, key: &winit::keyboard::Key) -> bool {
         use horizon_client::gamepad::{self, Button};
         use winit::keyboard::{Key, NamedKey};
         if self.pending_focus.is_some() {
@@ -132,7 +135,7 @@ impl Launcher {
         if self.catalog.editing.is_some() || self.targets.is_empty() {
             return false;
         }
-        let button = match key.logical_key {
+        let button = match key {
             Key::Named(NamedKey::ArrowUp) => Button::DPadUp,
             Key::Named(NamedKey::ArrowDown) => Button::DPadDown,
             Key::Named(NamedKey::ArrowLeft) => Button::DPadLeft,
@@ -1138,7 +1141,7 @@ impl Launcher {
                 self.catalog.config.input_host = mode;
                 self.catalog.config.save(&self.home)?;
                 self.chooser = None;
-                // Host changes occur only when Play is pressed, never during a download/login.
+                crate::configure_input_mode(mode);
             }
             Some(Action::ChooseOrientation(mode)) => {
                 self.catalog.config.orientation = mode;

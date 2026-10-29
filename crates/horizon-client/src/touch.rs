@@ -91,6 +91,7 @@ pub struct TouchControls {
     pub break_progress: f32,
     last_marker: Option<([f32; 2], Instant)>,
     last_sneak_tap: Option<Instant>,
+    sprint_latched: bool,
 }
 impl TouchControls {
     pub fn crosshair(&self) -> bool {
@@ -128,6 +129,26 @@ impl TouchControls {
                     && self.visible(c)
                     && layout::contains(self.placement(c).rect(self.aspect()), point)
             })
+    }
+    pub fn control_at(&self, point: [f32; 2]) -> Option<Control> {
+        Control::ALL.into_iter().rev().find(|c| {
+            self.visible(*c) && layout::contains(self.placement(*c).rect(self.aspect()), point)
+        })
+    }
+    pub fn control_at_point(&self, point: [f32; 2]) -> bool {
+        self.custom_at(point).is_some() || self.control_at(point).is_some()
+    }
+    /// Inventory overlays retain custom key holds, but never apply world gestures.
+    pub fn clear_world_gesture(&mut self) {
+        self.fingers
+            .retain(|_, (role, _)| matches!(role, Role::Ignore));
+        self.sprint_latched = false;
+        self.pending = PadState::default();
+        self.aim = None;
+        self.tap_aim = None;
+        self.last_marker = None;
+        self.holding = false;
+        self.holding_use = false;
     }
     pub fn owns_pointer(&self, id: u64) -> bool {
         self.fingers.contains_key(&id) || self.custom_fingers.contains_key(&id)
@@ -451,9 +472,7 @@ impl TouchControls {
             return [0.0; 2];
         }
         if started {
-            let control = Control::ALL.into_iter().rev().find(|c| {
-                self.visible(*c) && layout::contains(self.placement(*c).rect(self.aspect()), point)
-            });
+            let control = self.control_at(point);
             let role = match control {
                 Some(Control::Move)
                     if !self
@@ -497,6 +516,10 @@ impl TouchControls {
                         self.last_sneak_tap = Some(now);
                         Role::Ignore
                     }
+                }
+                Some(Control::Sprint) if self.settings.sprint_toggle => {
+                    self.sprint_latched = !self.sprint_latched;
+                    Role::Ignore
                 }
                 Some(c) => Self::button(c).map_or(Role::Ignore, Role::Button),
                 None => Role::Look {
@@ -548,6 +571,7 @@ impl TouchControls {
         self.clear_custom();
         self.fingers.clear();
         self.last_sneak_tap = None;
+        self.sprint_latched = false;
         self.pending = PadState::default();
         self.aim = None;
         self.tap_aim = None;
@@ -608,6 +632,9 @@ impl TouchControls {
     }
     pub fn state(&self) -> PadState {
         let mut state = PadState::default();
+        if self.settings.sprint_toggle && self.settings.sprint_button && self.sprint_latched {
+            state.set(Button::LeftStick, true);
+        }
         for (role, point) in self.fingers.values() {
             match role {
                 Role::Move(anchor) => {
@@ -891,6 +918,30 @@ fn line(
 }
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn sprint_toggle_survives_finger_release_and_clears_on_focus_loss() {
+        let mut t = TouchControls {
+            loaded: true,
+            aspect: 16.0 / 9.0,
+            ..Default::default()
+        };
+        t.settings.sprint_toggle = true;
+        let point = t.placement(Control::Sprint).center;
+        t.update(1, point, true, false);
+        t.update(1, point, false, true);
+        assert!(t.poll_state().held(Button::LeftStick));
+        t.update(2, point, true, false);
+        t.update(2, point, false, true);
+        assert!(!t.poll_state().held(Button::LeftStick));
+        t.update(3, point, true, false);
+        t.clear();
+        assert!(!t.poll_state().held(Button::LeftStick));
+        t.settings.sprint_toggle = false;
+        t.update(4, point, true, false);
+        assert!(t.poll_state().held(Button::LeftStick));
+        t.update(4, point, false, true);
+        assert!(!t.poll_state().held(Button::LeftStick));
+    }
     #[test]
     fn global_button_scale_changes_hit_geometry_without_rewriting_saved_layouts() {
         let mut touch = TouchControls::default();

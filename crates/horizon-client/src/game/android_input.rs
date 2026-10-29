@@ -420,7 +420,7 @@ impl Game<'_> {
             "remote_backlog":self.remote_backlog(),
             "streaming":self.streaming.stages().into_iter().collect::<std::collections::BTreeMap<_,_>>()})
     }
-    fn android_key_up(&mut self, key: KeyCode) {
+    pub(super) fn android_key_up(&mut self, key: KeyCode) {
         if self.pad.custom_keys.contains(&key) {
             return;
         }

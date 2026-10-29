@@ -366,57 +366,6 @@ pub fn active() -> bool {
     EDIT.with(|e| e.borrow().is_some())
 }
 
-/// The stock NativeActivity has no GameTextInput connection. Its fields use
-/// ordinary keyboard events; the original GameActivity still owns Android IME.
-pub fn keyboard_mouse_connected() -> bool {
-    with_context(|env, activity| {
-        let resources = env
-            .call_method(
-                activity,
-                "getResources",
-                "()Landroid/content/res/Resources;",
-                &[],
-            )?
-            .l()?;
-        let config = env
-            .call_method(
-                &resources,
-                "getConfiguration",
-                "()Landroid/content/res/Configuration;",
-                &[],
-            )?
-            .l()?;
-        if env.get_field(&config, "keyboard", "I")?.i()? != 2 {
-            return Ok(false);
-        }
-        let ids = env
-            .call_static_method("android/view/InputDevice", "getDeviceIds", "()[I", &[])?
-            .l()?;
-        let ids = jni::objects::JIntArray::from(ids);
-        let mut values = vec![0; env.get_array_length(&ids)? as usize];
-        env.get_int_array_region(&ids, 0, &mut values)?;
-        for id in values {
-            let device = env
-                .call_static_method(
-                    "android/view/InputDevice",
-                    "getDevice",
-                    "(I)Landroid/view/InputDevice;",
-                    &[JValue::Int(id)],
-                )?
-                .l()?;
-            if device.is_null() {
-                continue;
-            }
-            let sources = env.call_method(&device, "getSources", "()I", &[])?.i()?;
-            if sources & 0x2002 == 0x2002 {
-                return Ok(true);
-            }
-        }
-        Ok(false)
-    })
-    .unwrap_or(false)
-}
-
 pub fn finish() {
     with_context(|env, activity| {
         env.call_method(activity, "finish", "()V", &[])?;
@@ -598,4 +547,53 @@ pub fn open_login_url(url: &str) -> Result<(), String> {
             e.to_string()
         })
     })
+}
+
+/// Poll only at a low rate; Android sends no NativeActivity disconnect callback.
+pub fn poll_gamepad_connections() {
+    thread_local! { static LAST: std::cell::Cell<Option<std::time::Instant>> = const { std::cell::Cell::new(None) }; }
+    if !LAST.with(|last| {
+        if last
+            .get()
+            .is_some_and(|t| t.elapsed() < std::time::Duration::from_millis(500))
+        {
+            false
+        } else {
+            last.set(Some(std::time::Instant::now()));
+            true
+        }
+    }) {
+        return;
+    }
+    let ids = with_context(|env, _| {
+        let ids = env
+            .call_static_method("android/view/InputDevice", "getDeviceIds", "()[I", &[])?
+            .l()?;
+        let ids = jni::objects::JIntArray::from(ids);
+        let mut values = vec![0; env.get_array_length(&ids)? as usize];
+        env.get_int_array_region(&ids, 0, &mut values)?;
+        let mut controllers = Vec::new();
+        for id in &values {
+            let device = env
+                .call_static_method(
+                    "android/view/InputDevice",
+                    "getDevice",
+                    "(I)Landroid/view/InputDevice;",
+                    &[JValue::Int(*id)],
+                )?
+                .l()?;
+            if !device.is_null() {
+                let sources = env.call_method(&device, "getSources", "()I", &[])?.i()?;
+                if sources & 0x401 == 0x401 || sources & 0x01000010 == 0x01000010 {
+                    controllers.push(*id);
+                }
+                env.delete_local_ref(device)?;
+            }
+        }
+        Ok((values, controllers))
+    });
+    if let Some((ids, controllers)) = ids {
+        horizon_client::android_runtime::retain_gamepads(&ids);
+        winit::platform::android::set_native_gamepads(&controllers);
+    }
 }

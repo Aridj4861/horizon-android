@@ -33,6 +33,8 @@ use winit::{
 
 pub(super) struct Launcher {
     home: PathBuf,
+    controller_edges: horizon_client::gamepad::Edges,
+    controller_repeat: Option<(horizon_client::gamepad::Button, Instant, bool)>,
     window: Option<Arc<Window>>,
     renderer: Option<Renderer>,
     gui: Option<game::UiResources>,
@@ -69,8 +71,11 @@ impl Launcher {
             }
         });
         let catalog = Catalog::new(&home);
+        crate::configure_input_mode(catalog.config.input_host);
         Self {
             home,
+            controller_edges: Default::default(),
+            controller_repeat: None,
             window: None,
             renderer: None,
             gui: None,
@@ -119,6 +124,7 @@ impl Launcher {
             self.fail(error);
             return;
         }
+        self.catalog.config.input_host = horizon_client::android_runtime::input_mode();
         self.catalog.refresh(&self.home);
         self.login.refresh_status();
         self.catalog.page = Page::Play;
@@ -179,7 +185,7 @@ impl Launcher {
         if self.login.pending() {
             return Ok(());
         }
-        crate::configure_input_mode(self.catalog.config.input_host.keyboard_mouse());
+        crate::configure_input_mode(self.catalog.config.input_host);
         if horizon_client::official_install::ready(&self.home) {
             horizon_client::android_resources::repair_structure_transforms(
                 &self.home.join("engine-data.zip"),
@@ -351,6 +357,8 @@ impl ApplicationHandler for Launcher {
             }
             WindowEvent::Touch(touch) => self.touch_event(events, touch),
             WindowEvent::Focused(false) => {
+                horizon_client::android_runtime::clear_gamepads();
+                self.controller_repeat = None;
                 self.mouse_down = false;
                 self.drag = None;
                 Ok(())
@@ -412,6 +420,11 @@ impl ApplicationHandler for Launcher {
     fn device_event(&mut self, events: &ActiveEventLoop, id: DeviceId, event: DeviceEvent) {
         if let Some(game) = &mut self.game {
             game.device_event(events, id, event);
+        } else {
+            horizon_client::android_runtime::gamepad_event(
+                winit::platform::android::native_device_id(id),
+                &event,
+            );
         }
     }
     fn about_to_wait(&mut self, events: &ActiveEventLoop) {
@@ -419,6 +432,10 @@ impl ApplicationHandler for Launcher {
             game.about_to_wait(events);
             self.restore_launcher(events);
             return;
+        }
+        crate::platform::poll_gamepad_connections();
+        if let Err(error) = self.controller_frame(events) {
+            self.fail(error);
         }
         if let (Some(window), Some(renderer)) = (&self.window, &mut self.renderer)
             && let Err(error) = crate::display::apply(window, renderer)
@@ -478,5 +495,66 @@ impl ApplicationHandler for Launcher {
         if let Some(game) = &mut self.game {
             game.exiting(events);
         }
+    }
+}
+
+impl Launcher {
+    fn controller_frame(&mut self, events: &ActiveEventLoop) -> Result<()> {
+        use horizon_client::gamepad::Button;
+        use winit::keyboard::{Key, NamedKey};
+        let mut state = horizon_client::android_runtime::gamepad_state();
+        for (b, held) in [
+            (Button::DPadLeft, state.left[0] < -0.55),
+            (Button::DPadRight, state.left[0] > 0.55),
+            (Button::DPadUp, state.left[1] > 0.55),
+            (Button::DPadDown, state.left[1] < -0.55),
+        ] {
+            state.set(b, held || state.held(b));
+        }
+        let now = Instant::now();
+        let mut pressed: Vec<_> = self
+            .controller_edges
+            .update(&state, 0.5)
+            .into_iter()
+            .filter_map(|(b, down)| down.then_some(b))
+            .collect();
+        if let Some((button, last, repeating)) = self.controller_repeat {
+            if !state.held(button) {
+                self.controller_repeat = None;
+            } else if now.duration_since(last).as_secs_f32() >= if repeating { 0.09 } else { 0.35 }
+            {
+                pressed.push(button);
+                self.controller_repeat = Some((button, now, true));
+            }
+        }
+        for b in pressed {
+            let direction = match b {
+                Button::DPadUp => Some(NamedKey::ArrowUp),
+                Button::DPadDown => Some(NamedKey::ArrowDown),
+                Button::DPadLeft => Some(NamedKey::ArrowLeft),
+                Button::DPadRight => Some(NamedKey::ArrowRight),
+                _ => None,
+            };
+            if let Some(key) = direction {
+                self.navigate_key(&Key::Named(key));
+                if self.controller_repeat.is_none_or(|(old, _, _)| old != b) {
+                    self.controller_repeat = Some((b, now, false));
+                }
+            } else if b == Button::South {
+                self.activate(events)?;
+            } else if b == Button::East {
+                crate::platform::hide();
+                self.catalog.editing = None;
+                if self.chooser.take().is_none() {
+                    if self.login.visible {
+                        self.login.visible = false;
+                    } else {
+                        self.catalog.page = Page::Play;
+                    }
+                }
+                self.focus = None;
+            }
+        }
+        Ok(())
     }
 }

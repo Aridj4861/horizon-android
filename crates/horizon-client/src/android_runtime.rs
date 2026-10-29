@@ -1,5 +1,76 @@
 //! Android renderer and platform policy.
+use crate::android_gamepad::{Devices, InputMode};
 use std::sync::atomic::{AtomicBool, Ordering};
+static INPUT_MODE: std::sync::Mutex<(InputMode, InputMode)> =
+    std::sync::Mutex::new((InputMode::Auto, InputMode::Touch));
+static GAMEPADS: std::sync::LazyLock<std::sync::Mutex<Devices>> =
+    std::sync::LazyLock::new(|| std::sync::Mutex::new(Devices::default()));
+pub fn input_mode() -> InputMode {
+    INPUT_MODE.lock().unwrap().0
+}
+pub fn active_input() -> InputMode {
+    INPUT_MODE.lock().unwrap().1
+}
+pub fn configure_input(mode: InputMode) {
+    let mut input = INPUT_MODE.lock().unwrap();
+    if input.0 != mode {
+        *input = (
+            mode,
+            if mode == InputMode::Auto {
+                InputMode::Touch
+            } else {
+                mode
+            },
+        );
+        clear_gamepads();
+        clear_keypad();
+    }
+}
+pub fn note_input(kind: InputMode) -> bool {
+    let mut input = INPUT_MODE.lock().unwrap();
+    if input.0 != InputMode::Auto && input.0 != kind {
+        return false;
+    }
+    if input.1 == InputMode::Controller && kind != InputMode::Controller {
+        clear_gamepads();
+    }
+    input.1 = kind;
+    true
+}
+pub fn gamepad_event(id: i32, event: &winit::event::DeviceEvent) -> bool {
+    use winit::event::{DeviceEvent, ElementState};
+    let activity = {
+        let mut devices = GAMEPADS.lock().unwrap();
+        match *event {
+            DeviceEvent::Motion { axis, value } => devices.axis(id, axis, value),
+            DeviceEvent::Button { button, state } => {
+                devices.key(id, button, state == ElementState::Pressed)
+            }
+            DeviceEvent::Removed => {
+                devices.clear();
+                false
+            }
+            _ => return false,
+        }
+    };
+    if activity {
+        note_input(InputMode::Controller);
+    }
+    true
+}
+pub fn retain_gamepads(ids: &[i32]) {
+    GAMEPADS.lock().unwrap().retain(ids);
+}
+pub fn clear_gamepads() {
+    GAMEPADS.lock().unwrap().clear();
+}
+pub fn gamepad_state() -> crate::gamepad::PadState {
+    if active_input() == InputMode::Controller {
+        GAMEPADS.lock().unwrap().poll()
+    } else {
+        crate::gamepad::PadState::default()
+    }
+}
 static ATLAS_LIMIT: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(16384);
 /// The launcher opens the adapter before the resource worker builds the game atlas.
 pub fn configure_atlas_limit(limit: u32) {
@@ -58,4 +129,48 @@ pub fn return_to_launcher() {
 }
 pub fn take_launcher_return() -> bool {
     RETURN_TO_LAUNCHER.swap(false, Ordering::AcqRel)
+}
+
+#[cfg(test)]
+mod input_tests {
+    use super::*;
+    #[test]
+    fn explicit_modes_reject_other_devices_and_auto_follows_activity() {
+        configure_input(InputMode::Touch);
+        assert!(!note_input(InputMode::Controller));
+        assert_eq!(active_input(), InputMode::Touch);
+        gamepad_event(
+            2,
+            &winit::event::DeviceEvent::Button {
+                button: 96,
+                state: winit::event::ElementState::Pressed,
+            },
+        );
+        assert_eq!(gamepad_state(), crate::gamepad::PadState::default());
+        configure_input(InputMode::Controller);
+        assert!(!note_input(InputMode::Touch));
+        configure_input(InputMode::Auto);
+        assert!(note_input(InputMode::KeyboardMouse));
+        assert_eq!(active_input(), InputMode::KeyboardMouse);
+        gamepad_event(
+            2,
+            &winit::event::DeviceEvent::Motion {
+                axis: 0,
+                value: 0.05,
+            },
+        );
+        assert_eq!(active_input(), InputMode::KeyboardMouse);
+        gamepad_event(
+            2,
+            &winit::event::DeviceEvent::Motion {
+                axis: 0,
+                value: 1.0,
+            },
+        );
+        assert_eq!(active_input(), InputMode::Controller);
+        assert!(note_input(InputMode::Touch));
+        assert_eq!(gamepad_state(), crate::gamepad::PadState::default());
+        clear_gamepads();
+        configure_input(InputMode::Auto);
+    }
 }

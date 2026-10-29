@@ -46,28 +46,7 @@ pub struct Config {
     pub record_performance: bool,
 }
 
-#[derive(Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum InputHost {
-    #[default]
-    Auto,
-    Touch,
-    KeyboardMouse,
-}
-impl InputHost {
-    pub const ALL: [Self; 3] = [Self::Auto, Self::Touch, Self::KeyboardMouse];
-    pub fn label(self) -> &'static str {
-        match self {
-            Self::Auto => "Automatic",
-            Self::Touch => "Touch & Android keyboard",
-            Self::KeyboardMouse => "Keyboard & mouse",
-        }
-    }
-    pub fn keyboard_mouse(self) -> bool {
-        self == Self::KeyboardMouse
-            || (self == Self::Auto && crate::platform::keyboard_mouse_connected())
-    }
-}
+pub use horizon_client::android_gamepad::InputMode as InputHost;
 
 /// Android ActivityInfo orientations, independent of the device's natural axis.
 #[derive(Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]

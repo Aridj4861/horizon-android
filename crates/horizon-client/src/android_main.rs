@@ -47,9 +47,9 @@ mod skins;
 // The shared account protocol needs only the launcher's version and data path.
 mod backend {
     pub const VERSION: &str = if crate::PUBLIC_BUILD {
-        "0.7.3"
+        "0.7.4"
     } else {
-        "0.7.3-dev"
+        "0.7.4-dev"
     };
     static HOME: std::sync::OnceLock<std::path::PathBuf> = std::sync::OnceLock::new();
     pub fn initialize(home: std::path::PathBuf) {
@@ -67,23 +67,35 @@ mod backend {
 }
 
 use std::cell::RefCell;
-static KEYBOARD_MOUSE_INPUT: std::sync::atomic::AtomicBool =
-    std::sync::atomic::AtomicBool::new(false);
-static TOUCH_VISIBLE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
 pub(crate) fn keyboard_mouse_input() -> bool {
-    KEYBOARD_MOUSE_INPUT.load(std::sync::atomic::Ordering::Relaxed)
+    horizon_client::android_runtime::active_input() == catalog::InputHost::KeyboardMouse
 }
-pub(crate) fn configure_input_mode(keyboard_mouse: bool) {
-    KEYBOARD_MOUSE_INPUT.store(keyboard_mouse, std::sync::atomic::Ordering::Relaxed);
-    TOUCH_VISIBLE.store(!keyboard_mouse, std::sync::atomic::Ordering::Relaxed);
+pub(crate) fn configure_input_mode(mode: catalog::InputHost) {
+    horizon_client::android_runtime::configure_input(mode);
 }
 pub(crate) fn touch_visible() -> bool {
-    TOUCH_VISIBLE.load(std::sync::atomic::Ordering::Relaxed)
+    horizon_client::android_runtime::active_input() == catalog::InputHost::Touch
 }
 pub(crate) fn touch_input(touch: bool) {
-    if touch || keyboard_mouse_input() || horizon_client::android_runtime::keypad_enabled() {
-        TOUCH_VISIBLE.store(touch, std::sync::atomic::Ordering::Relaxed);
-    }
+    horizon_client::android_runtime::note_input(if touch {
+        catalog::InputHost::Touch
+    } else {
+        catalog::InputHost::KeyboardMouse
+    });
+}
+pub(crate) fn save_input_mode() {
+    APP.with(|app| {
+        if let Some(home) = app.borrow().as_ref().and_then(|a| a.internal_data_path()) {
+            let mut config = catalog::Config::load(&home);
+            let mode = horizon_client::android_runtime::input_mode();
+            if config.input_host != mode {
+                config.input_host = mode;
+                if let Err(e) = config.save(&home) {
+                    log::warn!("Saving input mode: {e}");
+                }
+            }
+        }
+    });
 }
 pub(crate) const PUBLIC_BUILD: bool = match option_env!("HORIZON_ANDROID_PUBLIC") {
     Some(value) => value.len() == 1 && value.as_bytes()[0] == b'1',

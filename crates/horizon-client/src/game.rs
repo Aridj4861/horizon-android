@@ -10943,7 +10943,7 @@ impl Game<'_> {
         {
             self.pad.touch.settings = self.settings.touch.clone();
             self.pad.touch.force_crosshair =
-                crate::keyboard_mouse_input() || self.settings.keypad.enabled;
+                !crate::touch_visible() || self.settings.keypad.enabled;
             let changed =
                 horizon_client::android_runtime::keypad_enabled() != self.settings.keypad.enabled;
             horizon_client::android_runtime::configure_keypad_settings(&self.settings.keypad);
@@ -11992,7 +11992,8 @@ impl Game<'_> {
         }
         #[cfg(target_os = "android")]
         if self.pad.touch.editor.is_some()
-            || ((crate::touch_visible() || self.settings.keypad.enabled) && !self.pad_in_menu())
+            || ((crate::touch_visible() || self.settings.keypad.enabled)
+                && (!self.pad_in_menu() || self.android_inventory_controls()))
         {
             self.pad.touch.context_use =
                 self.pad.touch.settings.contextual_interact && self.touch_context_use();
@@ -12987,12 +12988,49 @@ impl ApplicationHandler for Game<'_> {
             }
         }
         #[cfg(target_os = "android")]
+        if let WindowEvent::CursorMoved { device_id, .. }
+        | WindowEvent::MouseInput { device_id, .. }
+        | WindowEvent::MouseWheel { device_id, .. } = &event
+            && winit::platform::android::native_pointer_device(*device_id)
+        {
+            let before = crate::keyboard_mouse_input();
+            let accepted = horizon_client::android_runtime::note_input(
+                horizon_client::android_gamepad::InputMode::KeyboardMouse,
+            );
+            if !accepted && !self.pad_in_menu() {
+                return;
+            }
+            if !before && crate::keyboard_mouse_input() && self.captured {
+                self.capture(false);
+                self.capture(true);
+            }
+        }
+        #[cfg(target_os = "android")]
         match &event {
             WindowEvent::Touch(_) => crate::touch_input(true),
-            WindowEvent::MouseInput { .. }
-            | WindowEvent::CursorMoved { .. }
-            | WindowEvent::KeyboardInput { .. } => crate::touch_input(false),
+            WindowEvent::KeyboardInput {
+                device_id,
+                event,
+                is_synthetic: false,
+            } if event.state == ElementState::Pressed
+                && winit::platform::android::native_device_id(*device_id) > 0 =>
+            {
+                crate::touch_input(false)
+            }
             _ => {}
+        }
+        #[cfg(target_os = "android")]
+        if !self.pad_in_menu()
+            && matches!(
+                horizon_client::android_runtime::input_mode(),
+                horizon_client::android_gamepad::InputMode::Touch
+                    | horizon_client::android_gamepad::InputMode::Controller
+            )
+            && matches!(&event, WindowEvent::KeyboardInput { event, .. }
+                if event.state == ElementState::Pressed
+                    && !matches!(event.logical_key, winit::keyboard::Key::Named(winit::keyboard::NamedKey::Escape | winit::keyboard::NamedKey::BrowserBack)))
+        {
+            return;
         }
         #[cfg(target_os = "android")]
         if let WindowEvent::KeyboardInput { event, .. } = &event {
@@ -13093,7 +13131,40 @@ impl ApplicationHandler for Game<'_> {
                 self.pad.touch.clear();
                 return;
             }
-            if !self.pad_in_menu() {
+            let overlay_point = [
+                touch.location.x as f32 / size.width.max(1) as f32,
+                touch.location.y as f32 / size.height.max(1) as f32,
+            ];
+            let inventory_control = self.android_inventory_controls()
+                && (self.pad.touch.owns_pointer(touch.id)
+                    || (touch.phase == TouchPhase::Started
+                        && self.pad.touch.control_at_point(overlay_point)));
+            if inventory_control
+                && touch.phase == TouchPhase::Started
+                && self.pad.touch.custom_at(overlay_point).is_none()
+                && let Some(control) = self.pad.touch.control_at(overlay_point)
+                && !matches!(
+                    control,
+                    horizon_client::touch::Control::Debug
+                        | horizon_client::touch::Control::Settings
+                        | horizon_client::touch::Control::Perspective
+                )
+            {
+                self.pad.touch.ignore(touch.id);
+                if matches!(
+                    control,
+                    horizon_client::touch::Control::Inventory
+                        | horizon_client::touch::Control::Pause
+                ) && let Err(error) = self.pad_back()
+                {
+                    log::warn!("Touch inventory close: {error}");
+                }
+                return;
+            }
+            if !self.pad_in_menu() || inventory_control {
+                if !crate::touch_visible() && !self.settings.keypad.enabled {
+                    return;
+                }
                 self.pad.in_use = true;
                 let size = self.window.as_ref().unwrap().inner_size();
                 if touch.phase == TouchPhase::Started {
@@ -13157,7 +13228,9 @@ impl ApplicationHandler for Game<'_> {
                     }
                 }
             } else {
-                self.pad.touch.clear();
+                if !self.android_inventory_controls() {
+                    self.pad.touch.clear();
+                }
                 if !matches!(self.screen, Screen::Inventory | Screen::Creative) {
                     self.android_menu_touch(touch, event_loop, id);
                     return;
@@ -13211,7 +13284,10 @@ impl ApplicationHandler for Game<'_> {
         }
         if let WindowEvent::Focused(false) = &event {
             #[cfg(target_os = "android")]
-            self.android_release_touch_keys(true);
+            {
+                self.android_release_touch_keys(true);
+                horizon_client::android_runtime::clear_gamepads();
+            }
             self.physical_keys.clear();
         }
         if let WindowEvent::ModifiersChanged(m) = &event {
@@ -14154,7 +14230,19 @@ impl ApplicationHandler for Game<'_> {
             crate::game::exit_app(event_loop);
         }
     }
-    fn device_event(&mut self, _: &ActiveEventLoop, _: DeviceId, event: DeviceEvent) {
+    fn device_event(&mut self, _: &ActiveEventLoop, device: DeviceId, event: DeviceEvent) {
+        #[cfg(target_os = "android")]
+        if self.focused
+            && self.settings.controller.enabled
+            && horizon_client::android_runtime::gamepad_event(
+                winit::platform::android::native_device_id(device),
+                &event,
+            )
+        {
+            return;
+        }
+        #[cfg(not(target_os = "android"))]
+        let _ = device;
         if self.pending_save.is_none()
             && self.captured
             && self.focused
@@ -14163,7 +14251,13 @@ impl ApplicationHandler for Game<'_> {
         {
             // MouseHandler.onMove with the pointer grabbed; applied once per frame.
             #[cfg(target_os = "android")]
-            crate::touch_input(false);
+            {
+                if !horizon_client::android_runtime::note_input(
+                    horizon_client::android_gamepad::InputMode::KeyboardMouse,
+                ) {
+                    return;
+                }
+            }
             self.mouse.on_move(0.0, 0.0, x, y, true, true);
             self.last_input = Instant::now();
         }

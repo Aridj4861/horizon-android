@@ -30,6 +30,8 @@ pub(super) struct Pads {
     #[cfg(target_os = "android")]
     pub(super) hardware_keys: std::collections::HashSet<KeyCode>,
     #[cfg(target_os = "android")]
+    last_input_mode: Option<horizon_client::android_gamepad::InputMode>,
+    #[cfg(target_os = "android")]
     pub(super) touch: horizon_client::touch::TouchControls,
     /// Keep a released tap's ray until the tick consumed its queued click.
     #[cfg(target_os = "android")]
@@ -78,7 +80,8 @@ mod hardware {
     impl Pads {
         pub(super) fn read(&mut self) -> PadState {
             #[cfg(target_os = "android")]
-            return horizon_client::android_runtime::keypad_state();
+            return horizon_client::android_runtime::keypad_state()
+                .merge(&horizon_client::android_runtime::gamepad_state());
             #[cfg(not(target_os = "android"))]
             PadState::default()
         }
@@ -105,7 +108,7 @@ mod hardware {
             let _ = pulse;
         }
         pub(super) fn pad_devices_status(&self) -> Value {
-            json!({ "backend": false, "controllers": [] })
+            json!({ "backend": cfg!(target_os = "android"), "controllers": [], "android_native_input": cfg!(target_os = "android") })
         }
     }
 }
@@ -119,6 +122,11 @@ impl Pads {
 }
 
 impl Game<'_> {
+    #[cfg(target_os = "android")]
+    pub(super) fn android_inventory_controls(&self) -> bool {
+        self.settings.touch.inventory_controls
+            && matches!(self.screen, Screen::Inventory | Screen::Creative)
+    }
     /// Once per loop iteration: read the pads and act on button changes.
     pub(super) fn poll_pads(&mut self, event_loop: &ActiveEventLoop) {
         #[cfg(target_os = "android")]
@@ -128,9 +136,28 @@ impl Game<'_> {
             self.pad.touch.cancel_editor();
         }
         #[cfg(target_os = "android")]
-        if self.pad_in_menu() || !self.focused {
-            self.pad.touch.clear();
-            horizon_client::android_runtime::clear_keypad();
+        {
+            let active = horizon_client::android_runtime::active_input();
+            if self.pad.last_input_mode.replace(active).is_some_and(|old| {
+                old == horizon_client::android_gamepad::InputMode::KeyboardMouse && old != active
+            }) {
+                for key in std::mem::take(&mut self.pad.hardware_keys) {
+                    self.android_key_up(key);
+                }
+                horizon_client::android_runtime::clear_keypad();
+            }
+            if (self.pad_in_menu() && !self.android_inventory_controls())
+                || !self.focused
+                || (!crate::touch_visible() && !self.settings.keypad.enabled)
+            {
+                self.pad.touch.clear();
+                horizon_client::android_runtime::clear_keypad();
+            }
+            self.android_custom_events();
+        }
+        #[cfg(target_os = "android")]
+        if self.pad_in_menu() && self.android_inventory_controls() {
+            self.pad.touch.clear_world_gesture();
         }
         let settings = &self.settings.controller;
         if !settings.enabled && !cfg!(target_os = "android") {
@@ -142,6 +169,15 @@ impl Game<'_> {
                 }
             }
             return;
+        }
+        #[cfg(target_os = "android")]
+        {
+            crate::platform::poll_gamepad_connections();
+            if !self.settings.controller.enabled || !self.focused {
+                horizon_client::android_runtime::clear_gamepads();
+            }
+            self.pad.touch.force_crosshair =
+                !crate::touch_visible() || self.settings.keypad.enabled;
         }
         let hardware = self.pad.read();
         self.ui.options.pad_style = self.settings.controller.glyphs.resolve(self.pad.style);
@@ -388,6 +424,12 @@ impl Game<'_> {
                     self.keys.insert(KeyCode::ControlLeft);
                 } else {
                     self.keys.remove(&KeyCode::ControlLeft);
+                    if crate::touch_visible()
+                        && self.settings.touch.sprint_toggle
+                        && let Some(player) = &mut self.player
+                    {
+                        player.sprinting = false;
+                    }
                 }
                 Ok(())
             }
@@ -455,8 +497,10 @@ impl Game<'_> {
         }
         #[cfg(target_os = "android")]
         {
-            if self.pad.touch.settings.analog_movement
-                && self.pad.touch.settings.mode != horizon_client::touch::Mode::Dpad
+            if horizon_client::android_runtime::active_input()
+                == horizon_client::android_gamepad::InputMode::Controller
+                || (self.pad.touch.settings.analog_movement
+                    && self.pad.touch.settings.mode != horizon_client::touch::Mode::Dpad)
             {
                 gamepad::move_vector(self.pad.state.left, settings.move_deadzone)
             } else {

@@ -3,7 +3,7 @@ use std::collections::VecDeque;
 use std::hash::Hash;
 use std::marker::PhantomData;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::{mpsc, Arc, Mutex};
+use std::sync::{Arc, Mutex, mpsc};
 use std::time::{Duration, Instant};
 
 use android_activity::input::{
@@ -30,6 +30,14 @@ use crate::window::{
 mod keycodes;
 mod mouse_state;
 
+static POINTER_DEVICES: Mutex<Vec<i32>> = Mutex::new(Vec::new());
+pub(crate) fn pointer_device(id: i32) -> bool {
+    POINTER_DEVICES.lock().unwrap().contains(&id)
+}
+static GAMEPAD_DEVICES: Mutex<Vec<i32>> = Mutex::new(Vec::new());
+pub(crate) fn set_gamepad_devices(ids: &[i32]) {
+    *GAMEPAD_DEVICES.lock().unwrap() = ids.to_vec();
+}
 static NATIVE_TEXT_INPUT_ACTIVE: AtomicBool = AtomicBool::new(false);
 
 pub(crate) fn set_native_text_input_active(active: bool) {
@@ -458,6 +466,12 @@ impl<T: 'static> EventLoop<T> {
                     source,
                     Source::Mouse | Source::MouseRelative | Source::Touchpad
                 ) {
+                    {
+                        let mut devices = POINTER_DEVICES.lock().unwrap();
+                        if !devices.contains(&motion_event.device_id()) {
+                            devices.push(motion_event.device_id());
+                        }
+                    }
                     let device_id = event::DeviceId(DeviceId(motion_event.device_id()));
                     let window_id = window::WindowId(WindowId);
                     callback(
@@ -532,8 +546,34 @@ impl<T: 'static> EventLoop<T> {
                     }
                     return InputStatus::Handled;
                 }
-                if source == Source::Joystick {
-                    return InputStatus::Unhandled;
+                if u32::from(source) & 0x01000010 == 0x01000010 {
+                    let device_id = event::DeviceId(DeviceId(motion_event.device_id()));
+                    if let Some(pointer) = motion_event.pointers().next() {
+                        for axis in [
+                            Axis::X,
+                            Axis::Y,
+                            Axis::Z,
+                            Axis::Rz,
+                            Axis::HatX,
+                            Axis::HatY,
+                            Axis::Ltrigger,
+                            Axis::Rtrigger,
+                            Axis::Gas,
+                            Axis::Brake,
+                        ] {
+                            callback(
+                                event::Event::DeviceEvent {
+                                    device_id,
+                                    event: event::DeviceEvent::Motion {
+                                        axis: axis.into(),
+                                        value: f64::from(pointer.axis_value(axis)),
+                                    },
+                                },
+                                self.window_target(),
+                            );
+                        }
+                    }
+                    return InputStatus::Handled;
                 }
                 let window_id = window::WindowId(WindowId);
                 let device_id = event::DeviceId(DeviceId(motion_event.device_id()));
@@ -584,6 +624,32 @@ impl<T: 'static> EventLoop<T> {
                 }
             }
             InputEvent::KeyEvent(key) => {
+                // Keep controller buttons separate from keyboard bindings and IME.
+                // A hardware phone D-pad remains a keyboard, not a gamepad.
+                let source = u32::from(key.source());
+                if source & 0x401 == 0x401
+                    || source & 0x01000010 == 0x01000010
+                    || GAMEPAD_DEVICES.lock().unwrap().contains(&key.device_id())
+                {
+                    let code = u32::from(key.key_code());
+                    if matches!(code, 4 | 19..=22 | 96 | 97 | 99 | 100 | 102..=109) {
+                        callback(
+                            event::Event::DeviceEvent {
+                                device_id: event::DeviceId(DeviceId(key.device_id())),
+                                event: event::DeviceEvent::Button {
+                                    button: code,
+                                    state: if key.action() == KeyAction::Down {
+                                        event::ElementState::Pressed
+                                    } else {
+                                        event::ElementState::Released
+                                    },
+                                },
+                            },
+                            self.window_target(),
+                        );
+                        return InputStatus::Handled;
+                    }
+                }
                 if NATIVE_TEXT_INPUT_ACTIVE.load(Ordering::Acquire)
                     && !matches!(
                         key.key_code(),
@@ -963,6 +1029,9 @@ impl From<u64> for WindowId {
 pub struct DeviceId(i32);
 
 impl DeviceId {
+    pub(crate) fn native_id(self) -> i32 {
+        self.0
+    }
     pub const fn dummy() -> Self {
         DeviceId(0)
     }
