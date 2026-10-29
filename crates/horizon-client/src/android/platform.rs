@@ -11,6 +11,7 @@ thread_local! {
     static VIBRATOR: RefCell<Option<Option<GlobalRef>>> = const { RefCell::new(None) };
     static VIBRATING: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
     static PAD_VIBRATOR: RefCell<Option<GlobalRef>> = const { RefCell::new(None) };
+    static PAD_HAPTIC_DEVICE: std::cell::Cell<Option<i32>> = const { std::cell::Cell::new(None) };
 }
 
 fn with_vibrator(f: impl FnOnce(&mut JNIEnv<'_>, &JObject<'_>) -> jni::errors::Result<()>) {
@@ -133,27 +134,44 @@ fn vibrate_gamepad(pulse: horizon_client::gamepad::Pulse, amplitude: i32) -> boo
         let sdk = env
             .get_static_field("android/os/Build$VERSION", "SDK_INT", "I")?
             .i()?;
-        let vibrator = if sdk >= 31 {
-            let manager = env
-                .call_method(
-                    &device,
-                    "getVibratorManager",
-                    "()Landroid/os/VibratorManager;",
-                    &[],
-                )?
-                .l()?;
-            env.call_method(
-                &manager,
-                "getDefaultVibrator",
-                "()Landroid/os/Vibrator;",
-                &[],
-            )?
-            .l()?
-        } else {
-            env.call_method(&device, "getVibrator", "()Landroid/os/Vibrator;", &[])?
-                .l()?
-        };
+        let first_probe = PAD_HAPTIC_DEVICE.with(|last| last.replace(Some(id)) != Some(id));
+        if sdk >= 31 {
+            let manager = env.call_method(
+                &device, "getVibratorManager", "()Landroid/os/VibratorManager;", &[],
+            )?.l()?;
+            let ids = jni::objects::JIntArray::from(
+                env.call_method(&manager, "getVibratorIds", "()[I", &[])?.l()?,
+            );
+            let count = env.get_array_length(&ids)?;
+            if first_probe {
+                log::info!("Android controller haptics: device {id}, {count} vibrator(s)");
+            }
+            if count > 0 {
+                let effect = env.call_static_method(
+                    "android/os/VibrationEffect", "createOneShot", "(JI)Landroid/os/VibrationEffect;",
+                    &[JValue::Long(i64::from(pulse.millis.min(1000))), JValue::Int(amplitude)],
+                )?.l()?;
+                // The default vibrator addresses only one motor. Send the mono
+                // pulse through the InputDevice's manager to every advertised motor.
+                let combined = env.call_static_method(
+                    "android/os/CombinedVibration", "createParallel",
+                    "(Landroid/os/VibrationEffect;)Landroid/os/CombinedVibration;",
+                    &[JValue::Object(&effect)],
+                )?.l()?;
+                env.call_method(&manager, "vibrate", "(Landroid/os/CombinedVibration;)V",
+                    &[JValue::Object(&combined)])?;
+                let reference = env.new_global_ref(&manager)?;
+                PAD_VIBRATOR.with(|v| *v.borrow_mut() = Some(reference));
+                return Ok(true);
+            }
+        }
+        // Some vendor drivers expose only the legacy device vibrator, even
+        // on Android versions which have VibratorManager.
+        let vibrator = env.call_method(&device, "getVibrator", "()Landroid/os/Vibrator;", &[])?.l()?;
         if !env.call_method(&vibrator, "hasVibrator", "()Z", &[])?.z()? {
+            if first_probe {
+                log::warn!("Android controller haptics: device {id} exposes no vibrator; using phone feedback");
+            }
             return Ok(false);
         }
         let effect = env
