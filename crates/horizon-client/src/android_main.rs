@@ -37,6 +37,8 @@ mod native_ime;
 mod performance;
 #[path = "android/platform.rs"]
 mod platform;
+#[path = "android/dns.rs"]
+mod android_dns;
 #[rustfmt::skip]
 #[allow(dead_code)]
 #[path = "../../../launcher/src/proxy.rs"]
@@ -112,6 +114,7 @@ pub(crate) const PUBLIC_BUILD: bool = match option_env!("HORIZON_ANDROID_PUBLIC"
 #[unsafe(no_mangle)]
 fn android_on_create(state: &winit::platform::android::activity::OnCreateState<'_>) {
     init_logging();
+    horizon_protocol::install_system_srv_lookup(android_dns::query_srv);
     if let Err(error) =
         unsafe { native_ime::initialize(state.vm_as_ptr().cast(), state.activity_as_ptr().cast()) }
     {

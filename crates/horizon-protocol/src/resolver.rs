@@ -5,7 +5,7 @@
 use crate::{Error, Result};
 use std::net::{IpAddr, SocketAddr, ToSocketAddrs};
 
-mod dns;
+pub(crate) mod dns;
 
 pub(crate) fn resolve(host: &str, port: u16) -> Result<Vec<SocketAddr>> {
     resolve_with(host, port, srv_redirect, |host, port| {
