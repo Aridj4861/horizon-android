@@ -18,6 +18,15 @@ To download a `.hmod` from a link, paste its HTTPS URL in the Mods search field
 and press **Import .hmod** (the Search button changes when a URL is entered).
 File import and link import are both available.
 
+In **Shaders**, choose **Horizon** for native `.hshader` packs or **Modrinth**
+for classic shader ZIPs. The selection is saved and each source has its own search
+cache. Modrinth compatibility is experimental: downloading a pack does not mean
+every effect is supported. Installation prefers a ZIP version listing the current
+Minecraft version, otherwise the newest downloadable ZIP. Source checksums and
+archive structure are checked before installation. An existing file belonging to
+another project or imported manually is not replaced. Successful downloads appear
+in **Installed > Shaders**, where they can be selected or removed.
+
 Successful imports and catalog installs in the launcher open Installed with the
 matching group expanded. Errors and cancellation keep the current page. Import
 results appear in the status line; progress and conflict dialogs use the bundled font.

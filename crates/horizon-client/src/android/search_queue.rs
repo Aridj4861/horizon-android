@@ -74,6 +74,20 @@ mod tests {
         assert_eq!(q.take_next(), None);
     }
     #[test]
+    fn shader_origins_keep_separate_results_and_reject_a_late_reply() {
+        let mut q = Queue::new();
+        let horizon = ("shaders", "horizon", "water", 0);
+        let modrinth = ("shaders", "modrinth", "water", 0);
+        q.request(horizon, false);
+        assert_eq!(q.take_next(), Some(horizon));
+        q.request(modrinth, false);
+        assert!(!q.finish(Some(vec!["native"])));
+        assert_eq!(q.take_next(), Some(modrinth));
+        assert!(q.finish(Some(vec!["classic"])));
+        assert_eq!(q.request(horizon, false), Some(vec!["native"]));
+        assert_eq!(q.request(modrinth, false), Some(vec!["classic"]));
+    }
+    #[test]
     fn explicit_refresh_bypasses_cache_and_errors_do_not_retry_forever() {
         let mut q = Queue::new();
         q.request(1, false);

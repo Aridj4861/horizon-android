@@ -2,6 +2,9 @@
 
 Changes in development after 0.7.3 (versionCode 25).
 
+- Shader search has separate **Horizon** and **Modrinth** sources. Native packs
+  keep the Horizon registry path; classic Modrinth ZIPs have experimental
+  compatibility, checksum/archive checks, install status and Installed management.
 - Native Android input for standard USB and Bluetooth gamepads: positional
   buttons, sticks, D-pad hats and analog/digital triggers use Controller Settings
   bindings, deadzones and look sensitivity. Controller focus navigation also
@@ -25,6 +28,8 @@ Changes in development after 0.7.3 (versionCode 25).
 ## Checks before publishing
 
 Host input tests: `python tools/test_android_input.py`.
+Shader catalog/install tests: `python tools/test_android_shaders.py`; add `--live`
+to check Modrinth metadata without downloading shader packs.
 
 Device testing still needs to cover:
 

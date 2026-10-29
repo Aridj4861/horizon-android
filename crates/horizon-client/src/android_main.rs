@@ -41,6 +41,8 @@ mod proxy;
 mod search_queue;
 #[path = "android/secure_store.rs"]
 mod secure_store;
+#[path = "android/shader_catalog.rs"]
+mod shader_catalog;
 #[allow(dead_code)]
 #[path = "../../../launcher/src/skins.rs"]
 mod skins;

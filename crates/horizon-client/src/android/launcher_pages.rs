@@ -10,6 +10,7 @@ pub(super) enum Action {
     Page(Page),
     Play,
     Search,
+    ShaderSource(crate::shader_catalog::Origin),
     Field(&'static str),
     FinishNameEdit,
     Install(usize),
@@ -428,7 +429,7 @@ impl Launcher {
                 if page == Page::Mods {
                     "Horizon Mods"
                 } else if page == Page::Shaders {
-                    "Shader Packs"
+                    if w < 360.0 { "Shaders" } else { "Shader Packs" }
                 } else {
                     "Resource Packs"
                 },
@@ -461,9 +462,33 @@ impl Launcher {
                 Action::Search,
                 true,
             );
+            if page == Page::Shaders {
+                use crate::shader_catalog::Origin;
+                let width = ((w - 185.0) / 2.0).clamp(58.0, 120.0);
+                for (i, origin) in [Origin::Horizon, Origin::Modrinth].into_iter().enumerate() {
+                    let rect = [w - 32.0 - (2 - i) as f32 * width, 134.0, width - 5.0, 32.0];
+                    button(
+                        &mut ui,
+                        &mut self.targets,
+                        rect,
+                        origin.source().label(),
+                        Action::ShaderSource(origin),
+                        false,
+                    );
+                    if self.catalog.config.shader_source == origin {
+                        ui.border(rect[0], rect[1], rect[2], rect[3], 1.0, color::TEXT);
+                    }
+                }
+            }
             let hint = match page {
                 Page::Mods => "Search Horizon mods or paste an HTTPS .hmod link",
-                Page::Shaders => "Horizon catalog / ZIP support is experimental",
+                Page::Shaders
+                    if self.catalog.config.shader_source
+                        == crate::shader_catalog::Origin::Modrinth =>
+                {
+                    "Modrinth shader ZIPs / experimental compatibility; some packs may not work"
+                }
+                Page::Shaders => "Horizon native .hshader packs",
                 _ => "Verified downloads / enable in Installed",
             };
             let hint = ui.fit_text(Face::Regular, 14.0, hint, w - 64.0);
@@ -1015,6 +1040,12 @@ impl Launcher {
             audio.play_button_click();
         }
         match action {
+            Some(Action::ShaderSource(origin)) => {
+                self.catalog.config.shader_source = origin;
+                self.catalog.config.save(&self.home)?;
+                self.catalog.offset = 0;
+                self.catalog.search(&self.home);
+            }
             Some(Action::OpenFolder(kind)) => {
                 crate::platform::hide();
                 let folder = match kind {

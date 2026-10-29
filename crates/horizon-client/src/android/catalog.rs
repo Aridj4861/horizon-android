@@ -44,6 +44,7 @@ pub struct Config {
     pub input_host: InputHost,
     pub keypad_controls: bool,
     pub record_performance: bool,
+    pub shader_source: crate::shader_catalog::Origin,
 }
 
 pub use horizon_client::android_gamepad::InputMode as InputHost;
@@ -179,7 +180,7 @@ pub struct Catalog {
     pub render_scale_text: String,
     worker: Option<mpsc::Receiver<Result<Reply, String>>>,
     search_worker: Option<mpsc::Receiver<Result<Vec<Project>, String>>>,
-    searches: crate::search_queue::Queue<(Page, String, usize), Vec<Project>>,
+    searches: crate::search_queue::Queue<(Page, browser::SourceId, String, usize), Vec<Project>>,
 }
 #[derive(Clone)]
 pub struct LocalItem {
@@ -389,7 +390,12 @@ impl Catalog {
             return;
         }
         self.scroll = 0.0;
-        let key = (self.page, self.query.trim().to_owned(), self.offset);
+        let source = match self.page {
+            Page::Packs => browser::SourceId::Modrinth,
+            Page::Shaders => self.config.shader_source.source(),
+            _ => browser::SourceId::Horizon,
+        };
+        let key = (self.page, source, self.query.trim().to_owned(), self.offset);
         if let Some(items) = self.searches.request(key, refresh) {
             self.show_results(items);
         } else {
@@ -399,8 +405,11 @@ impl Catalog {
         self.start_search();
     }
     fn show_results(&mut self, items: Vec<Project>) {
-        self.status = if self.page == Page::Shaders && items.is_empty() {
-            "No native shader packs published yet. Import a .hshader or experimental shaders ZIP."
+        self.status = if self.page == Page::Shaders
+            && items.is_empty()
+            && self.config.shader_source == crate::shader_catalog::Origin::Horizon
+        {
+            "No Horizon shader packs match this search. Try another query or import a .hshader."
                 .into()
         } else {
             format!(
@@ -414,7 +423,7 @@ impl Catalog {
         if self.busy() || self.search_worker.is_some() {
             return;
         }
-        let Some((page, text, offset)) = self.searches.take_next() else {
+        let Some((page, source, text, offset)) = self.searches.take_next() else {
             return;
         };
         let (tx, rx) = mpsc::channel();
@@ -428,7 +437,10 @@ impl Catalog {
             let mut query = Query::new(&text, kind);
             query.offset = offset;
             query.limit = 12;
-            let result = if page == Page::Packs {
+            let result = if page == Page::Shaders && source == browser::SourceId::Modrinth {
+                query.everything = true;
+                browser::modrinth::search_shader_packs(&query)
+            } else if page == Page::Packs {
                 query.everything = true;
                 browser::modrinth::Modrinth.search(&query)
             } else {
@@ -466,7 +478,11 @@ impl Catalog {
         }
         let game = self.config.game_home(home);
         if project.kind != Kind::ResourcePack
-            && !(project.kind == Kind::Shader && project.source == browser::SourceId::Horizon)
+            && !(project.kind == Kind::Shader
+                && matches!(
+                    project.source,
+                    browser::SourceId::Horizon | browser::SourceId::Modrinth
+                ))
             && !(cfg!(feature = "mods")
                 && project.kind == Kind::Mod
                 && project.source == browser::SourceId::Horizon)
@@ -477,25 +493,33 @@ impl Catalog {
         self.failed = None;
         *self.progress.lock().unwrap_or_else(|e| e.into_inner()) = 0.0;
         let progress = self.progress.clone();
-        self.job("Checking compatibility and downloading...", move || {
+        let status =
+            if project.kind == Kind::Shader && project.source == browser::SourceId::Modrinth {
+                "Downloading experimental shader ZIP..."
+            } else {
+                "Checking compatibility and downloading..."
+            };
+        self.job(status, move || {
             std::fs::create_dir_all(&game).map_err(|e| e.to_string())?;
             let source = browser::source(project.source).ok_or("Unsupported download source")?;
-            let entries = browser::installed::install(
-                source.as_ref(),
-                &project,
-                true,
-                &game,
-                &|_name, p| {
+            let count = if project.kind == Kind::Shader
+                && project.source == browser::SourceId::Modrinth
+            {
+                crate::shader_catalog::install(source.as_ref(), &project, &game, &|_name, p| {
                     if p.is_finite() {
                         *progress.lock().unwrap_or_else(|e| e.into_inner()) = p.clamp(0.0, 1.0);
                     }
-                },
-            )?;
+                })?
+            } else {
+                browser::installed::install(source.as_ref(), &project, true, &game, &|_name, p| {
+                    if p.is_finite() {
+                        *progress.lock().unwrap_or_else(|e| e.into_inner()) = p.clamp(0.0, 1.0);
+                    }
+                })?
+                .len()
+            };
             Ok(Reply::Done(
-                format!(
-                    "Installed {} item(s). Open Play to load this profile.",
-                    entries.len()
-                ),
+                format!("Installed {count} item(s). Open Play to load this profile."),
                 match project.kind {
                     Kind::Mod => horizon_client::content_files::Kind::Mods,
                     Kind::Shader => horizon_client::content_files::Kind::Shaders,
