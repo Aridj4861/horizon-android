@@ -1729,13 +1729,11 @@ impl OptionsUi {
                         Act::Push(Page::KeyBinds),
                     )),
                 )];
+                #[cfg(target_os = "android")]
+                rows.insert(0, Row::Big(Opt::AndroidInputMode));
                 rows.extend(pairs(&[Opt::ToggleCrouch, Opt::ToggleSprint]));
                 #[cfg(target_os = "android")]
-                rows.extend(pairs(&[
-                    Opt::AutoJump,
-                    Opt::TouchAutoSprint,
-                    Opt::AndroidInputMode,
-                ]));
+                rows.extend(pairs(&[Opt::AutoJump, Opt::TouchAutoSprint]));
                 #[cfg(not(target_os = "android"))]
                 rows.extend(pairs(&[Opt::AutoJump]));
                 rows.push(Row::Buttons(

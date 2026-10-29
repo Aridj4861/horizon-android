@@ -162,9 +162,6 @@ impl TouchControls {
         self.pending.set(button, true);
     }
     fn visible(&self, c: Control) -> bool {
-        if self.inventory_mode && Self::inventory_token(c).is_some() {
-            return true;
-        }
         if self.auxiliary_only && !Self::auxiliary_control(c) {
             return false;
         }
@@ -247,7 +244,10 @@ impl TouchControls {
                 p.opacity
             };
             let color = rgba(255, 255, 255, (opacity * 255.0).round() as u8);
-            let held = (control == Control::Sneak && self.sneaking)
+            let held = (self.inventory_mode
+                && Self::inventory_token(control)
+                    .is_some_and(|token| self.held_custom_tokens().any(|held| held == token)))
+                || (control == Control::Sneak && self.sneaking)
                 || Self::button(control).is_some_and(|bt| {
                     state.held(bt)
                         || (bt == Button::LeftTrigger && state.triggers[0] > 0.0)
@@ -327,9 +327,6 @@ impl TouchControls {
                         .fingers
                         .values()
                         .any(|(_, point)| layout::contains(p.rect(self.aspect()), *point));
-                if self.draw_inventory_button(b, a, control, [x, y, size, size], color) {
-                    continue;
-                }
                 let themed = match control {
                     Control::Chat => Some("chat"),
                     Control::Pause => Some("pause"),

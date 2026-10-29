@@ -55,50 +55,6 @@ pub(super) fn choices(raw_keys: bool) -> Vec<(String, String)> {
     }
 }
 impl TouchControls {
-    pub(super) fn draw_inventory_button(
-        &self,
-        b: &mut HudBatch,
-        a: &HudAtlas,
-        control: Control,
-        rect: [f32; 4],
-        color: u32,
-    ) -> bool {
-        if !self.inventory_mode {
-            return false;
-        }
-        let Some(token) = Self::inventory_token(control) else {
-            return false;
-        };
-        let label = match control {
-            Control::Sneak => "Shift",
-            Control::Attack => "LMB",
-            _ => "RMB",
-        };
-        let pressed = self.held_custom_tokens().any(|v| v == token);
-        if !theme_button(b, a, "button", rect, pressed, color, true) {
-            nine(b, a, "ui/button_borderless_light", 2.0, rect, color);
-        }
-        let width = HudBatch::text_width(a, label);
-        let start = b.vertices.len();
-        b.text(
-            a,
-            label,
-            rect[0] + (rect[2] - width) / 2.0,
-            rect[1] + (rect[3] - 8.0) / 2.0,
-            rgba(25, 25, 25, (color >> 24) as u8),
-            false,
-        );
-        let scale = ((rect[2] - 6.0).max(1.0) / width.max(1.0))
-            .min(((rect[3] - 6.0).max(1.0) / 8.0).min(1.0));
-        b.scale_since(
-            start,
-            rect[0] + rect[2] / 2.0,
-            rect[1] + rect[3] / 2.0,
-            scale,
-            scale,
-        );
-        true
-    }
     pub(super) fn inventory_token(control: Control) -> Option<&'static str> {
         match control {
             Control::Sneak => Some("key.keyboard.left.shift"),
@@ -265,6 +221,7 @@ mod tests {
         let mut t = TouchControls::default();
         t.viewport(1920, 1080);
         t.inventory_mode = true;
+        t.settings.mode = Mode::Crosshair;
         for (id, control, token) in [
             (1, Control::Sneak, "key.keyboard.left.shift"),
             (2, Control::Attack, "action:key.attack"),
@@ -283,6 +240,24 @@ mod tests {
         let released = t.key_events();
         assert!(released.contains(&("key.keyboard.left.shift".into(), false)));
         assert!(released.contains(&("action:key.use".into(), false)));
+    }
+    #[test]
+    fn inventory_overlay_preserves_configured_visibility_and_placements() {
+        let mut touch = TouchControls::default();
+        for mode in Mode::ALL {
+            touch.settings.mode = mode;
+            touch.settings.button_visibility[Control::Attack as usize] = 2;
+            let before: Vec<_> = Control::ALL
+                .into_iter()
+                .map(|c| (c, touch.visible(c), touch.placement(c).center))
+                .collect();
+            touch.inventory_mode = true;
+            for (control, visible, center) in before {
+                assert_eq!(touch.visible(control), visible);
+                assert_eq!(touch.placement(control).center, center);
+            }
+            touch.inventory_mode = false;
+        }
     }
     #[test]
     fn unassigned_button_emits_no_input() {
