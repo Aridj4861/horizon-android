@@ -1359,7 +1359,12 @@ impl OptionsUi {
             && matches!(self.page(), Page::Video | Page::Controls | Page::KeyBinds)
     }
     #[cfg(target_os = "android")]
-    pub fn android_edit_value(&mut self) -> String {
+    pub fn android_edit_value(&mut self, atlas: &HudAtlas) -> String {
+        if self.page() == Page::Packs
+            && let Some(pack) = &mut self.pack_screen
+        {
+            return pack.android_edit_value(&crate::screen_draw::Measure(&atlas.font));
+        }
         let edit = if self.page() == Page::Language {
             &mut self.language_search
         } else {

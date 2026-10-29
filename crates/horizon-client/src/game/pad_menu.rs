@@ -989,9 +989,7 @@ impl Game<'_> {
             }
         } else if cfg!(target_os = "android") && self.screen == Screen::CommandBlock {
             #[cfg(target_os = "android")]
-            if key != Some(KeyCode::Enter) {
-                self.command_block_ime(text);
-            }
+            self.command_block_ime(key, text);
         } else if self.screen == Screen::WorldOptions {
             if key != Some(KeyCode::Enter) {
                 self.world_options_text(text);

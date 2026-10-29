@@ -367,7 +367,7 @@ impl Game<'_> {
         } else if self.recipe_search_focused() {
             self.recipe_search_value()
         } else if self.screen == Screen::Options {
-            self.ui.options.android_edit_value()
+            self.ui.options.android_edit_value(&self.gui.atlas)
         } else if self.screen == Screen::WorldOptions {
             self.world_options_edit_value()
         } else if self.screen == Screen::CommandBlock {

@@ -778,6 +778,12 @@ impl PackScreen {
             self.filter(None);
         }
     }
+    #[cfg(target_os = "android")]
+    pub fn android_edit_value(&mut self, measure: &Measure) -> String {
+        self.search
+            .move_cursor_to(measure, self.search.value.chars().count(), false);
+        self.search.value.clone()
+    }
     pub fn search_focused(&self) -> bool {
         self.confirm.is_none() && self.focus == Focus::Search
     }
