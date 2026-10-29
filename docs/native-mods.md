@@ -32,10 +32,17 @@ mod was tested on. In its own copy of the mod it sets `horizon_revision` to the 
 official mods (Zoom, FPS counter, Keystrokes, Minimap, Recipes) are made this way, so any of them build together
 with no re-release for each Nightly. The `mods` feature (WebAssembly mods) is passed to the build only when the source has it.
 
+API 2 adds the item panel beside container screens and its recipe pages (`native_panel_items`,
+`native_panel_recipes`, and the hook `native_panel_event` for the player's clicks, searches and keys over items), and
+the game's items and recipes (`native_recipes`, `native_known_recipes`, `native_place_recipe`, `native_give`): what a
+recipe viewer needs, in builds with or without the `mods` feature. A WebAssembly mod's panel shows only while no native
+mod shows one.
+
 ## What the launcher does
 
-In the window: install a native mod from the Mods page, turn on Settings → Game → **Native mods (experimental)**,
-then **Build**. The launcher names the mods, warns in red, and builds only from "I trust these mods: build"; the
+In the window: install a native mod from the Mods page. The first one shows a notice once (the first build downloads
+Rust and can take 20 to 30 minutes; later builds are faster) and turns on Settings → Game → **Native mods
+(experimental)**, which stays off for players who never install one; `mods install` does the same. Then **Build**. The launcher names the mods, warns in red, and builds only from "I trust these mods: build"; the
 row shows each step, the error if one fails, and the build the instance plays. From the command line:
 `horizon-launcher native-build [FOLDER] [--instance NAME] --trust-native-code`. FOLDER is a bundle, an unpacked
 `.hnmod`, or a folder of them; without it, the native mods turned on in the instance. It is not an MCP tool:

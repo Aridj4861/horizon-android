@@ -26,7 +26,7 @@ bytemuck = "1"
 naga = { version = "30.0.1", features = ["wgsl-in"] }
 ''', encoding='utf-8')
     modules = '\n'.join(
-        f'#[path = "{(ROOT / "crates/horizon-client/src/gfx" / (name + ".rs")).as_posix()}"] pub mod {name};'
+        f'#[path = "{(ROOT / "crates/horizon-client-render/src/gfx" / (name + ".rs")).as_posix()}"] pub mod {name};'
         for name in ('arena', 'upload', 'timing', 'frame_timing')
     )
     (work / 'src/lib.rs').write_text('''#![allow(dead_code)]
@@ -93,7 +93,7 @@ fn storage_pages_fit_portable_binding_limits() {
     })).expect("portable GPU device");
     for stride in [4, 24] {
         let arena = gfx::arena::Arena::new(&device, stride, 256, true);
-        assert!(arena.page_vertices() * stride <= u64::from(device.limits().max_storage_buffer_binding_size));
+        assert!(arena.page_vertices() * stride <= device.limits().max_storage_buffer_binding_size);
         // Verify ordinary vertex pages retain the larger allocation limit.
         let vertex = gfx::arena::Arena::new(&device, stride, 256, false);
         assert!(vertex.page_vertices() >= arena.page_vertices());
@@ -103,7 +103,7 @@ fn storage_pages_fit_portable_binding_limits() {
 }
 ''', encoding='utf-8')
     with (work / 'src/lib.rs').open('a', encoding='utf-8') as output:
-        shader = (ROOT / 'crates/horizon-client/src/terrain.wgsl').as_posix()
+        shader = (ROOT / 'crates/horizon-client-render/src/terrain.wgsl').as_posix()
         output.write(f'\n#[test] fn terrain_shader_validates() {{\n'
                      f'let module = naga::front::wgsl::parse_str(include_str!("{shader}")).unwrap();\n'
                      'naga::valid::Validator::new(naga::valid::ValidationFlags::all(), '

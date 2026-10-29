@@ -26,8 +26,7 @@ impl Game<'_> {
     /// The nearest boat, minecart, item frame, armor stand or painting the
     /// view hits within reach; also End crystals when attacking.
     pub(super) fn remote_object_hit(&self, attacking: bool) -> Option<ObjectHit> {
-        let eye = self.eye_position()?;
-        let dir = self.interaction_direction();
+        let (eye, dir) = self.aim()?;
         let at = |d: f64| {
             [
                 eye[0] + dir[0] * d,

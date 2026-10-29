@@ -218,6 +218,7 @@ fn android_main(app: AndroidApp) {
         log::error!("Android supplied no application cache directory");
         return;
     };
+    horizon_client::android_runtime::configure_cache_dir(cache.clone());
     horizon_client::official_install::configure_download_cache_dir(cache);
     horizon_client::android_runtime::install_clipboard(
         horizon_client::android_runtime::ClipboardHooks {

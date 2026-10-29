@@ -28,10 +28,14 @@ Changes in development after 0.7.3 (versionCode 25).
 - **Toggle sprint button**, in Touch Controls: tap on/off instead of hold, with
   visible pressed state. Clearing touch input or losing focus resets the latch.
   Both new touch settings default to off.
-- Merge 100 upstream commits, including merge history, through `e6bb2f74c`:
+- Merge 233 upstream commits across two reviewed batches, including merge history,
+  through `13d7d9995`:
   asynchronous single-player startup, connection screens, faster disconnects,
   team-aware multiplayer collisions, packet validation, item component handling,
-  native-mod hooks and gameplay fixes. Upstream deployment workflows stay disabled.
+  native-mod hooks and gameplay fixes. The later batch adds render-crate separation,
+  native item/recipe panels, sprite decoding caches, combat/projectile fixes,
+  world-save recovery and structure/LOD corrections. Android sprite caches use
+  the clearable system cache directory. Upstream deployment workflows stay disabled.
 
 ## Checks before publishing
 
