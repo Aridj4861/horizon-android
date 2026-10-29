@@ -124,6 +124,9 @@ impl Launcher {
             self.fail(error);
             return;
         }
+        horizon_client::android_runtime::clear_gamepads();
+        self.controller_edges = Default::default();
+        self.controller_repeat = None;
         self.catalog.config.input_host = horizon_client::android_runtime::input_mode();
         self.catalog.refresh(&self.home);
         self.login.refresh_status();
@@ -258,6 +261,10 @@ impl Launcher {
                     }),
                 )?;
             }
+            // The A press that launches the game must not accept its first menu too.
+            horizon_client::android_runtime::clear_gamepads();
+            self.controller_edges = Default::default();
+            self.controller_repeat = None;
             let game = match game::android_game() {
                 Ok(game) => game,
                 Err(error) => {

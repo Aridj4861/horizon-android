@@ -633,6 +633,9 @@ impl<T: 'static> EventLoop<T> {
                 {
                     let code = u32::from(key.key_code());
                     if matches!(code, 4 | 19..=22 | 96 | 97 | 99 | 100 | 102..=109) {
+                        if key.action() == KeyAction::Down && key.repeat_count() > 0 {
+                            return InputStatus::Handled;
+                        }
                         callback(
                             event::Event::DeviceEvent {
                                 device_id: event::DeviceId(DeviceId(key.device_id())),
