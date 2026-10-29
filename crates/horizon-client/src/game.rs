@@ -16057,6 +16057,16 @@ impl Loading {
             crate::game::exit_app(event_loop);
             return;
         }
+        // This title screen is already interactive while the resource worker
+        // runs. It must not run uncapped until Game's limiter takes over.
+        #[cfg(target_os = "android")]
+        if let Some(last) = self.menu.last_frame {
+            let next = last + Duration::from_nanos(1_000_000_000 / 60);
+            if Instant::now() < next {
+                event_loop.set_control_flow(ControlFlow::WaitUntil(next));
+                return;
+            }
+        }
         if let Some(w) = &self.window {
             if self.options.as_ref().is_some_and(|o| o.offscreen) {
                 self.draw();
