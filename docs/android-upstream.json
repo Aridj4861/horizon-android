@@ -7,11 +7,11 @@
   "compared_source_files": 3147,
   "modified_existing_files": 41,
   "branch": "android",
-  "merged_upstream_commit": "abd1755f95b68facee7df3c26fcda721c6b0e100",
-  "merged_upstream_commits": 3148,
+  "merged_upstream_commit": "e6bb2f74c7094040cf152304f78db8c3ebe13cf5",
+  "merged_upstream_commits": 3248,
   "last_reviewed_date": "2026-10-29",
-  "last_update_commits": 194,
-  "latest_fetched_commit": "abd1755f95b68facee7df3c26fcda721c6b0e100",
-  "review": "0.7.3: merge 194 stable upstream commits including merge history after f66f66c3 through abd1755f. Includes reduced far-chunk sweep frequency, reused spawn/ticker buffers, sign-text layout caching, renderer allocation reductions, gameplay fixes and new desktop native-mod hooks. Android NativeActivity/event-loop routing, launcher return, system Files provider, public-resource repair and Rust IME paths are retained. Upstream deployment workflows remain disabled. Crash path scrubbing retains the Android fork implementation without embedding private build paths.",
+  "last_update_commits": 100,
+  "latest_fetched_commit": "e6bb2f74c7094040cf152304f78db8c3ebe13cf5",
+  "review": "0.7.4: merge 100 stable upstream commits including merge history through e6bb2f74c. Includes asynchronous integrated-server startup and connect screens, faster disconnects and loot preload, team-aware collision pushes, malformed packet validation, item component preservation and gameplay fixes. Android resource reload, NativeActivity lifecycle, IME, keypad bindings and native-mod catalog paths are retained. Upstream deployment workflows remain disabled. Desktop Java-instance support does not add a Java runtime to the Android game.",
   "pending_review_commits": 0
 }
