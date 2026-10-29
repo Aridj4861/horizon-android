@@ -203,7 +203,7 @@ fn sky_fog(color: vec3<f32>, dist: vec2<f32>) -> vec3<f32> {
 // Weight of the fan centre where the ray crosses the sunrise fan (0 when missed):
 // Moller-Trumbore from the origin along d, over normals built once a frame
 // (gfx/sunrise_fan.rs). The barycentrics are apex/s, k1/s and -k0/s; s is -det.
-fn sunrise_weight(d: vec3<f32>) -> f32 {
+fn sunrise_weight_full(d: vec3<f32>) -> f32 {
     if globals.sunrise.a <= 0.001 { return 0.0; }
     var best = 0.0;
     var k0 = dot(d, globals.sunrise_fan[16].xyz);
@@ -220,6 +220,32 @@ fn sunrise_weight(d: vec3<f32>) -> f32 {
             }
         }
         k0 = k1;
+    }
+    return best;
+}
+// The rim's YZ projection is a uniformly spaced ellipse. Undo its Y
+// squash to select the intersected angular sector rather than testing all
+// sixteen triangles in every screen pixel. Adjacent sectors cover floating
+// point seams; the opposite sector covers the other ray direction.
+fn sunrise_weight(d: vec3<f32>) -> f32 {
+    if globals.sunrise.a <= 0.001 { return 0.0; }
+    if dot(d.yz, d.yz) < 1e-10 { return sunrise_weight_full(d); }
+    let flip = select(1.0, -1.0, globals.sun.z > 0.0);
+    let angle = atan2(d.z * flip * globals.sunrise.a, 3.0 * d.y);
+    let sector = i32(floor(angle * (16.0 / (2.0 * PI))));
+    let offsets = array<i32, 6>(0, 8, -1, 1, 7, 9);
+    var best = 0.0;
+    for (var candidate = 0u; candidate < 6u; candidate++) {
+        let i = u32((sector + offsets[candidate] + 32) % 16);
+        let k0 = dot(d, globals.sunrise_fan[16u+i].xyz);
+        let k1 = dot(d, globals.sunrise_fan[16u+(i+1u)%16u].xyz);
+        let triangle = globals.sunrise_fan[i];
+        let apex = dot(d, triangle.xyz);
+        let s = apex + k1 - k0;
+        if abs(s) >= 1e-6 && s * triangle.w > 0.0 && apex * s >= 0.0
+            && k1 * s >= 0.0 && k0 * s <= 0.0 {
+            best = max(best, apex / s);
+        }
     }
     return best;
 }

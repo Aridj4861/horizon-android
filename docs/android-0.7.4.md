@@ -10,8 +10,6 @@ Changes in development after 0.7.3 (versionCode 25).
   post-processing/hand/HUD work. Android's total GPU timer also includes in-frame
   preparation; earlier section copies are outside that interval.
 - Android recognizes the application as a game for system game tools.
-- The interactive Android startup menu is paced at 60 FPS while resources
-  prepare, using event-loop deadlines rather than blocking input.
 - GPU occlusion tests use atomic visibility stamps to avoid concurrent fragment
   writes. Adreno 730 flicker reports still require confirmation on that GPU.
 - Shader search has separate **Horizon** and **Modrinth** sources. Native packs
