@@ -9,6 +9,8 @@ use winit::{event::TouchPhase, keyboard::KeyCode};
 #[derive(Default)]
 pub struct TouchUi {
     pub expanded: bool,
+    pub virtual_mouse: bool,
+    pub virtual_mouse_button: bool,
     pub keyboard: Option<Keyboard>,
     gesture: Option<(u64, [f32; 2], [f32; 2], bool)>,
     pointer_drag: Option<u64>,
@@ -26,6 +28,7 @@ pub enum Action {
     DebugCombo(KeyCode),
     Key(KeyCode),
     Keyboard,
+    VirtualMouse,
     More,
 }
 
@@ -143,6 +146,13 @@ impl TouchUi {
         }
     }
     pub fn action(&self, w: f32, p: [f32; 2], menu: bool) -> Option<Action> {
+        if self.virtual_mouse_button
+            && menu
+            && (3.0..23.0).contains(&p[1])
+            && (w - 108.0..w - 56.0).contains(&p[0])
+        {
+            return Some(Action::VirtualMouse);
+        }
         if (3.0..23.0).contains(&p[1]) {
             if menu && (w - 53.0..w - 3.0).contains(&p[0]) {
                 return Some(Action::Key(KeyCode::Escape));
@@ -198,6 +208,20 @@ impl TouchUi {
                 x,
                 3.0,
                 width,
+            );
+        }
+        if menu && self.virtual_mouse_button {
+            button(
+                b,
+                a,
+                if self.virtual_mouse {
+                    "Mouse ON"
+                } else {
+                    "Mouse"
+                },
+                b.width - 108.0,
+                3.0,
+                50.0,
             );
         }
         if menu {

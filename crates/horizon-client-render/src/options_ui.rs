@@ -204,6 +204,7 @@ impl Opt {
             Opt::TouchSprintButton => "Sprint button",
             Opt::TouchSprintToggle => "Toggle sprint button",
             Opt::TouchInventoryControls => "Controls in inventory",
+            Opt::TouchVirtualMouse => "Virtual mouse button",
             Opt::AndroidInputMode => "Input device",
             Opt::TouchSwapJumpSneak => "Swap jump / sneak",
             Opt::TouchAutoSprint => "Auto Sprint",
@@ -452,6 +453,7 @@ impl Opt {
             Opt::TouchLeftHand => Some(if s.touch.left_handed { "ON" } else { "OFF" }.into()),
             Opt::TouchSprintButton => Some(if s.touch.sprint_button { "ON" } else { "OFF" }.into()),
             Opt::TouchSprintToggle => Some(if s.touch.sprint_toggle { "ON" } else { "OFF" }.into()),
+            Opt::TouchVirtualMouse => Some(if s.touch.virtual_mouse { "ON" } else { "OFF" }.into()),
             Opt::TouchInventoryControls => Some(
                 if s.touch.inventory_controls {
                     "ON"
@@ -910,6 +912,7 @@ impl Opt {
             Opt::TouchSprintButton => s.touch.sprint_button ^= true,
             Opt::TouchSprintToggle => s.touch.sprint_toggle ^= true,
             Opt::TouchInventoryControls => s.touch.inventory_controls ^= true,
+            Opt::TouchVirtualMouse => s.touch.virtual_mouse ^= true,
             Opt::AndroidInputMode => {
                 let all = crate::android_gamepad::InputMode::ALL;
                 let i = all
@@ -1929,6 +1932,7 @@ impl OptionsUi {
                     Opt::TouchSprintButton,
                     Opt::TouchSprintToggle,
                     Opt::TouchInventoryControls,
+                    Opt::TouchVirtualMouse,
                     Opt::TouchInteract,
                     Opt::TouchLeftHand,
                     Opt::TouchSwapJumpSneak,

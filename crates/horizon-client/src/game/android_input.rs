@@ -256,6 +256,10 @@ impl Game<'_> {
             }
             return Ok(true);
         }
+        self.pad.touch_ui.virtual_mouse_button = self.settings.touch.virtual_mouse;
+        if !self.settings.touch.virtual_mouse {
+            self.pad.touch_ui.virtual_mouse = false;
+        }
         let size = self.window.as_ref().unwrap().inner_size();
         let b = HudBatch::new([size.width, size.height]);
         let p = [t.location.x as f32 / b.scale, t.location.y as f32 / b.scale];
@@ -292,6 +296,9 @@ impl Game<'_> {
                             self.debug_key(KeyCode::F3, KeyAction::Release);
                         }
                         self.pad.touch_ui.expanded = false;
+                    }
+                    Action::VirtualMouse => {
+                        self.pad.touch_ui.virtual_mouse ^= true;
                     }
                     Action::More => self.pad.touch_ui.expanded = !self.pad.touch_ui.expanded,
                     Action::Keyboard => {
@@ -507,6 +514,10 @@ impl Game<'_> {
                 position: t.location,
             },
         );
+        if self.pad.touch_ui.virtual_mouse {
+            // Hover only; existing inventory attack/use controls provide clicks.
+            return;
+        }
         if direct {
             if t.phase != TouchPhase::Moved {
                 self.window_event(

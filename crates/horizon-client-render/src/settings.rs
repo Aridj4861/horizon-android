@@ -774,6 +774,7 @@ pub enum Opt {
     TouchSprintButton,
     TouchSprintToggle,
     TouchInventoryControls,
+    TouchVirtualMouse,
     AndroidInputMode,
     TouchSwapJumpSneak,
     TouchAutoSprint,
