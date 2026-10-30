@@ -2163,15 +2163,12 @@ impl Game<'_> {
     #[cfg(target_os = "android")]
     pub(super) fn touch_item_held_use(&self) -> bool {
         self.held().is_some_and(|s| {
-            matches!(
-                &*s.item,
-                "minecraft:bow" | "minecraft:crossbow" | "minecraft:trident" | "minecraft:spyglass"
-            ) || self
-                .res
-                .items()
-                .get(&s.item)
-                .is_some_and(|i| i.consumable.is_some())
-                || self.blocks_attacks(s).is_some()
+            let data = self.res.items().get(&s.item);
+            horizon_client::touch::item_uses_hold(
+                &s.item,
+                data.is_some_and(|i| i.consumable.is_some()),
+                data.is_some_and(|i| i.equip_slot.is_some()),
+            ) || self.blocks_attacks(s).is_some()
         })
     }
     pub(super) fn touch_editing(&self) -> bool {

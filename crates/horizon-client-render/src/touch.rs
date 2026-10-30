@@ -6,6 +6,24 @@ use std::{
     time::{Duration, Instant},
 };
 const HOLD_DELAY: Duration = Duration::from_millis(350);
+/// Items whose use action belongs to a world hold in tap control modes.
+pub fn item_uses_hold(name: &str, consumable: bool, equippable: bool) -> bool {
+    consumable
+        || equippable
+        || matches!(
+            name,
+            "minecraft:fishing_rod"
+                | "minecraft:wind_charge"
+                | "minecraft:firework_rocket"
+                | "minecraft:bow"
+                | "minecraft:crossbow"
+                | "minecraft:trident"
+                | "minecraft:spyglass"
+                | "minecraft:shield"
+                | "minecraft:goat_horn"
+                | "minecraft:brush"
+        )
+}
 mod custom;
 mod editor;
 pub use custom::CustomButton;
@@ -462,6 +480,7 @@ impl TouchControls {
                     start,
                     since,
                     dragged,
+                    held_use,
                     ..
                 },
                 _,
@@ -472,7 +491,7 @@ impl TouchControls {
             {
                 self.tap_aim = Some(start);
                 self.last_marker = Some((start, Instant::now()));
-                self.pending.triggers[0] = 1.0;
+                self.pending.triggers[usize::from(held_use)] = 1.0;
             }
             return [0.0; 2];
         }
@@ -1180,6 +1199,47 @@ mod tests {
         t.update(2, [0.7, 0.4], false, false);
         t.update(2, [0.7, 0.4], false, true);
         assert_eq!(t.poll_state().triggers, [0.0; 2]);
+    }
+    #[test]
+    fn held_use_items_attack_on_a_short_tap_and_use_on_a_hold() {
+        for name in [
+            "minecraft:fishing_rod",
+            "minecraft:wind_charge",
+            "minecraft:firework_rocket",
+            "minecraft:bow",
+            "minecraft:crossbow",
+            "minecraft:trident",
+            "minecraft:spyglass",
+            "minecraft:shield",
+            "minecraft:goat_horn",
+            "minecraft:brush",
+        ] {
+            assert!(item_uses_hold(name, false, false), "{name}");
+        }
+        assert!(item_uses_hold("test:food", true, false));
+        assert!(item_uses_hold("test:armor", false, true));
+        assert!(!item_uses_hold("minecraft:stone", false, false));
+
+        for mode in [Mode::Tap, Mode::Dpad] {
+            let mut t = TouchControls::default();
+            t.settings.mode = mode;
+            t.hold_uses_item = true;
+            let point = [0.6, 0.4];
+            t.update(1, point, true, false);
+            t.hold_uses_item = false; // The gesture remembers the original item.
+            t.update(1, point, false, true);
+            assert_eq!(t.poll_state().triggers, [0.0, 1.0]);
+            assert_eq!(t.poll_state().triggers, [0.0; 2]);
+
+            t.hold_uses_item = true;
+            t.update(2, point, true, false);
+            if let Some((Role::Look { since, .. }, _)) = t.fingers.get_mut(&2) {
+                *since = Instant::now() - Duration::from_millis(400);
+            }
+            assert_eq!(t.poll_state().triggers, [1.0, 0.0]);
+            t.update(2, point, false, true);
+            assert_eq!(t.poll_state().triggers, [0.0; 2]);
+        }
     }
     #[test]
     fn long_hold_keeps_mining_while_the_camera_turns() {

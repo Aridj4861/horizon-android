@@ -94,6 +94,19 @@ pub fn native_input_scale() -> [f64; 2] {
     crate::platform_impl::native_input_scale()
 }
 
+/// Physical safe insets in left, top, right, bottom order.
+pub fn set_native_content_insets(insets: [u32; 4]) {
+    crate::platform_impl::viewport::set_insets(insets);
+}
+/// A fixed width/height ratio, or [0, 0] for the available native area.
+pub fn set_native_content_aspect(aspect: [u32; 2]) {
+    crate::platform_impl::viewport::set_aspect(aspect);
+}
+/// The full-frame presentation rectangle in native surface pixels.
+pub fn native_content_rect(size: [u32; 2]) -> [u32; 4] {
+    crate::platform_impl::viewport::rect(size)
+}
+
 /// Additional methods on [`EventLoop`] that are specific to Android.
 pub trait EventLoopExtAndroid {
     /// Get the [`AndroidApp`] which was used to create this event loop.

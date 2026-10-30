@@ -44,6 +44,8 @@ pub(crate) fn set_native_text_input_active(active: bool) {
     NATIVE_TEXT_INPUT_ACTIVE.store(active, Ordering::Release);
 }
 
+pub(crate) mod viewport;
+
 static NATIVE_INPUT_X: AtomicU64 = AtomicU64::new(1.0f64.to_bits());
 static NATIVE_INPUT_Y: AtomicU64 = AtomicU64::new(1.0f64.to_bits());
 
@@ -68,15 +70,17 @@ pub(crate) fn native_input_scale() -> [f64; 2] {
 
 fn native_render_size(physical: PhysicalSize<u32>) -> PhysicalSize<u32> {
     let [sx, sy] = native_input_scale();
+    let [_, _, width, height] = viewport::rect([physical.width, physical.height]);
     PhysicalSize::new(
-        (physical.width as f64 * sx).round() as u32,
-        (physical.height as f64 * sy).round() as u32,
+        (width as f64 * sx).round().max(1.0) as u32,
+        (height as f64 * sy).round().max(1.0) as u32,
     )
 }
 
 fn native_pointer_position(x: f64, y: f64) -> PhysicalPosition<f64> {
     let [sx, sy] = native_input_scale();
-    PhysicalPosition::new(x * sx, y * sy)
+    let [ox, oy] = viewport::origin();
+    PhysicalPosition::new((x - f64::from(ox)) * sx, (y - f64::from(oy)) * sy)
 }
 
 fn modifiers(meta: MetaState) -> crate::keyboard::ModifiersState {
@@ -1124,9 +1128,10 @@ impl Window {
         if size.width == 0 || size.height == 0 {
             set_native_input_scale([1.0, 1.0]);
         } else {
+            let [_, _, width, height] = viewport::rect([physical.width, physical.height]);
             set_native_input_scale([
-                size.width as f64 / physical.width as f64,
-                size.height as f64 / physical.height as f64,
+                size.width as f64 / width as f64,
+                size.height as f64 / height as f64,
             ]);
         }
         Ok(self.inner_size())
