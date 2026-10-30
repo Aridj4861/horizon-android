@@ -73,14 +73,16 @@ fn route(mock: &mut Mock, method: &str, path: &str, auth: &str, body: &str) -> (
         },
         ("POST", "/xbl") => {
             let v: Value = serde_json::from_str(body).unwrap();
-            assert!(v["Properties"]["RpsTicket"]
-                .as_str()
-                .unwrap()
-                .starts_with(if mock.legacy {
-                    "t=ms-access-"
-                } else {
-                    "d=ms-access-"
-                }));
+            assert!(
+                v["Properties"]["RpsTicket"]
+                    .as_str()
+                    .unwrap()
+                    .starts_with(if mock.legacy {
+                        "t=ms-access-"
+                    } else {
+                        "d=ms-access-"
+                    })
+            );
             assert_eq!(v["RelyingParty"], "http://auth.xboxlive.com");
             reply(
                 200,
@@ -312,12 +314,14 @@ fn android_session_keeps_valid_tokens_and_renews_legacy_tokens() {
     let (renewed, tokens) = fresh(&ep, "00000000441cc96b", &account, stale).unwrap();
     assert_eq!(renewed.uuid, account.uuid);
     assert_eq!(tokens.refresh_token, "ms-refresh-2");
-    assert!(mock_state
-        .lock()
-        .unwrap()
-        .log
-        .iter()
-        .any(|(_, path, _)| path == "/mc/entitlements/mcstore"));
+    assert!(
+        mock_state
+            .lock()
+            .unwrap()
+            .log
+            .iter()
+            .any(|(_, path, _)| path == "/mc/entitlements/mcstore")
+    );
 }
 
 #[test]
@@ -462,6 +466,46 @@ fn an_owner_plays_with_a_session() {
     assert!(accounts.selected().unwrap().skin.is_some());
 }
 
+/// A keychain that reads but refuses to keep anything new (#3249).
+struct Refusing(MemoryStore);
+impl SecretStore for Refusing {
+    fn get(&self, key: &str) -> Result<Option<String>, String> {
+        self.0.get(key)
+    }
+    fn set(&self, _: &str, _: &str) -> Result<(), String> {
+        Err("the keyring is locked".into())
+    }
+    fn delete(&self, key: &str) -> Result<(), String> {
+        self.0.delete(key)
+    }
+    fn persistent(&self) -> bool {
+        true
+    }
+}
+
+#[test]
+fn a_renewed_sign_in_the_keychain_refuses_still_plays_and_says_so() {
+    let (_, ep) = mock(|_| {});
+    let store = MemoryStore::default();
+    let stale = Secrets {
+        minecraft_expires_at: now() + 60,
+        ..secrets("old-token", true)
+    };
+    let mut accounts = signed_in(&store, &stale);
+    let refusing = Refusing(store);
+    let pass = launch(&ep, Some("test-client"), &refusing, &mut accounts).unwrap();
+    assert_eq!(pass.session.unwrap().1.minecraft_token, "mc-token");
+    let said = "Notch's renewed sign-in couldn't be saved in the keychain (the keyring is \
+                locked): you may have to sign in again next time.";
+    assert_eq!(pass.unsaved.as_deref(), Some(said));
+    assert_eq!(take_unsaved().as_deref(), Some(said));
+    assert_eq!(take_unsaved(), None, "said once");
+    // Nothing to save, nothing to say.
+    let mut accounts = signed_in(&refusing.0, &secrets("mc-token", true));
+    let pass = launch(&ep, Some("test-client"), &refusing, &mut accounts).unwrap();
+    assert!(pass.unsaved.is_none());
+}
+
 #[test]
 fn a_no_from_the_services_blocks_at_once() {
     let (_, ep) = mock(|m| m.owns_game = false);
@@ -526,10 +570,11 @@ fn any_owner_opens_the_gate_and_the_one_who_plays_brings_the_session() {
     accounts.selected = Some("other".into());
     let pass = launch(&ep, Some("test-client"), &store, &mut accounts).unwrap();
     assert!(pass.session.is_none());
-    assert!(pass
-        .offline
-        .unwrap()
-        .starts_with("Alex is no longer signed in"));
+    assert!(
+        pass.offline
+            .unwrap()
+            .starts_with("Alex is no longer signed in")
+    );
     assert_eq!(pass.owner.unwrap().0.name, "Notch");
     // An offline name plays: Notch is asked, and no session goes to the game.
     accounts.selected = None;
@@ -559,9 +604,11 @@ fn offline_names_play_only_beside_an_owner() {
     assert!(!accounts.has_owner(&store));
     let (_, ep) = mock(|_| {});
     assert!(launch(&ep, Some("test-client"), &store, &mut accounts).is_err());
-    assert!(accounts
-        .play_as(&store, Player::Offline("Builder_2".into()))
-        .is_err());
+    assert!(
+        accounts
+            .play_as(&store, Player::Offline("Builder_2".into()))
+            .is_err()
+    );
 }
 
 #[test]
@@ -617,19 +664,25 @@ fn refusals_have_messages() {
         refresh: "r".into(),
     };
     let (_, ep) = mock(|m| m.xerr = Some(2148916233));
-    assert!(finish_sign_in(&ep, tokens())
-        .unwrap_err()
-        .contains("no Xbox profile"));
+    assert!(
+        finish_sign_in(&ep, tokens())
+            .unwrap_err()
+            .contains("no Xbox profile")
+    );
     let (_, ep) = mock(|m| m.xerr = Some(2148916238));
-    assert!(finish_sign_in(&ep, tokens())
-        .unwrap_err()
-        .contains("child account"));
+    assert!(
+        finish_sign_in(&ep, tokens())
+            .unwrap_err()
+            .contains("child account")
+    );
     let (_, ep) = mock(|m| m.owns_game = false);
     assert_eq!(finish_sign_in(&ep, tokens()).unwrap_err(), DOES_NOT_OWN);
     let (_, ep) = mock(|m| m.no_profile = true);
-    assert!(finish_sign_in(&ep, tokens())
-        .unwrap_err()
-        .contains("no Minecraft profile"));
+    assert!(
+        finish_sign_in(&ep, tokens())
+            .unwrap_err()
+            .contains("no Minecraft profile")
+    );
     assert_eq!(
         oauth_error(&json!({"error": "authorization_declined"})),
         "Sign-in was declined in the browser."

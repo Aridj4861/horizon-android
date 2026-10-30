@@ -61,6 +61,11 @@ fn attack_range_contains(range: &serde_json::Value, distance: f64, creative: boo
 impl Game<'_> {
     /// Opening a screen stops breaking before the next game tick (which may pause).
     pub(super) fn stop_mining(&mut self) {
+        if self.clicks.destroying.active {
+            let pos = self.clicks.destroying.pos;
+            let state = self.world.block(pos[0], pos[1], pos[2]);
+            self.tutorial_destroy(state, -1.0);
+        }
         let mut destroying = std::mem::take(&mut self.clicks.destroying);
         destroying.stop(&mut GameHands {
             game: self,
@@ -141,6 +146,12 @@ impl Game<'_> {
             progress: d.progress,
             ticks: d.ticks as u32,
         });
+        if let Some(mining) = &self.mining {
+            let pos = mining.pos;
+            let progress = mining.progress;
+            let state = self.world.block(pos[0], pos[1], pos[2]);
+            self.tutorial_destroy(state, progress);
+        }
         Ok(())
     }
     /// `BlockBehaviour.getDestroyProgress` with `Player.getDestroySpeed`.
@@ -151,7 +162,7 @@ impl Game<'_> {
             return 0.0;
         }
         let held = self.held();
-        let mut speed = self.res.items().mining_speed(held, &facts.name);
+        let mut speed = self.items().mining_speed(held, &facts.name);
         speed = self.modify_destroy_speed(speed);
         if let Some(eye) = self.eye_position()
             && self
@@ -170,7 +181,7 @@ impl Game<'_> {
         if self.player.as_ref().is_some_and(|p| !p.ground.on_ground) {
             speed /= 5.0;
         }
-        let harvest = !facts.requires_tool || self.res.items().correct_for_drops(held, &facts.name);
+        let harvest = !facts.requires_tool || self.items().correct_for_drops(held, &facts.name);
         speed / facts.hardness / if harvest { 30.0 } else { 100.0 }
     }
     /// A key for the main-hand stack (`destroyingItem`): its item and components.
@@ -421,7 +432,7 @@ impl Game<'_> {
     }
     /// The item whose attack damage and speed modifiers the player has (`attack_item`).
     pub(super) fn attack_item_info(&self) -> Option<&horizon_client::items::ItemInfo> {
-        self.res.items().get(self.attack_item.as_deref()?)
+        self.items().get(self.attack_item.as_deref()?)
     }
     /// `evaluateWhichHandsToRender`: which of the main and off hand show.
     pub(super) fn hands_to_render(&self) -> [bool; 2] {
@@ -578,6 +589,8 @@ impl HandWorld for GameHands<'_, '_> {
         {
             return false;
         }
+        let state = self.game.world.block(pos[0], pos[1], pos[2]);
+        self.game.tutorial_destroy(state, 1.0);
         let r = self.game.break_block(pos);
         self.keep(r);
         true

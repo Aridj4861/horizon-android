@@ -860,6 +860,10 @@ impl Game<'_> {
             return;
         }
         self.pad.menu.os_hidden = !show;
+        // Controller menus leave the native pointer to its owning player.
+        if !self.keyboard_mouse {
+            return;
+        }
         if let Some(window) = &self.window {
             window.set_cursor_visible(show && !self.captured);
         }
@@ -1046,10 +1050,20 @@ impl Game<'_> {
             ui.finish();
             return;
         }
-        let Some((x, y)) = self.pad.menu.pos else {
+        #[cfg(target_os = "android")]
+        let virtual_mouse = self.settings.touch.virtual_mouse && self.pad.touch_ui.virtual_mouse;
+        #[cfg(not(target_os = "android"))]
+        let virtual_mouse = false;
+        let pointer = if virtual_mouse {
+            Some(self.cursor)
+        } else {
+            self.pad.menu.pos
+        };
+        let Some((x, y)) = pointer else {
             return;
         };
-        if self.pad_focus_mode()
+        if !virtual_mouse
+            && self.pad_focus_mode()
             && let Some(focus) = self.pad.menu.focus
         {
             self.draw_pad_focus(batch, focus);
