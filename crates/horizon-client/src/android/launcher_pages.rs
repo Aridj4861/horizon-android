@@ -572,7 +572,7 @@ impl Launcher {
                         color::MUTED,
                         "Java mod",
                     );
-                } else if p.kind == crate::browser::Kind::Mod && !cfg!(feature = "mods") {
+                } else if p.kind == crate::browser::Kind::Mod && !cfg!(target_pointer_width = "64") {
                     ui.text(
                         Face::Regular,
                         14.0,
@@ -707,7 +707,7 @@ impl Launcher {
                         color::MUTED,
                         kind.label(),
                     );
-                    if kind == Kind::Mods && !cfg!(feature = "mods") {
+                    if kind == Kind::Mods && !cfg!(target_pointer_width = "64") {
                         ui.text(
                             Face::Regular,
                             14.0,

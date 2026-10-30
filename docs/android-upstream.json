@@ -7,11 +7,11 @@
   "compared_source_files": 3147,
   "modified_existing_files": 41,
   "branch": "android",
-  "merged_upstream_commit": "45ecf7bef04f873e7cbd45813e0b0f39e441a588",
-  "merged_upstream_commits": 3681,
-  "last_reviewed_date": "2026-10-29",
-  "last_update_commits": 174,
-  "latest_fetched_commit": "acb209dbf74cbf95fe9cb1244d0b013781591b48",
-  "review": "Reviewed 174 stable commits through 45ecf7bef: sunset sky rendering cost, far sampling threads, resize bounds, server HUD resets, entity and item fixes, text rendering and desktop launcher updates. Retained Android presentation sizing, lifecycle guards, touch aiming/input and inactive upstream deployment workflows.",
-  "pending_review_commits": 179
+  "merged_upstream_commit": "47a3b39fa9e419ec03221fca5ef402d58e831f14",
+  "merged_upstream_commits": 4880,
+  "last_reviewed_date": "2026-10-30",
+  "last_update_commits": 1199,
+  "latest_fetched_commit": "47a3b39fa9e419ec03221fca5ef402d58e831f14",
+  "review": "Integrated stable upstream main through 47a3b39fa. Explicitly reconciled Android background renderer handoff, screenshot/HDR API, mesh disposal queue, touch controls/HUD insets, IME editors and native mod hooks. Removed obsolete Wasm runtime feature references; retained Android architecture checks and system DNS fix. Newly introduced upstream automation remains disabled. Desktop client and ARM64 release cargo check passed; device gameplay has not yet been verified for this merge.",
+  "pending_review_commits": 0
 }

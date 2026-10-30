@@ -11,7 +11,7 @@
 //!
 //! The Azure app (client ID) is Horizon's own and is configuration: `HORIZON_MSA_CLIENT_ID` at
 //! build time, or at run time to override it. Without one, sign-in says it is not configured.
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
@@ -21,8 +21,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 pub const SERVICE: &str = "dev.playhorizon.launcher";
 const SCOPE: &str = "XboxLive.signin offline_access";
 #[cfg(target_os = "android")]
-pub const NOT_CONFIGURED: &str =
-    "Microsoft sign-in is coming soon. Until then the game plays offline: single player, \
+pub const NOT_CONFIGURED: &str = "Microsoft sign-in is coming soon. Until then the game plays offline: single player, \
      LAN and servers in offline mode work.";
 #[cfg(not(target_os = "android"))]
 pub const NOT_CONFIGURED: &str = "This build of the launcher has no Microsoft sign-in (HORIZON_MSA_CLIENT_ID), so it can't start the game.";
@@ -684,7 +683,24 @@ pub struct SystemStore;
 impl SystemStore {
     fn keyring() -> Result<oo7::Keyring, String> {
         futures_lite::future::block_on(async {
-            let keyring = oo7::Keyring::new().await.map_err(|e| e.to_string())?;
+            // `oo7::Keyring::new` takes `GTK_USE_PORTAL=1` (set by many KDE desktops) for a
+            // sandbox, and then keeps the secrets in a file under a key the Secret portal gives
+            // per app id. Outside a sandbox that id comes from how the launcher was started (the
+            // menu or a terminal), so the file opened in one start and not the next (#3249).
+            // Flatpak (`/.flatpak-info`) and Snap (`$SNAP`) keep the portal's file.
+            let sandboxed =
+                Path::new("/.flatpak-info").exists() || std::env::var_os("SNAP").is_some();
+            let keyring = if sandboxed {
+                oo7::Keyring::new().await.map_err(|e| e.to_string())?
+            } else {
+                let service = oo7::dbus::Service::new().await.map_err(|e| e.to_string())?;
+                oo7::Keyring::DBus(
+                    service
+                        .default_collection()
+                        .await
+                        .map_err(|e| e.to_string())?,
+                )
+            };
             keyring.unlock().await.map_err(|e| e.to_string())?;
             Ok(keyring)
         })
@@ -839,7 +855,23 @@ impl SecretStore for SystemStore {
 
 pub const NO_KEYCHAIN: &str = "No keychain available: you are signed in until the launcher closes, then you will have to sign in again.";
 
-/// The keychain if it answers, else memory for this run (said once in the UI with NO_KEYCHAIN).
+/// What the keychain answered when [`store`] fell back to memory.
+static NO_KEYCHAIN_WHY: OnceLock<String> = OnceLock::new();
+
+/// What the window and the CLI say when sign-ins last only this run: [`NO_KEYCHAIN`] and why.
+/// None while the keychain keeps them.
+pub fn no_keychain() -> Option<String> {
+    if store().persistent() {
+        return None;
+    }
+    Some(match NO_KEYCHAIN_WHY.get() {
+        Some(why) => format!("{NO_KEYCHAIN} The keychain said: {why}"),
+        None => NO_KEYCHAIN.into(),
+    })
+}
+
+/// The keychain if it answers, else memory for this run (said in the UI with [`no_keychain`]).
+/// Never a file of its own: secrets are kept by the system or not at all.
 pub fn store() -> &'static dyn SecretStore {
     static STORE: OnceLock<Box<dyn SecretStore>> = OnceLock::new();
     STORE
@@ -856,9 +888,15 @@ pub fn store() -> &'static dyn SecretStore {
                     target_os = "windows"
                 )
             ))]
-            if std::env::var_os("HORIZON_NO_KEYCHAIN").is_none() && SystemStore.get("probe").is_ok()
             {
-                return Box::new(SystemStore);
+                let why = match std::env::var_os("HORIZON_NO_KEYCHAIN") {
+                    Some(_) => "HORIZON_NO_KEYCHAIN is set.".to_string(),
+                    None => match SystemStore.get("probe") {
+                        Ok(_) => return Box::new(SystemStore),
+                        Err(e) => e,
+                    },
+                };
+                let _ = NO_KEYCHAIN_WHY.set(why);
             }
             #[cfg(any(not(target_os = "android"), test))]
             {
@@ -1117,6 +1155,17 @@ pub struct Launch {
     /// An account the services said owns the game just now, the selected one first: who the
     /// launcher may download the game for.
     pub owner: Option<(Account, Secrets)>,
+    /// A renewed sign-in the keychain refused to keep: it plays now, and may have to sign in
+    /// again next time.
+    pub unsaved: Option<String>,
+}
+
+/// The last [`Launch::unsaved`], for the window or the terminal to show once.
+static UNSAVED: Mutex<Option<String>> = Mutex::new(None);
+
+/// What the last launch couldn't save in the keychain, once.
+pub fn take_unsaved() -> Option<String> {
+    UNSAVED.lock().ok()?.take()
 }
 
 /// The owner gate: the game starts only while an account in the launcher owns Minecraft: Java
@@ -1167,16 +1216,24 @@ pub fn launch(
             pass.offline = said;
         }
         let after = serde_json::to_string(&secrets).ok();
-        if let (true, Some(text)) = (after != before, after) {
-            // A store that refuses costs only this answer: the next launch asks again.
-            let _ = store.set(&account.uuid, &text);
+        if after != before {
+            if let Some(text) = after {
+                // The game still starts; the player hears why the next launch may ask again.
+                if let Err(e) = store.set(&account.uuid, &text) {
+                    let said = format!(
+                        "{}'s renewed sign-in couldn't be saved in the keychain ({e}): you may \
+                         have to sign in again next time.",
+                        account.name
+                    );
+                    if let Ok(mut last) = UNSAVED.lock() {
+                        *last = Some(said.clone());
+                    }
+                    pass.unsaved = Some(said);
+                }
+            }
         }
     }
-    if owned {
-        Ok(pass)
-    } else {
-        Err(NoOwner)
-    }
+    if owned { Ok(pass) } else { Err(NoOwner) }
 }
 
 /// The owner gate before the game starts. With the window's hidden developer option

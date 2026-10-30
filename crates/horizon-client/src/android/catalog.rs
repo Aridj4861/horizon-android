@@ -494,7 +494,7 @@ impl Catalog {
                     project.source,
                     browser::SourceId::Horizon | browser::SourceId::Modrinth
                 ))
-            && !(cfg!(feature = "mods")
+            && !(cfg!(target_pointer_width = "64")
                 && project.kind == Kind::Mod
                 && project.source == browser::SourceId::Horizon)
         {
@@ -548,7 +548,7 @@ impl Catalog {
         let mut settings = horizon_client::settings::Settings::load(&path);
         match item.kind {
             horizon_client::content_files::Kind::Mods => {
-                if !cfg!(feature = "mods") {
+                if !cfg!(target_pointer_width = "64") {
                     self.status = "Native mod execution requires a 64-bit APK".into();
                     return;
                 }

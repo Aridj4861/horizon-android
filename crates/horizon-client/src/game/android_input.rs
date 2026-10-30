@@ -187,7 +187,7 @@ impl Game<'_> {
             } else {
                 self.physical_keys.remove(&key);
             }
-            self.mod_key(key, down, false);
+            self.native_key_event(key, down, false);
             let action = if down {
                 KeyAction::Press
             } else {
